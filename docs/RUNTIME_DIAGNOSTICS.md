@@ -1,6 +1,6 @@
 # 运行时诊断
 
-> **状态**: CURRENT | **最后更新**: 2026-07-08
+> **状态**: CURRENT | **最后更新**: 2026-07-09
 > **源码参考**: `Iwesun.Runtime.Diagnostics/`, `Iwesun.Runtime.Cli/`
 
 宿主应用（如 DDNS Snap）通过 `Iwesun.Runtime.Diagnostics` 路由运行时诊断输出，替代直接的控制台/文件调试日志。正常运行时保持静默，直到监控器显式启用输出。
@@ -9,10 +9,12 @@
 
 | 组件                              | 职责                                  |
 | --------------------------------- | ------------------------------------- |
-| `RuntimeOutput`                   | 静态 TracePoint API，业务代码调用入口 |
-| `DiagnosticSwitchboard`           | 静态配置驱动的输出路由器              |
-| `RuntimeDiagnosticHub`            | 命名管道服务器，供实时监控            |
+| `RuntimeOutput`                   | 静态 TracePoint / Watch / Break API，业务代码调用入口 |
+| `DiagnosticSwitchboard`           | 静态配置驱动的输出路由器、输出点与 FIFO 统计 |
+| `RuntimeDiagnosticHub`            | 命名管道服务器，供实时监控、登记表查询和反射目标访问 |
 | `RuntimeDiagnosticLoggerProvider` | Serilog 提供者集成                    |
+| `RuntimeExecutionManager`         | 线程/任务执行状态、心跳和快照管理     |
+| `RuntimeManagedRegistry`          | 统一登记表：注册、事件、命令队列与快照 |
 
 ## 数据流
 
@@ -36,6 +38,7 @@ ILogger / RuntimeOutput.TracePoint()
 - 首次启动时从编译的监控目录生成，后续启动时修复（添加新监控点）
 - Schema 版本 4 默认静默启动：`globalEnabled`、管道输出、文件输出、每个 section、每个编译输出点均生成为 `false`
 - 保留用户对已知点 ID 的 `enabled` 更改，同时自动添加新编译的点 ID
+- 输出点是稳定的诊断采样入口；默认通过 `SetOutputPoint()` 控制启用/禁用
 
 每个 `outputPoints[]` 条目是一个稳定监控点：
 
@@ -51,7 +54,7 @@ ILogger / RuntimeOutput.TracePoint()
 
 配置还包含 `runtimeDiagnosticsPipeName`，同一机器上运行多个 DDNS Snap 构建或服务时保持唯一。
 
-## TracePoint API
+## TracePoint / Watch / Break API
 
 业务代码中使用静态 `RuntimeOutput.TracePoint()` 调用：
 
@@ -60,7 +63,12 @@ RuntimeOutput.TracePoint("pipeline.stage", "DnsUpdateStage",
     new { Domain = domain, TargetIp = targetIp, Updated = true });
 ```
 
-- 所有运行时追踪通过此 API，不直接使用 `Console.WriteLine` 或文件写入
+常见观测 API：
+- `RuntimeOutput.TracePoint()`：输出结构化事件。
+- `RuntimeOutput.Watch()`：对对象做快照并投递到诊断管道。
+- `RuntimeOutput.BreakIf()`：协作式断点，命中后等待恢复信号。
+
+- 所有运行时追踪通过这些 API，不直接使用 `Console.WriteLine` 或文件写入
 - 由 `DiagnosticSwitchboard` 根据配置路由到输出点（管道、文件、日志）
 - 支持结构化 JSON 载荷
 
@@ -90,6 +98,15 @@ Service 和 Agent 主机从 `diagnostic-switchboard.json` 启动专用运行时�
 
 输出目标可独立启用/禁用。
 
+## 登记表与可观测对象
+
+当前实现中的登记表主要由 `RuntimeDiagnosticHub` 提供：
+- `diagnostics.registry`：返回 watch points、breakpoints、hooks 的登记快照。
+- 反射目标：通过 `RegisterObject()` 暴露可读/可写/可调用成员。
+- 功能测试场景中的树对象：通过登记表和反射目标暴露树快照、节点路径、统计值、断点命中与输出点记录。
+
+对于需要“先知道程序里有什么，再去测试什么”的场景，优先从登记表入手，而不是直接猜测对象模型。
+
 ## 设计原则
 
 - 默认不输出
@@ -101,5 +118,16 @@ Service 和 Agent 主机从 `diagnostic-switchboard.json` 启动专用运行时�
 ## 相关文档
 
 - CLI 使用 → [IWESUN_RUNTIME_CLI.md](IWESUN_RUNTIME_CLI.md)
-- 统一界面原则 → [../04-interface/UNIFIED_INTERFACE.md](../04-interface/UNIFIED_INTERFACE.md)
-- 诊断开发规范 → [../../.github/instructions/runtime-diagnostics.instructions.md](../../.github/instructions/runtime-diagnostics.instructions.md)
+- 状态分类基础类型 → [05-runtime-tooling/STATE_CLASSIFICATION.md](05-runtime-tooling/STATE_CLASSIFICATION.md)
+- 状态分类在线业务实现 → [05-runtime-tooling/STATE_CLASSIFICATION_ONLINE.md](05-runtime-tooling/STATE_CLASSIFICATION_ONLINE.md)
+- 状态分类实施计划 → [05-runtime-tooling/STATE_CLASSIFICATION_PLAN.md](05-runtime-tooling/STATE_CLASSIFICATION_PLAN.md)
+- 状态分类任务书 → [05-runtime-tooling/STATE_CLASSIFICATION_TASKS.md](05-runtime-tooling/STATE_CLASSIFICATION_TASKS.md)
+- 线程与任务管理 → [05-runtime-tooling/THREAD_TASK_MANAGEMENT.md](05-runtime-tooling/THREAD_TASK_MANAGEMENT.md)
+- 线程与任务管理实施计划 → [05-runtime-tooling/THREAD_TASK_MANAGEMENT_PLAN.md](05-runtime-tooling/THREAD_TASK_MANAGEMENT_PLAN.md)
+- 独立样板宿主 → [05-runtime-tooling/SAMPLE_HOST.md](05-runtime-tooling/SAMPLE_HOST.md)
+- 注入器标准化 → [05-runtime-tooling/INJECTOR_STANDARDIZATION.md](05-runtime-tooling/INJECTOR_STANDARDIZATION.md)
+- 注入器标准化技术方案 → [05-runtime-tooling/INJECTOR_STANDARDIZATION_PLAN.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_PLAN.md)
+- 注入器标准化任务书 → [05-runtime-tooling/INJECTOR_STANDARDIZATION_TASKS.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_TASKS.md)
+- 统一界面规范 → [UNIFIED_INTERFACE.md](UNIFIED_INTERFACE.md)
+- AI 访问规则复核 → [AI_ACCESS_RECHECK.md](AI_ACCESS_RECHECK.md)
+- 全局访问规则 → [../.github/instructions/copilot-access-rules.instructions.md](../.github/instructions/copilot-access-rules.instructions.md)

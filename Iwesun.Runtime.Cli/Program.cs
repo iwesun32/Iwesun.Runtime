@@ -138,14 +138,14 @@ static void PrintHelp(UnifiedCommandCatalog catalog)
 			Name = command.Aliases.Length == 0
 				? command.Name
 				: $"{command.Name} ({string.Join(", ", command.Aliases)})",
-			Help = command.Help
+			Help = BuildHelpText(command.Help, command.Usage, command.Examples)
 		})
 		.Concat(catalog.CompositeCommands.Select(command => new
 		{
 			Name = command.Aliases.Length == 0
 				? command.Name
 				: $"{command.Name} ({string.Join(", ", command.Aliases)})",
-			Help = command.Help
+			Help = BuildHelpText(command.Help, command.Mode, command.Steps.Select(step => step.Command))
 		}))
 		.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
 		.ToArray();
@@ -153,6 +153,17 @@ static void PrintHelp(UnifiedCommandCatalog catalog)
 	var width = Math.Max(34, rows.Select(x => x.Name.Length).DefaultIfEmpty(0).Max() + 4);
 	foreach (var row in rows)
 		Console.WriteLine($"  {row.Name}".PadRight(width) + row.Help);
+}
+
+static string BuildHelpText(string help, string usage, IEnumerable<string> examples)
+{
+	var text = string.IsNullOrWhiteSpace(help) ? "" : help.Trim();
+	if (!string.IsNullOrWhiteSpace(usage))
+		text = string.IsNullOrWhiteSpace(text) ? usage.Trim() : $"{text} | {usage.Trim()}";
+	var exampleText = examples.Where(x => !string.IsNullOrWhiteSpace(x)).Take(3).ToArray();
+	if (exampleText.Length > 0)
+		text = string.IsNullOrWhiteSpace(text) ? $"e.g. {string.Join("; ", exampleText)}" : $"{text} | e.g. {string.Join("; ", exampleText)}";
+	return text;
 }
 
 internal sealed class CliOptions

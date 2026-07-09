@@ -21,6 +21,7 @@ Read only what is necessary for the current task. Prefer the smallest local code
    - Examples: `git reset --hard`, `git clean -f`, `Remove-Item -Force`, `del /s /q`, `rd /s /q`.
 3. **Search first, read second.** Use targeted search before opening files.
 4. **Build outputs are not source code.** Ignore generated artifacts, caches, and package outputs.
+5. **Ignore binaries and oversized files by default.** Do not read binary files or files larger than 200 KB unless the user explicitly requests it.
 
 ## Off-Limits Zones
 
@@ -61,6 +62,15 @@ Only these locations should normally be read without explicit user permission:
 2. **Use minimal line ranges.** Read only the surrounding lines needed for the current task.
 3. **Prefer one nearby hop over broad exploration.** If the first file only forwards behavior, step once to the owning implementation.
 4. **Use subagents only for broad read-only exploration.**
+
+## Requirements-First Workflow
+
+This workflow is mandatory for task execution:
+
+1. Convert relevant user dialogue into a requirements document before implementation.
+2. Re-read the requirements document before execution and verify alignment.
+3. Re-read the requirements document after execution to ensure details were not overshadowed.
+4. Keep active requirements in `docs/REQUIREMENTS_ACTIVE.md` and update it when scope changes.
 
 ## Response Rules
 

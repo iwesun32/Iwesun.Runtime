@@ -1,9 +1,9 @@
 # Iwesun Runtime CLI
 
-> **状态**: CURRENT | **最后更新**: 2026-07-08
+> **状态**: CURRENT | **最后更新**: 2026-07-09
 > **源码参考**: `Iwesun.Runtime.Cli/`
 
-`Iwesun.Runtime.Cli` 是连接正在运行的 DDNS Snap 服务的统一命令行入口，用于实时诊断、快照查询、事件排空和 WebRuntime 控制命令。
+`Iwesun.Runtime.Cli` 是连接正在运行的服务的统一命令行入口，用于实时诊断、快照查询、事件排空、登记表读取和 WebRuntime 控制命令。
 
 ## 定位
 
@@ -15,6 +15,13 @@ CLI → WebRuntime 管道 → WebRuntimeControlRequest → WebView2Bridge → We
 ```
 
 CLI 的职责是"发令"，不是"解释业务"。
+
+当前可用的诊断能力包括：
+- `host.info` / `host.*`：主机信息与快照
+- `reg.*`：登记表与 watch/break/hook 查询
+- `bp.*`：断点列表、启用、恢复
+- `hook.*`：钩子列表、挂接、卸载
+- `sw.*`：开关板状态、输出点、FIFO、pipe 配置
 
 ## 启动
 
@@ -69,6 +76,15 @@ iwrt points --section=agent-sync
 
 # 查看单个监控点详情
 iwrt point agent.worker-cycle
+
+# 查看登记表
+iwrt reg list
+
+# 查看断点
+iwrt bp list
+
+# 查看钩子
+iwrt hook list
 ```
 
 ### 快速聚焦
@@ -102,6 +118,14 @@ iwrt disable-point agent.worker-cycle
 iwrt disable agent-sync
 iwrt disable
 iwrt pipe off
+
+# 控制断点
+iwrt bp enable tree.fill
+iwrt bp resume tree.fill
+
+# 控制钩子
+iwrt hook attach tree.updated
+iwrt hook detach tree.updated
 ```
 
 ### Service UI 管理
@@ -158,4 +182,5 @@ CLI 打包了 `Iwesun.Runtime.WebView2`，可与兼容主机的 WebRuntime 管�
 ## 相关文档
 
 - 运行时诊断 → [RUNTIME_DIAGNOSTICS.md](RUNTIME_DIAGNOSTICS.md)
-- 统一界面原则 → [../04-interface/UNIFIED_INTERFACE.md](../04-interface/UNIFIED_INTERFACE.md)
+- 活跃需求与测试矩阵 → [REQUIREMENTS_ACTIVE.md](REQUIREMENTS_ACTIVE.md)
+- 统一界面规范 → [UNIFIED_INTERFACE.md](UNIFIED_INTERFACE.md)

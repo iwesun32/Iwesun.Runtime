@@ -12,8 +12,12 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 	{
 		services.AddSingleton(new RuntimeDiagnosticHub(hostScanOptions));
 		services.AddSingleton(new DiagnosticSwitchboardConfigStore(runtimeDirectory));
-		services.AddSingleton<DiagnosticSwitchboardTarget>();
-		services.AddSingleton<RuntimeDiagnosticsSelfTestState>();
+		services.AddSingleton(RuntimeStateCatalog.CreateOnlineDefaults());
+		services.AddSingleton<RuntimeStateManager>();
+		services.AddSingleton<RuntimeExecutionManager>();
+		services.AddSingleton<RuntimeManagedRegistry>();
+		services.AddSingleton<RuntimeManagedCommandTarget>();
+		services.AddSingleton<DiagnosticSwitchboardTarget>();		services.AddSingleton<RuntimeDiagnosticsSelfTestState>();
 		services.AddSingleton<RuntimeDiagnosticsMonitor>();
 		services.AddSingleton<RuntimeDiagnosticBreakpoints>();
 		services.AddSingleton<RuntimeDiagnosticHooks>();
@@ -25,9 +29,12 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 	{
 		var hub = provider.GetRequiredService<RuntimeDiagnosticHub>();
 		var configStore = provider.GetRequiredService<DiagnosticSwitchboardConfigStore>();
+		var stateManager = provider.GetRequiredService<RuntimeStateManager>();
 		var target = provider.GetRequiredService<DiagnosticSwitchboardTarget>();
 		var breakpoints = provider.GetRequiredService<RuntimeDiagnosticBreakpoints>();
 		var hooks = provider.GetRequiredService<RuntimeDiagnosticHooks>();
+		var executionManager = provider.GetRequiredService<RuntimeExecutionManager>();
+		var managedTarget = provider.GetRequiredService<RuntimeManagedCommandTarget>();
 
 		// Initialize static state
 		DiagnosticSwitchboard.Initialize(configStore);
@@ -50,6 +57,19 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 			AllowReadAllPublic = false,
 			ReadableMembers = ["IsRunning", "PipeName"]
 		});
+		hub.RegisterObject("runtime.state", stateManager, new RuntimeDiagnosticObjectAccess
+		{
+			AllowReadAllPublic = false,
+			ReadableMembers = ["CurrentState", "CurrentPath", "IsStart", "IsWorking", "IsStopping", "UpdatedAt"],
+			InvokableMembers = ["SetCurrent", "SetCurrentByCode", "SetCurrentByName", "SetCurrentByKey", "SetStart", "SetWorking", "SetStop", "AddRoot", "Add", "Snapshot"]
+		});
+		hub.RegisterObject("runtime.execution", executionManager, new RuntimeDiagnosticObjectAccess
+		{
+			AllowReadAllPublic = false,
+			ReadableMembers = ["StaticThreads", "DynamicThreads", "StaticTasks", "DynamicTasks", "Snapshot"],
+			InvokableMembers = ["RegisterThread", "SetThreadState", "HeartbeatThread", "RegisterTask", "SetTaskState", "HeartbeatTask", "Snapshot"]
+		});
+		hub.Register(managedTarget);
 		hub.RegisterObject("diagnostics.breakpoints", breakpoints, new RuntimeDiagnosticObjectAccess
 		{
 			AllowReadAllPublic = false,

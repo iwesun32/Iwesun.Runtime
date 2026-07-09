@@ -41,40 +41,58 @@ The ignore boundary for Copilot is defined by:
 
 ## Five Diagnostic Modules
 
-| Module | API | Status | Production |
-|--------|-----|--------|------------|
-| Data output | `RuntimeOutput.TracePoint()` / `Log()` | ✅ Implemented | ✅ Yes |
-| Breakpoints | `RuntimeOutput.BreakIf()` | ✅ Implemented | ❌ `#if DEBUG` |
-| Object reflection | `navigate` action on reflection targets | ✅ Implemented | ✅ Read-only |
-| Event hooks | `RuntimeDiagnosticHooks.Attach()` | ✅ Implemented | ❌ `#if DEBUG` |
-| Program shutdown | `shutdown` action on switchboard target | ✅ Implemented | ✅ Yes |
+| Module            | API                                     | Status        | Production    |
+| ----------------- | --------------------------------------- | ------------- | ------------- |
+| Data output       | `RuntimeOutput.TracePoint()` / `Log()`  | ✅ Implemented | ✅ Yes         |
+| Breakpoints       | `RuntimeOutput.BreakIf()`               | ✅ Implemented | ❌ `#if DEBUG` |
+| Object reflection | `navigate` action on reflection targets | ✅ Implemented | ✅ Read-only   |
+| Event hooks       | `RuntimeDiagnosticHooks.Attach()`       | ✅ Implemented | ❌ `#if DEBUG` |
+| Program shutdown  | `shutdown` action on switchboard target | ✅ Implemented | ✅ Yes         |
 
 ## Four Core Registries
 
-| Registry | Built from | Query via |
-|----------|-----------|-----------|
-| Watch points | `[assembly: DiagnosticWatchPoint]` | `diagnostics.registry` action |
-| Breakpoints | `[assembly: DiagnosticBreakpoint]` | `diagnostics.breakpoints` target |
-| Event hooks | `[assembly: DiagnosticHookableEvent]` | `diagnostics.hooks` target |
-| Pipe channels | `DiagnosticPipePrefix` at runtime | `DiagnosticPipePrefix.ControlPipe` etc. |
+| Registry      | Built from                            | Query via                               |
+| ------------- | ------------------------------------- | --------------------------------------- |
+| Watch points  | `[assembly: DiagnosticWatchPoint]`    | `diagnostics.registry` action           |
+| Breakpoints   | `[assembly: DiagnosticBreakpoint]`    | `diagnostics.breakpoints` target        |
+| Event hooks   | `[assembly: DiagnosticHookableEvent]` | `diagnostics.hooks` target              |
+| Pipe channels | `DiagnosticPipePrefix` at runtime     | `DiagnosticPipePrefix.ControlPipe` etc. |
 
-## Host Integration (minimal)
+## Host Integration (standardized template)
+
+`RuntimeHostTemplate` (in `RuntimeHostTemplate.cs`) provides the fixed host-side startup/shutdown flow as extension methods. Prefer this over calling `AddRuntimeDiagnostics`/`UseRuntimeDiagnostics`/`BuildDiagnosticRegistries` directly. See `Iwesun.Runtime.SampleHost/Program.cs` for the canonical example.
 
 ```csharp
 // Program.cs
-DiagnosticPipePrefix.InitializeFromAssembly(typeof(Program).Assembly);
 var builder = Host.CreateApplicationBuilder(args);
-builder.Services.AddRuntimeDiagnostics(runtimeDirectory);
-var host = builder.Build();
-host.Services.UseRuntimeDiagnostics();
-host.Services.BuildDiagnosticRegistries(typeof(Program).Assembly);
+builder.Services.Start(runtimeDirectory);          // registers diagnostics DI
+using var host = builder.Build();
+host.Services.Activate(Assembly.GetExecutingAssembly()); // starts pipe + builds registries
 host.Run();
+// On shutdown: RuntimeHostTemplate.Stop(stateManager, execution, threadId, taskId, graceful: true);
 ```
+
+**Two-layer model**:
+- **Fixed host template layer** — `RuntimeHostTemplate.Start` / `Activate` / `Stop` (owned by the host, boilerplate).
+- **Business annotation/injection layer** — `RuntimeInjector.Output` / `Watch` / `Break` / `Data` / `Thread` / `Task` (thin static facade over `RuntimeOutput` + `RuntimeExecutionManager`; low-intrusion for business code).
+
+## Managed Execution Wrappers
+
+`RProcess` / `RThread` / `RTask` (in `Iwesun.Runtime.Diagnostics`) wrap the standard runtime primitives and auto-register with `RuntimeExecutionManager`. They give framework-supplied coarse-grained state (`Working`/`Stop`) plus business-added fine-grained state via `IRManagedState` (`RManagedState`): `SetDetail` / `TryGetDetail` / `TransitionTo` / `TryTransitionTo`.
+
+| Wrapper    | Base / composition                                                                       | Notes                                            |
+| ---------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `RProcess` | inherits `System.Diagnostics.Process`                                                    | Pushes task-state on `Start()` / `Exited`.       |
+| `RTask`    | inherits `System.Threading.Tasks.Task`                                                   | Registers with category / threadId / lifetime.   |
+| `RThread`  | `sealed class`, wraps inner `System.Threading.Thread` (composition — `Thread` is sealed) | Registers with lifetime / kind / owner metadata. |
+
+> All three live in namespace `Iwesun.Runtime.Diagnostics` (not `System.*`). State foundations: `RuntimeState`, `RuntimeStateCatalog`, `RuntimeStateManager`; execution catalog exposed via the `runtime.execution` reflection target.
 
 ## Project Structure
 
 ```text
-Iwesun.Runtime.Diagnostics/  -> Core diagnostics library (referenced by DDNS Snap)
+Iwesun.Runtime.Diagnostics/  -> Core diagnostics library + host template + managed wrappers (referenced by DDNS Snap)
+Iwesun.Runtime.SampleHost/   -> Standalone Exe demonstrating the standard startup/shutdown injection template
 Iwesun.Runtime.WebView2/     -> WebRuntime pipe client models (referenced only by Cli)
 Iwesun.Runtime.Cli/          -> Standalone CLI tool (not referenced by DDNS Snap)
 ```
@@ -84,8 +102,11 @@ Iwesun.Runtime.Cli/          -> Standalone CLI tool (not referenced by DDNS Snap
 ```text
 Iwesun.Runtime.Diagnostics  (no internal deps)
 Iwesun.Runtime.WebView2     (no internal deps)
+Iwesun.Runtime.SampleHost   -> Diagnostics
 Iwesun.Runtime.Cli          -> Diagnostics + WebView2
 ```
+
+> No unit test project exists in the solution. Validate changes with focused `dotnet build`.
 
 ## Architecture
 

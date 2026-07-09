@@ -87,6 +87,25 @@ release/
 *.avi
 *.mkv
 *.webm
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.ico
+*.webp
+*.tiff
+*.psd
+*.tar
+*.tgz
+*.gz
 
 # Put large generated references, captures, screenshots, and historical material here.
 ai-ignore/

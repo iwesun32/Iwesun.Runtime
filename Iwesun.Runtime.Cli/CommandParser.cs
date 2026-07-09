@@ -27,6 +27,8 @@ public sealed class BaseCommandDef
 	public string Name { get; init; } = "";
 	public string[] Aliases { get; init; } = [];
 	public string Help { get; init; } = "";
+	public string Usage { get; init; } = "";
+	public List<string> Examples { get; init; } = [];
 	public string Transport { get; init; } = "diagnostics";
 	public string Category { get; init; } = "";
 	public string? Operation { get; init; }
@@ -91,12 +93,12 @@ public static class CommandParser
 	// Parse: "namespace.verb target key=value --flags"
 	// Examples:
 	//   "sw.enable dns"
-	//   "sw.set pipe=true --persist"
-	//   "bp.on bp-001 timeout=0"
+	//   "sw-set pipe=true --persist"
+	//   "bp-on bp-001 timeout=0"
 	//   "ref.get agent.state Counter"
-	//   "host.events 10"
+	//   "host-events 10"
 	private static readonly Regex ParseRegex = new(
-		@"^(?:(?<ns>\w+)\.)?(?<verb>\w+)(?:\s+(?<target>\S+))?(?<tail>.*)$",
+		@"^(?:(?<ns>[\w-]+)\.)?(?<verb>[\w-]+)(?:\s+(?<target>\S+))?(?<tail>.*)$",
 		RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
 	private static readonly Regex ArgsRegex = new(
