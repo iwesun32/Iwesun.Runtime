@@ -1,0 +1,43 @@
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\bin\Debug\net10.0\Iwesun.Runtime.Diagnostics.deps.json
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\bin\Debug\net10.0\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\bin\Debug\net10.0\Iwesun.Runtime.Diagnostics.pdb
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.csproj.AssemblyReference.cache
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.GeneratedMSBuildEditorConfig.editorconfig
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.AssemblyInfoInputs.cache
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.AssemblyInfo.cs
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.csproj.CoreCompileInputs.cache
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.sourcelink.json
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\refint\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.pdb
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\ref\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\Ddns Snap\.tmp\service-build\Iwesun.Runtime.Diagnostics.deps.json
+D:\Git Space\Ddns Snap\.tmp\service-build\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\Ddns Snap\.tmp\service-build\Iwesun.Runtime.Diagnostics.pdb
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.Service\Iwesun.Runtime.Diagnostics.deps.json
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.Service\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.Service\Iwesun.Runtime.Diagnostics.pdb
+D:\Git Space\Ddns Snap\.tmp\build\Iwesun.Runtime.Cli\Iwesun.Runtime.Diagnostics.deps.json
+D:\Git Space\Ddns Snap\.tmp\build\Iwesun.Runtime.Cli\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\Ddns Snap\.tmp\build\Iwesun.Runtime.Cli\Iwesun.Runtime.Diagnostics.pdb
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.Agent\Iwesun.Runtime.Diagnostics.deps.json
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.Agent\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.Agent\Iwesun.Runtime.Diagnostics.pdb
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.UI\Iwesun.Runtime.Diagnostics.deps.json
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.UI\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.UI\Iwesun.Runtime.Diagnostics.pdb
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.Agent.UI\Iwesun.Runtime.Diagnostics.deps.json
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.Agent.UI\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\Ddns Snap\.tmp\build\DdnsSnap.Agent.UI\Iwesun.Runtime.Diagnostics.pdb
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\bin\Debug\net10.0\Iwesun.Runtime.Diagnostics.deps.json
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\bin\Debug\net10.0\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\bin\Debug\net10.0\Iwesun.Runtime.Diagnostics.pdb
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.csproj.AssemblyReference.cache
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.GeneratedMSBuildEditorConfig.editorconfig
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.AssemblyInfoInputs.cache
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.AssemblyInfo.cs
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.csproj.CoreCompileInputs.cache
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\refint\Iwesun.Runtime.Diagnostics.dll
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\Iwesun.Runtime.Diagnostics.pdb
+D:\Git Space\runtime\Iwesun.Runtime.Diagnostics\obj\Debug\net10.0\ref\Iwesun.Runtime.Diagnostics.dll

@@ -1,0 +1,113 @@
+# ========== 1. Build artifacts
+**/bin/
+**/obj/
+**/Debug/
+**/Release/
+**/x64/
+**/x86/
+**/AnyCPU/
+**/net*/
+**/publish/
+**/publish-output/
+*.dll
+*.exe
+*.pdb
+*.cache
+*.log
+*.tmp
+*.bak
+
+# ========== 2. Version control internals
+**/.git/
+.gitignore
+.gitattributes
+
+# ========== 3. Package caches and third-party dependencies
+**/packages/
+**/.nuget/
+**/node_modules/
+**/vendor/
+package-lock.json
+yarn.lock
+
+# ========== 4. IDE caches and temporary settings
+**/.vs/
+**/.vscode/
+**/.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ========== 5. Sensitive and machine-local files
+.env
+.env.*
+*.pfx
+*.p12
+*.key
+*.pem
+*.crt
+*.snk
+
+# ========== 6. Packages, archives, traces, and large generated files
+*.zip
+*.rar
+*.7z
+*.iso
+*.img
+**/dist/
+**/build/
+**/out/
+out/
+release/
+*.nupkg
+*.snupkg
+*.symbols.nupkg
+*.db
+*.sqlite
+*.sqlite3
+*.mdb
+*.bin
+*.dat
+*.jsonl
+*.har
+*.etl
+*.evtx
+*.pcap
+*.pcapng
+*.trace
+*.coverage
+*.coveragexml
+*.trx
+*.blg
+*.mdmp
+*.hdmp
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Put large generated references, captures, screenshots, and historical material here.
+ai-ignore/
+ai-ignore/**
+
+# ========== 7. Test output and snapshots
+**/TestResults/
+**/__snapshots__/
+**/artifacts*/
+**/*artifacts*/
+
+# ========== 8. Temporary folders and dumps
+**/temp/
+**/tmp/
+temp/
+*.dmp
+*.dump
+
+# ========== 9. Upgrade logs and archived content
+UpgradeLog*.htm
+archive/
+archive/**
+docs/archive/
+docs/archive/**

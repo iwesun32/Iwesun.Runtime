@@ -1,0 +1,15 @@
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\bin\Debug\net10.0\Iwesun.Runtime.WebView2.deps.json
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\bin\Debug\net10.0\Iwesun.Runtime.WebView2.dll
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\bin\Debug\net10.0\Iwesun.Runtime.WebView2.pdb
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\obj\Debug\net10.0\Iwesun.Runtime.WebView2.GeneratedMSBuildEditorConfig.editorconfig
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\obj\Debug\net10.0\Iwesun.Runtime.WebView2.AssemblyInfoInputs.cache
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\obj\Debug\net10.0\Iwesun.Runtime.WebView2.AssemblyInfo.cs
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\obj\Debug\net10.0\Iwesun.Runtime.WebView2.csproj.CoreCompileInputs.cache
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\obj\Debug\net10.0\Iwesun.Runtime.WebView2.sourcelink.json
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\obj\Debug\net10.0\Iwesun.Runtime.WebView2.dll
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\obj\Debug\net10.0\refint\Iwesun.Runtime.WebView2.dll
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\obj\Debug\net10.0\Iwesun.Runtime.WebView2.pdb
+D:\Git Space\Ddns Snap\src\Iwesun.Runtime.WebView2\obj\Debug\net10.0\ref\Iwesun.Runtime.WebView2.dll
+D:\Git Space\Ddns Snap\.tmp\build\Iwesun.Runtime.Cli\Iwesun.Runtime.WebView2.deps.json
+D:\Git Space\Ddns Snap\.tmp\build\Iwesun.Runtime.Cli\Iwesun.Runtime.WebView2.dll
+D:\Git Space\Ddns Snap\.tmp\build\Iwesun.Runtime.Cli\Iwesun.Runtime.WebView2.pdb

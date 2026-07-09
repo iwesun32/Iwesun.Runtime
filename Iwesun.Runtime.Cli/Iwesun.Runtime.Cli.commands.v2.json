@@ -1,0 +1,367 @@
+{
+  "version": 2,
+  "meta": {
+    "name": "Iwesun Runtime CLI (Unified V2)",
+    "description": "Single-entry unified command interface for runtime diagnostics"
+  },
+  "pipes": {
+    "diagnostics": "DdnsSnap.RuntimeDiagnostics"
+  },
+  "memory": {
+    "section": "runtime.diagnostics",
+    "count": "100"
+  },
+  "baseCommands": [
+    {
+      "name": "sw.list",
+      "aliases": ["sw.ls"],
+      "help": "Snapshot switchboard state",
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "targetId": "diagnostics.switchboard",
+      "action": "snapshot"
+    },
+    {
+      "name": "sw.enable",
+      "aliases": ["sw.on"],
+      "help": "Enable global or one section",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "enable",
+      "targetId": "diagnostics.switchboard",
+      "action": "enable",
+      "params": {
+        "section": { "type": "string", "position": 0, "required": false }
+      }
+    },
+    {
+      "name": "sw.disable",
+      "aliases": ["sw.off"],
+      "help": "Disable global or one section",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "disable",
+      "targetId": "diagnostics.switchboard",
+      "action": "disable",
+      "params": {
+        "section": { "type": "string", "position": 0, "required": false }
+      }
+    },
+    {
+      "name": "sw.pipe",
+      "aliases": ["sw.pipe.set"],
+      "help": "Set pipe output true/false",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "set",
+      "targetId": "diagnostics.switchboard",
+      "action": "setPipeOutput",
+      "params": {
+        "enabled": { "type": "bool", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "sw.file",
+      "aliases": ["sw.file.set"],
+      "help": "Set file output true/false",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "set",
+      "targetId": "diagnostics.switchboard",
+      "action": "setFileOutput",
+      "params": {
+        "enabled": { "type": "bool", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "sw.points",
+      "aliases": ["sw.ps"],
+      "help": "Query output points",
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "targetId": "diagnostics.switchboard",
+      "action": "queryPoints",
+      "params": {
+        "section": { "type": "string", "required": false },
+        "text": { "type": "string", "required": false }
+      }
+    },
+    {
+      "name": "sw.point.enable",
+      "aliases": ["sw.pe"],
+      "help": "Enable one output point",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "enable",
+      "targetId": "diagnostics.switchboard",
+      "action": "enablePoint",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "sw.point.disable",
+      "aliases": ["sw.pd"],
+      "help": "Disable one output point",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "disable",
+      "targetId": "diagnostics.switchboard",
+      "action": "disablePoint",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "bp.list",
+      "aliases": ["bp.ls"],
+      "help": "List all breakpoints",
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "targetId": "diagnostics.breakpoints",
+      "action": "list"
+    },
+    {
+      "name": "bp.enable",
+      "aliases": ["bp.on"],
+      "help": "Enable breakpoint",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "enable",
+      "targetId": "diagnostics.breakpoints",
+      "action": "enable",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "bp.disable",
+      "aliases": ["bp.off"],
+      "help": "Disable breakpoint",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "disable",
+      "targetId": "diagnostics.breakpoints",
+      "action": "disable",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "bp.resume",
+      "aliases": ["bp.go"],
+      "help": "Resume one paused breakpoint",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "resume",
+      "targetId": "diagnostics.breakpoints",
+      "action": "resume",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "bp.resume-all",
+      "aliases": ["bp.goall"],
+      "help": "Resume all paused breakpoints",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "resume",
+      "targetId": "diagnostics.breakpoints",
+      "action": "resumeAll"
+    },
+    {
+      "name": "hook.list",
+      "aliases": ["hook.ls"],
+      "help": "List hooks",
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "targetId": "diagnostics.hooks",
+      "action": "list"
+    },
+    {
+      "name": "hook.enable",
+      "aliases": ["hook.on"],
+      "help": "Attach hook",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "enable",
+      "targetId": "diagnostics.hooks",
+      "action": "attach",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "hook.disable",
+      "aliases": ["hook.off"],
+      "help": "Detach hook",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "disable",
+      "targetId": "diagnostics.hooks",
+      "action": "detach",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "reg.list",
+      "aliases": ["reg.ls"],
+      "help": "List registry entries",
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "targetId": "diagnostics.registry",
+      "action": "list",
+      "params": {
+        "kind": { "type": "string", "position": 0, "required": false, "default": "all" }
+      }
+    },
+    {
+      "name": "ref.get",
+      "help": "Read reflected member",
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "get",
+      "action": "get",
+      "params": {
+        "targetId": { "type": "string", "position": 0, "required": true },
+        "member": { "type": "string", "position": 1, "required": true }
+      }
+    },
+    {
+      "name": "ref.set",
+      "help": "Set reflected member",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "set",
+      "action": "set",
+      "params": {
+        "targetId": { "type": "string", "position": 0, "required": true },
+        "member": { "type": "string", "position": 1, "required": true },
+        "value": { "type": "string", "position": 2, "required": true }
+      }
+    },
+    {
+      "name": "ref.exec",
+      "aliases": ["ref.x"],
+      "help": "Invoke whitelisted method",
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "invoke",
+      "action": "invoke",
+      "params": {
+        "targetId": { "type": "string", "position": 0, "required": true },
+        "member": { "type": "string", "position": 1, "required": true }
+      }
+    },
+    {
+      "name": "ref.nav",
+      "aliases": ["ref.navigate"],
+      "help": "Navigate object path",
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "navigate",
+      "action": "navigate",
+      "params": {
+        "targetId": { "type": "string", "position": 0, "required": true },
+        "member": { "type": "string", "position": 1, "required": true }
+      }
+    },
+    {
+      "name": "host.list",
+      "aliases": ["host.ls"],
+      "help": "List runtime targets",
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "action": "list"
+    },
+    {
+      "name": "host.info",
+      "aliases": ["host.i"],
+      "help": "Read host scan",
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "inspect",
+      "action": "host"
+    },
+    {
+      "name": "host.events",
+      "aliases": ["host.e"],
+      "help": "Drain events",
+      "transport": "diagnostics",
+      "category": "stream",
+      "operation": "pull",
+      "action": "events",
+      "params": {
+        "count": { "type": "int", "position": 0, "required": false, "default": "100" }
+      }
+    },
+    {
+      "name": "host.stop",
+      "aliases": ["host.halt"],
+      "help": "Shutdown host",
+      "transport": "diagnostics",
+      "category": "system",
+      "operation": "shutdown",
+      "targetId": "diagnostics.switchboard",
+      "action": "shutdown"
+    }
+  ],
+  "compositeCommands": [
+    {
+      "name": "status",
+      "aliases": ["st"],
+      "help": "Host + switchboard + target summary",
+      "mode": "sequential",
+      "steps": [
+        { "command": "host.info" },
+        { "command": "sw.list" },
+        { "command": "host.list" }
+      ]
+    },
+    {
+      "name": "focus",
+      "aliases": ["f"],
+      "help": "Enable pipe + section + one point + global",
+      "mode": "sequential",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true },
+        "section": { "type": "string", "from": "memory", "key": "section" }
+      },
+      "steps": [
+        { "command": "sw.pipe true" },
+        { "command": "sw.enable $section" },
+        { "command": "sw.point.enable $id" },
+        { "command": "sw.enable" }
+      ]
+    },
+    {
+      "name": "mute",
+      "aliases": ["q"],
+      "help": "Disable global and all outputs",
+      "mode": "sequential",
+      "steps": [
+        { "command": "sw.disable", "skipOnError": true },
+        { "command": "sw.pipe false", "skipOnError": true },
+        { "command": "sw.file false", "skipOnError": true }
+      ]
+    },
+    {
+      "name": "safe-shutdown",
+      "aliases": ["ssd"],
+      "help": "Resume all breakpoints then stop host",
+      "mode": "sequential",
+      "steps": [
+        { "command": "bp.resume-all" },
+        { "command": "host.stop", "delay": 300 }
+      ]
+    }
+  ]
+}
