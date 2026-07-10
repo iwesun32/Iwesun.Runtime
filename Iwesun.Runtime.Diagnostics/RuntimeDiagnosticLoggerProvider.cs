@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
 
@@ -59,9 +60,9 @@ internal sealed class RuntimeDiagnosticLogger : ILogger
 			return;
 
 		var section = RuntimeDiagnosticLogSection.Infer(_categoryName, message);
-		var outputPointId = RuntimeDiagnosticLogSection.InferOutputPointId(section);
+		var outputPoint = RuntimeDiagnosticLogSection.InferOutputPoint(section);
 		var kind = $"log.{logLevel.ToString().ToLowerInvariant()}";
-		DiagnosticSwitchboard.ReportPoint(outputPointId, section, kind, message, new
+		DiagnosticSwitchboard.ReportPoint(outputPoint, section, kind, message, new
 		{
 			category = _categoryName,
 			level = logLevel.ToString(),
@@ -138,22 +139,22 @@ internal static class RuntimeDiagnosticLogSection
 		return "console";
 	}
 
-	public static string InferOutputPointId(string section) =>
+	public static RuntimeStaticOutputPoint InferOutputPoint(string section) =>
 		section.ToLowerInvariant() switch
 		{
-			"pipeline" => "log.pipeline",
-			"dns" => "log.dns",
-			"network" => "log.network",
-			"peer-sync" => "log.peer-sync",
-			"agent-sync" => "log.agent-sync",
-			"address-probing" => "log.address-probing",
-			"configuration" => "log.configuration",
-			"security" => "log.security",
-			"agent" => "log.agent",
-			"ui" => "log.ui",
-			"core" => "log.core",
-			"service" => "log.service",
-			_ => "log.console"
+			"pipeline" => RuntimeStaticOutputPoint.LogPipeline,
+			"dns" => RuntimeStaticOutputPoint.LogDns,
+			"network" => RuntimeStaticOutputPoint.LogNetwork,
+			"peer-sync" => RuntimeStaticOutputPoint.LogPeerSync,
+			"agent-sync" => RuntimeStaticOutputPoint.LogAgentSync,
+			"address-probing" => RuntimeStaticOutputPoint.LogAddressProbing,
+			"configuration" => RuntimeStaticOutputPoint.LogConfiguration,
+			"security" => RuntimeStaticOutputPoint.LogSecurity,
+			"agent" => RuntimeStaticOutputPoint.LogAgent,
+			"ui" => RuntimeStaticOutputPoint.LogUi,
+			"core" => RuntimeStaticOutputPoint.LogCore,
+			"service" => RuntimeStaticOutputPoint.LogService,
+			_ => RuntimeStaticOutputPoint.LogConsole
 		};
 
 	private static bool Contains(string value, string fragment) =>

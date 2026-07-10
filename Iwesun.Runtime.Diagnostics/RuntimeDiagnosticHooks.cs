@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
+using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
 
@@ -73,7 +74,7 @@ public sealed class RuntimeDiagnosticHooks
 		};
 
 		DiagnosticSwitchboard.ReportPoint(
-			$"hook.attached.{hookId}", "hooks", "attach",
+			RuntimeStaticInjectorCatalog.ComposePrefixedId(RuntimeInjectorIdPatterns.HookAttachedPrefix, hookId), "hooks", "attach",
 			$"Hook attached: {hookId}", new { hookId, hook.EventName, hook.TargetType.FullName, isStatic = instance == null });
 
 		return true;
@@ -100,7 +101,7 @@ public sealed class RuntimeDiagnosticHooks
 		eventInfo.RemoveMethod!.Invoke(instance, new[] { active.Handler });
 
 		DiagnosticSwitchboard.ReportPoint(
-			$"hook.detached.{hookId}", "hooks", "detach",
+			RuntimeStaticInjectorCatalog.ComposePrefixedId(RuntimeInjectorIdPatterns.HookDetachedPrefix, hookId), "hooks", "detach",
 			$"Hook detached: {hookId}", new { hookId });
 
 		return true;
@@ -154,7 +155,7 @@ public sealed class RuntimeDiagnosticHooks
 			return;
 
 		DiagnosticSwitchboard.ReportPoint(
-			$"hook.fired.{hookId}", "hooks", "fired",
+			RuntimeStaticInjectorCatalog.ComposePrefixedId(RuntimeInjectorIdPatterns.HookFiredPrefix, hookId), "hooks", "fired",
 			$"Hook fired: {hookId} ({typeName}.{eventName})",
 			new
 			{
@@ -200,7 +201,7 @@ public sealed class RuntimeDiagnosticHooks
 			{
 				Detach(id);
 				DiagnosticSwitchboard.ReportPoint(
-					"hook.gc-cleaned", "hooks", "gc",
+					RuntimeStaticOutputPoint.HookGcCleaned, "hooks", "gc",
 					$"Hook auto-detached (target GC'd): {id}", new { hookId = id });
 			}
 		}

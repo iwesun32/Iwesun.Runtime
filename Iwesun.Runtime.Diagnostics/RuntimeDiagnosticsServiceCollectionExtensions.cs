@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
 
@@ -17,7 +18,11 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 		services.AddSingleton<RuntimeExecutionManager>();
 		services.AddSingleton<RuntimeManagedRegistry>();
 		services.AddSingleton<RuntimeManagedCommandTarget>();
-		services.AddSingleton<DiagnosticSwitchboardTarget>();		services.AddSingleton<RuntimeDiagnosticsSelfTestState>();
+		services.AddSingleton<RuntimePipeRegistryTarget>();
+		services.AddSingleton<DiagnosticSwitchboardTarget>();
+		services.AddSingleton<RuntimeRootContainer>();
+		services.AddSingleton<RuntimeRootContainerTarget>();
+		services.AddSingleton<RuntimeDiagnosticsSelfTestState>();
 		services.AddSingleton<RuntimeDiagnosticsMonitor>();
 		services.AddSingleton<RuntimeDiagnosticBreakpoints>();
 		services.AddSingleton<RuntimeDiagnosticHooks>();
@@ -27,6 +32,9 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 
 	public static void UseRuntimeDiagnostics(this IServiceProvider provider)
 	{
+		RuntimeStaticInjectorCatalog.ValidateOrThrow();
+		DiagnosticSwitchboardCompiledConfig.ValidateStaticCatalogAlignment();
+
 		var hub = provider.GetRequiredService<RuntimeDiagnosticHub>();
 		var configStore = provider.GetRequiredService<DiagnosticSwitchboardConfigStore>();
 		var stateManager = provider.GetRequiredService<RuntimeStateManager>();
@@ -35,6 +43,8 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 		var hooks = provider.GetRequiredService<RuntimeDiagnosticHooks>();
 		var executionManager = provider.GetRequiredService<RuntimeExecutionManager>();
 		var managedTarget = provider.GetRequiredService<RuntimeManagedCommandTarget>();
+		var pipeRegistryTarget = provider.GetRequiredService<RuntimePipeRegistryTarget>();
+		var runtimeRootTarget = provider.GetRequiredService<RuntimeRootContainerTarget>();
 
 		// Initialize static state
 		DiagnosticSwitchboard.Initialize(configStore);
@@ -70,6 +80,8 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 			InvokableMembers = ["RegisterThread", "SetThreadState", "HeartbeatThread", "RegisterTask", "SetTaskState", "HeartbeatTask", "Snapshot"]
 		});
 		hub.Register(managedTarget);
+		hub.Register(pipeRegistryTarget);
+		hub.Register(runtimeRootTarget);
 		hub.RegisterObject("diagnostics.breakpoints", breakpoints, new RuntimeDiagnosticObjectAccess
 		{
 			AllowReadAllPublic = false,

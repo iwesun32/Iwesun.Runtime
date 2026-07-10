@@ -19,7 +19,10 @@ CLI 的职责是"发令"，不是"解释业务"。
 当前可用的诊断能力包括：
 - `host.info` / `host.*`：主机信息与快照
 - `reg.*`：登记表与 watch/break/hook 查询
-- `bp.*`：断点列表、启用、恢复
+- `bp.*`：断点列表、启用、恢复、数值断点绑定
+- `process.*`：进程注册列表
+- `thread.*`：线程执行快照
+- `pipe.*`：分支管道申请、列表、解析、释放
 - `hook.*`：钩子列表、挂接、卸载
 - `sw.*`：开关板状态、输出点、FIFO、pipe 配置
 
@@ -36,6 +39,15 @@ CLI 启动时配置优先级：
 4. 程序输出目录旁 `Iwesun.Runtime.Cli.commands.v2.json`
 5. 当前目录 `Iwesun.Runtime.Cli.commands.v2.json`
 6. 嵌入默认配置
+
+CLI 诊断管道名优先级（固定第一管道位）：
+1. `--pipe=name`（启动参数覆盖）
+2. `pipes.diagnostics`（JSON 配置中的第一管道位）
+3. 默认值 `DdnsSnap.RuntimeDiagnostics`
+
+说明：
+- `pipes.diagnostics` 作为 CLI 诊断主通道固定保留，不与其他业务管道混用。
+- 主程序起点页可写入初始值；用户可通过启动参数或 JSON 配置覆盖。
 
 基本用法：
 
@@ -82,6 +94,23 @@ iwrt reg list
 
 # 查看断点
 iwrt bp list
+
+# 查看数值断点绑定与支持的操作符
+iwrt bp listNumeric
+
+# 绑定默认数值断点（只改比较符与常量）
+iwrt bp setNumericThreshold numeric.default.threshold gt 7
+iwrt bp setNumericThreshold numeric.default.range between 3 9
+
+# 进程/线程列表
+iwrt process.list
+iwrt thread.list
+
+# 分支专有管道注册与解析
+iwrt pipe.acquire webview2-agent
+iwrt pipe.list
+iwrt pipe.resolve 1
+iwrt pipe.release 1
 
 # 查看钩子
 iwrt hook list
@@ -153,11 +182,54 @@ CLI 是配置驱动的正则命令解释器。除 `help`、`quit`、`exit` 等�
 }
 ```
 
+对数值断点，JSON 命令结构就是普通的 `baseCommands` 项：
+
+```json
+{
+  "name": "bp.setNumericThreshold",
+  "aliases": ["bp-set-numeric-threshold"],
+  "usage": "bp.setNumericThreshold <id> <operator> <threshold1> [threshold2]",
+  "transport": "diagnostics",
+  "targetId": "diagnostics.breakpoints",
+  "action": "setNumericThreshold",
+  "params": {
+    "id": { "type": "string", "position": 0, "required": true },
+    "operator": { "type": "string", "position": 1, "required": true },
+    "threshold1": { "type": "double", "position": 2, "required": true },
+    "threshold2": { "type": "double", "position": 3, "required": false, "default": "0" }
+  }
+}
+```
+
+进程/线程相关的基本 list 命令也是同一结构：
+
+```json
+{
+  "name": "process.list",
+  "transport": "diagnostics",
+  "targetId": "runtime.managed",
+  "action": "processes",
+  "params": {
+    "count": { "type": "int", "position": 0, "required": false, "default": "100" }
+  }
+}
+```
+
 匹配规则：
 - 精确命令优先
 - 只匹配到一个命令时执行
 - 匹配到多个且没有精确命令时报歧义，不执行
 - 命令和别名大小写不敏感
+
+## CLI 配置与调试建议
+
+CLI 的命令模板文件位于 `config/Iwesun.Runtime.Cli.commands.v2.json`。当你需要增加新的调试命令时，优先复用已有的 `bp` / `reg` / `sw` 分类，再在配置中追加别名和正则规则。
+
+对于数值断点，建议保持下面两类用法：
+- **默认缺省绑定**：由宿主程序集上的 `DiagnosticNumericBreakpointAttribute` 提供
+- **运行时改参**：通过 `bp setNumericThreshold` 只调整 `operator` 和 `threshold`
+
+这样可以避免在 CLI 配置里引入复杂表达式，只保留简单、稳定、可回放的参数。
 
 ## 管道槽和记忆区
 

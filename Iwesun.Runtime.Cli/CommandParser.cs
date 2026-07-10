@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Iwesun.Runtime.Diagnostics;
@@ -216,6 +217,7 @@ public static class CommandParser
 					{
 						"bool" => JsonSerializer.SerializeToElement(bool.Parse(value)),
 						"int" => JsonSerializer.SerializeToElement(int.Parse(value)),
+						"double" or "float" => JsonSerializer.SerializeToElement(double.Parse(value, CultureInfo.InvariantCulture)),
 						_ => JsonSerializer.SerializeToElement(value)
 					};
 				}

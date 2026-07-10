@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
 
@@ -186,6 +187,21 @@ public static class DiagnosticSwitchboardCompiledConfig
 		};
 	}
 
+	public static void ValidateStaticCatalogAlignment()
+	{
+		var required = Enum.GetValues<RuntimeStaticOutputPoint>()
+			.Select(RuntimeStaticInjectorCatalog.GetOutputPointId)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		var configured = CreateDefaultOutputPoints()
+			.Select(x => x.Id)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		var missing = required.Where(x => !configured.Contains(x)).ToArray();
+		if (missing.Length > 0)
+		{
+			throw new InvalidOperationException($"Switchboard default output points missing static catalog IDs: {string.Join(", ", missing)}");
+		}
+	}
+
 	private static List<DiagnosticOutputPointConfig> CreateDefaultOutputPoints()
 	{
 		var points = new List<DiagnosticOutputPointConfig>
@@ -223,6 +239,28 @@ public static class DiagnosticSwitchboardCompiledConfig
 				"diagnostic.fifo.invalid",
 				"FIFO JSON parse failure",
 				"error"),
+			Point(
+				"diagnostics.sharedfifo.invalid",
+				"runtime-control",
+				"Invalid shared FIFO envelope fallback monitor.",
+				"Iwesun.Runtime.Diagnostics.DiagnosticSwitchboard",
+				"DiagnosticSwitchboard.PumpAsync -> ProcessEnvelope",
+				"text",
+				"raw shared FIFO line",
+				"diagnostic.sharedfifo.invalid",
+				"Shared FIFO JSON parse failure",
+				"error"),
+			Point(
+				"hook.gc-cleaned",
+				"runtime-control",
+				"Hook auto-detach diagnostic when weak target was garbage collected.",
+				"Iwesun.Runtime.Diagnostics.RuntimeDiagnosticHooks",
+				"RuntimeDiagnosticHooks.CheckGcCleanup -> DiagnosticSwitchboard.ReportPoint",
+				"structured-json",
+				"hookId",
+				"gc",
+				"WeakReference target was GC collected",
+				"hooks"),
 			Point(
 				"switchboard.control",
 				"runtime-control",

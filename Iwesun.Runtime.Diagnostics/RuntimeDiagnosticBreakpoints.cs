@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
 
@@ -10,6 +11,7 @@ namespace Iwesun.Runtime.Diagnostics;
 public sealed class RuntimeDiagnosticBreakpoints
 {
 	private readonly ConcurrentDictionary<string, BreakpointState> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
+	private readonly ConcurrentDictionary<string, RuntimeNumericBindingState> _numericBindings = new(StringComparer.OrdinalIgnoreCase);
 	private readonly Timer _timeoutTimer;
 	private readonly TimeSpan _timeoutCheckInterval = TimeSpan.FromSeconds(5);
 
@@ -28,6 +30,59 @@ public sealed class RuntimeDiagnosticBreakpoints
 	public bool TryGet(string id, out BreakpointState breakpoint)
 	{
 		return _breakpoints.TryGetValue(id, out breakpoint!);
+	}
+
+	public bool SetNumericBinding(string breakpointId, string predicateId)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(breakpointId);
+		ArgumentException.ThrowIfNullOrWhiteSpace(predicateId);
+		if (!RuntimeNumericPredicateCatalog.TryGet(predicateId, out _))
+		{
+			return false;
+		}
+
+		var state = new RuntimeNumericBindingState(
+			Mode: RuntimeNumericBindingMode.StaticPredicate,
+			PredicateId: predicateId.Trim(),
+			Threshold1: 0,
+			Threshold2: 0,
+			UpdatedAt: DateTimeOffset.UtcNow);
+		_numericBindings[breakpointId.Trim()] = state;
+		return true;
+	}
+
+	public bool SetNumericThresholdBinding(string breakpointId, string operatorId, double threshold1, double threshold2 = 0)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(breakpointId);
+		ArgumentException.ThrowIfNullOrWhiteSpace(operatorId);
+		var normalizedOperator = RuntimeNumericThresholdOperators.Normalize(operatorId);
+		if (normalizedOperator == null)
+		{
+			return false;
+		}
+
+		var state = new RuntimeNumericBindingState(
+			Mode: RuntimeNumericBindingMode.Threshold,
+			PredicateId: normalizedOperator,
+			Threshold1: threshold1,
+			Threshold2: threshold2,
+			UpdatedAt: DateTimeOffset.UtcNow);
+		_numericBindings[breakpointId.Trim()] = state;
+		return true;
+	}
+
+	public bool RemoveNumericBinding(string breakpointId)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(breakpointId);
+		return _numericBindings.TryRemove(breakpointId.Trim(), out _);
+	}
+
+	public IReadOnlyList<RuntimeNumericBindingSnapshot> SnapshotNumericBindings()
+	{
+		return _numericBindings
+			.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+			.Select(x => new RuntimeNumericBindingSnapshot(x.Key, x.Value.Mode.ToString(), x.Value.PredicateId, x.Value.Threshold1, x.Value.Threshold2, x.Value.UpdatedAt))
+			.ToArray();
 	}
 
 	// ── Business code entry point ─────────────────────────
@@ -60,7 +115,7 @@ public sealed class RuntimeDiagnosticBreakpoints
 
 		// Publish breakpoint hit event through the switchboard
 		DiagnosticSwitchboard.ReportPoint(
-			$"breakpoint.hit.{id}",
+			RuntimeStaticInjectorCatalog.ComposePrefixedId(RuntimeInjectorIdPatterns.BreakpointHitPrefix, id),
 			"breakpoints",
 			"hit",
 			$"Breakpoint hit: {id}",
@@ -86,7 +141,7 @@ public sealed class RuntimeDiagnosticBreakpoints
 		{
 			// Timeout or cancellation — auto-resume
 			DiagnosticSwitchboard.ReportPoint(
-				$"breakpoint.timeout.{id}",
+				RuntimeStaticInjectorCatalog.ComposePrefixedId(RuntimeInjectorIdPatterns.BreakpointTimeoutPrefix, id),
 				"breakpoints",
 				"timeout",
 				$"Breakpoint timed out: {id}",
@@ -97,6 +152,32 @@ public sealed class RuntimeDiagnosticBreakpoints
 			bp.IsWaiting = false;
 			bp.ResetTimeoutToken();
 		}
+	}
+
+	public Task WaitNumericAsync(string id, double value1, double value2, double value3 = 0, object? context = null, CancellationToken ct = default)
+	{
+		if (!_numericBindings.TryGetValue(id, out var binding))
+		{
+			return Task.CompletedTask;
+		}
+
+		if (!RuntimeNumericPredicateCatalog.TryGet(binding.PredicateId, out var predicate))
+		{
+			if (!RuntimeNumericBindingEvaluator.TryGetPredicate(binding, out predicate))
+			{
+				return Task.CompletedTask;
+			}
+		}
+
+		var numericContext = new
+		{
+			value1,
+			value2,
+			value3,
+			predicateId = binding.PredicateId,
+			context
+		};
+		return WaitAsync(id, () => predicate(value1, value2, value3), numericContext, ct);
 	}
 
 	// ── CLI control ───────────────────────────────────────
@@ -239,3 +320,90 @@ public sealed record BreakpointSnapshot(
 	long HitCount,
 	bool IsWaiting,
 	DateTimeOffset? LastHitAt);
+
+internal enum RuntimeNumericBindingMode
+{
+	StaticPredicate,
+	Threshold
+}
+
+internal sealed record RuntimeNumericBindingState(
+	RuntimeNumericBindingMode Mode,
+	string PredicateId,
+	double Threshold1,
+	double Threshold2,
+	DateTimeOffset UpdatedAt);
+
+internal static class RuntimeNumericBindingEvaluator
+{
+	public static bool TryGetPredicate(RuntimeNumericBindingState binding, out RuntimeNumericPredicate predicate)
+	{
+		if (binding.Mode == RuntimeNumericBindingMode.StaticPredicate)
+		{
+			if (RuntimeNumericPredicateCatalog.TryGet(binding.PredicateId, out var staticPredicate))
+			{
+				predicate = staticPredicate;
+				return true;
+			}
+
+			predicate = default!;
+			return false;
+		}
+
+		predicate = binding.PredicateId.Trim().ToLowerInvariant() switch
+		{
+			"gt" or "greater-than" => (v1, _, _) => v1 > binding.Threshold1,
+			"ge" or "gte" or "greater-than-or-equal" => (v1, _, _) => v1 >= binding.Threshold1,
+			"lt" or "less-than" => (v1, _, _) => v1 < binding.Threshold1,
+			"le" or "lte" or "less-than-or-equal" => (v1, _, _) => v1 <= binding.Threshold1,
+			"between" => (v1, _, _) => v1 >= Math.Min(binding.Threshold1, binding.Threshold2) && v1 <= Math.Max(binding.Threshold1, binding.Threshold2),
+			"outside" => (v1, _, _) => v1 < Math.Min(binding.Threshold1, binding.Threshold2) || v1 > Math.Max(binding.Threshold1, binding.Threshold2),
+			"delta-le" or "within" => (v1, v2, _) => Math.Abs(v1 - v2) <= Math.Abs(binding.Threshold1),
+			"delta-gt" or "beyond" => (v1, v2, _) => Math.Abs(v1 - v2) > Math.Abs(binding.Threshold1),
+			_ => null!
+		};
+
+		return predicate != null;
+	}
+}
+
+internal static class RuntimeNumericThresholdOperators
+{
+	public static IReadOnlyList<string> SupportedOperators { get; } =
+	[
+		"gt", "ge", "lt", "le", "between", "outside", "delta-le", "delta-gt"
+	];
+
+	public static string? Normalize(string operatorId)
+	{
+		switch (operatorId.Trim().ToLowerInvariant())
+		{
+			case "gt":
+			case "greater-than":
+				return "gt";
+			case "ge":
+			case "gte":
+			case "greater-than-or-equal":
+				return "ge";
+			case "lt":
+			case "less-than":
+				return "lt";
+			case "le":
+			case "lte":
+			case "less-than-or-equal":
+				return "le";
+			case "between":
+				return "between";
+			case "outside":
+				return "outside";
+			case "delta-le":
+			case "within":
+				return "delta-le";
+			case "delta-gt":
+			case "beyond":
+				return "delta-gt";
+			default:
+				return null;
+		}
+	}
+}

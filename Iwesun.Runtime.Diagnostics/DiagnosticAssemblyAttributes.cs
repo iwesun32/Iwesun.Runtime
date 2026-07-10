@@ -47,6 +47,27 @@ public sealed class DiagnosticBreakpointAttribute : Attribute
 	}
 }
 
+/// <summary>
+/// Declare a default numeric threshold binding for a logical breakpoint.
+/// This is loaded from assembly metadata at startup by RegistryBuilder.
+/// </summary>
+[AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
+public sealed class DiagnosticNumericBreakpointAttribute : Attribute
+{
+	public string BreakpointId { get; }
+	public string Operator { get; }
+	public double Threshold1 { get; }
+	public double Threshold2 { get; }
+
+	public DiagnosticNumericBreakpointAttribute(string breakpointId, string @operator, double threshold1 = 0, double threshold2 = 0)
+	{
+		BreakpointId = breakpointId;
+		Operator = @operator;
+		Threshold1 = threshold1;
+		Threshold2 = threshold2;
+	}
+}
+
 /// <summary>Declare an event that can be hooked at runtime.</summary>
 [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
 public sealed class DiagnosticHookableEventAttribute : Attribute

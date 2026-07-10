@@ -70,6 +70,10 @@ public sealed class RuntimeDiagnosticHub
 		_targets.Keys.Order(StringComparer.OrdinalIgnoreCase).ToArray();
 
 	public RuntimeHostSnapshot HostSnapshot => _hostSnapshot;
+	public RegistrySnapshot RegistrySnapshot => _registrySnapshot ?? new RegistrySnapshot(
+		Array.Empty<WatchPointEntry>(),
+		Array.Empty<BreakpointEntry>(),
+		Array.Empty<HookEntry>());
 
 	public RuntimeHostSnapshot RescanHost()
 	{
@@ -206,6 +210,25 @@ public sealed class RuntimeDiagnosticHub
 		return items;
 	}
 
+	public IReadOnlyList<RuntimeDiagnosticEvent> SnapshotEvents(int count = 100, RuntimeDiagnosticEventFilter? filter = null)
+	{
+		count = Math.Clamp(count, 1, 2048);
+		var items = _events.ToArray();
+		IEnumerable<RuntimeDiagnosticEvent> query = items;
+		if (filter != null)
+		{
+			query = query.Where(filter.Matches);
+		}
+
+		var materialized = query.ToArray();
+		if (materialized.Length <= count)
+		{
+			return materialized;
+		}
+
+		return materialized[^count..];
+	}
+
 	public string ExecuteJson(string commandJson, JsonSerializerOptions? options = null, CancellationToken ct = default)
 	{
 		options ??= new JsonSerializerOptions(JsonSerializerDefaults.Web);
@@ -304,6 +327,16 @@ public sealed class RuntimeDiagnosticHub
 		return null;
 	}
 
+	private static double? ReadDouble(RuntimeDiagnosticAction command, string key)
+	{
+		if (command.Args != null
+			&& command.Args.TryGetValue(key, out var value)
+			&& value.ValueKind == JsonValueKind.Number
+			&& value.TryGetDouble(out var number))
+			return number;
+		return null;
+	}
+
 	private static IReadOnlySet<string> ReadStringList(RuntimeDiagnosticAction command, string key)
 	{
 		if (command.Args == null || !command.Args.TryGetValue(key, out var value))
@@ -371,9 +404,55 @@ public sealed class RuntimeDiagnosticHub
 				_breakpoints.ResumeAll();
 				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action, _breakpoints.Snapshot());
 
+			case "setnumeric":
+			case "bindnumeric":
+				var bindId = ReadString(command, "id") ?? ReadString(command, "breakpointId");
+				var predicateId = ReadString(command, "predicateId") ?? ReadString(command, "predicate");
+				if (string.IsNullOrWhiteSpace(bindId) || string.IsNullOrWhiteSpace(predicateId))
+					return RuntimeDiagnosticActionResult.Fail("diagnostics.breakpoints", action, "id/breakpointId and predicateId are required.");
+				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action, new
+				{
+					updated = _breakpoints.SetNumericBinding(bindId, predicateId),
+					numericBindings = _breakpoints.SnapshotNumericBindings()
+				});
+
+			case "setnumericthreshold":
+			case "bindnumericthreshold":
+				var thresholdId = ReadString(command, "id") ?? ReadString(command, "breakpointId");
+				var op = ReadString(command, "operator") ?? ReadString(command, "predicateId") ?? ReadString(command, "predicate");
+				if (string.IsNullOrWhiteSpace(thresholdId) || string.IsNullOrWhiteSpace(op))
+					return RuntimeDiagnosticActionResult.Fail("diagnostics.breakpoints", action, "id/breakpointId and operator are required.");
+				var threshold1 = ReadDouble(command, "threshold1") ?? ReadDouble(command, "threshold") ?? 0;
+				var threshold2 = ReadDouble(command, "threshold2") ?? 0;
+				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action, new
+				{
+					updated = _breakpoints.SetNumericThresholdBinding(thresholdId, op, threshold1, threshold2),
+					numericBindings = _breakpoints.SnapshotNumericBindings()
+				});
+
+			case "clearnumeric":
+			case "unbindnumeric":
+				var unbindId = ReadString(command, "id") ?? ReadString(command, "breakpointId");
+				if (string.IsNullOrWhiteSpace(unbindId))
+					return RuntimeDiagnosticActionResult.Fail("diagnostics.breakpoints", action, "id/breakpointId is required.");
+				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action, new
+				{
+					removed = _breakpoints.RemoveNumericBinding(unbindId),
+					numericBindings = _breakpoints.SnapshotNumericBindings()
+				});
+
+			case "listnumeric":
+			case "numeric":
+				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action, new
+				{
+					bindings = _breakpoints.SnapshotNumericBindings(),
+					supportedPredicates = RuntimeNumericPredicateCatalog.SupportedPredicateIds,
+					supportedThresholdOperators = RuntimeNumericThresholdOperators.SupportedOperators
+				});
+
 			default:
 				return RuntimeDiagnosticActionResult.Fail("diagnostics.breakpoints", action,
-					$"Unknown action: {action}. Supported: list, enable, disable, resume, resumeAll");
+					$"Unknown action: {action}. Supported: list, enable, disable, resume, resumeAll, setNumeric, setNumericThreshold, clearNumeric, listNumeric");
 		}
 	}
 

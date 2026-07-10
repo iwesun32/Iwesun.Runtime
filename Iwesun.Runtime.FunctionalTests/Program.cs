@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using Iwesun.Runtime.Data;
 using Iwesun.Runtime.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,6 +14,12 @@ using Microsoft.Extensions.Logging;
 [assembly: DiagnosticWatchPoint("tree.branches", "tree", "watch", "Tree branch snapshot.", "Iwesun.Runtime.FunctionalTests.TreeScenarioModel")]
 [assembly: DiagnosticBreakpoint("tree.fill", "tree", "Pause while tree is being filled.", "Iwesun.Runtime.FunctionalTests.TreeScenarioModel", TimeoutMs = 250, HitCountTarget = 1)]
 [assembly: DiagnosticBreakpoint("tree.stabilize", "tree", "Pause before tree inspection.", "Iwesun.Runtime.FunctionalTests.TreeScenarioModel", TimeoutMs = 250, HitCountTarget = 1)]
+[assembly: DiagnosticBreakpoint("numeric.default.threshold", "numeric", "Default numeric threshold breakpoint.", "Iwesun.Runtime.FunctionalTests.Program", TimeoutMs = 300, HitCountTarget = 1)]
+[assembly: DiagnosticNumericBreakpoint("numeric.default.threshold", "gt", 7)]
+[assembly: DiagnosticBreakpoint("numeric.default.range", "numeric", "Default numeric range breakpoint.", "Iwesun.Runtime.FunctionalTests.Program", TimeoutMs = 300, HitCountTarget = 1)]
+[assembly: DiagnosticNumericBreakpoint("numeric.default.range", "between", 3, 9)]
+[assembly: DiagnosticBreakpoint("numeric.default.delta", "numeric", "Default numeric delta breakpoint.", "Iwesun.Runtime.FunctionalTests.Program", TimeoutMs = 300, HitCountTarget = 1)]
+[assembly: DiagnosticNumericBreakpoint("numeric.default.delta", "delta-le", 2)]
 [assembly: DiagnosticHookableEvent("tree.updated", typeof(TreeScenarioSignals), nameof(TreeScenarioSignals.Updated))]
 
 if (FunctionalArgs.Contains(args, "--help") || FunctionalArgs.Contains(args, "-h"))
@@ -36,6 +43,12 @@ internal static class JsonDefaults
         WriteIndented = true
     };
 }
+
+internal sealed record CommandConfig(
+    Dictionary<string, string> Pipes,
+    List<CommandConfigEntry> BaseCommands);
+
+internal sealed record CommandConfigEntry(string Name);
 
 internal sealed record FunctionalScenarioResult(
     string Scenario,
@@ -64,7 +77,7 @@ static class FunctionalParentRunner
 {
     public static async Task<int> RunAsync(string[] args)
     {
-        var scenarios = new[] { "diagnostics", "managed", "thread", "task", "process", "tree", "cli" };
+        var scenarios = new[] { "diagnostics", "managed", "thread", "task", "process", "tree", "root-safety", "sharedfifo-protocol", "numeric-breakpoint", "pipe-registry", "cli" };
         var results = new List<FunctionalScenarioResult>(scenarios.Length);
         var failures = new List<string>();
 
@@ -180,6 +193,10 @@ static class FunctionalChildRunner
                 "task" => await RunTaskScenario(provider),
                 "process" => await RunProcessScenario(provider),
                 "tree" => await RunTreeScenario(provider),
+                "root-safety" => await RunRootSafetyScenario(provider),
+                "sharedfifo-protocol" => await RunSharedFifoProtocolScenario(provider),
+                "numeric-breakpoint" => await RunNumericBreakpointScenario(provider),
+                "pipe-registry" => await RunPipeRegistryScenario(provider, diagnosticsPipeName),
                 "tree-process" => await RunTreeProcessScenario(provider),
                 "cli" => await RunCliScenario(provider, diagnosticsPipeName),
                 "probe" => FunctionalScenarioResult.Pass("probe", "probe child exited successfully."),
@@ -314,7 +331,7 @@ static class FunctionalChildRunner
             checks.Add("enqueue-ok");
         }
 
-        if (!managed.TryDequeueCommand(unitId, out var command) || command.TargetUnitId != unitId || command.Kind != RuntimeManagedCommandKind.Snapshot)
+        if (!managed.TryDequeueCommand(unitId, out var command) || command is null || command.TargetUnitId != unitId || command.Kind != RuntimeManagedCommandKind.Snapshot)
         {
             failures.Add("registry did not expose the enqueued command by UnitId.");
         }
@@ -346,6 +363,432 @@ static class FunctionalChildRunner
         return failures.Count == 0
             ? FunctionalScenarioResult.Pass("managed", checks.ToArray())
             : FunctionalScenarioResult.Fail("managed", checks, failures);
+    }
+
+    private static async Task<FunctionalScenarioResult> RunRootSafetyScenario(IServiceProvider provider)
+    {
+        var hub = provider.GetRequiredService<RuntimeDiagnosticHub>();
+        var checks = new List<string>();
+        var failures = new List<string>();
+
+        var snapshotResult = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "runtime.root",
+            Action = "snapshot"
+        });
+        if (!snapshotResult.Success || snapshotResult.Value is not RuntimeRootSnapshot rootSnapshot)
+        {
+            failures.Add($"runtime.root snapshot failed: {snapshotResult.Error ?? "no snapshot"}");
+            return FunctionalScenarioResult.Fail("root-safety", checks, failures);
+        }
+
+        checks.Add("runtime-root-snapshot-ok");
+
+        var hasReflectionCatalog = rootSnapshot.Tables.Any(x =>
+            x.TableName.Equals("T09.DiagnosticHubTable.Reflection.Types.Catalog", StringComparison.OrdinalIgnoreCase));
+        if (!hasReflectionCatalog)
+        {
+            failures.Add("Reflection types catalog table is missing.");
+        }
+        else
+        {
+            checks.Add("reflection-types-catalog-present");
+        }
+
+        var hasReflectionPage = rootSnapshot.Tables.Any(x =>
+            x.TableName.StartsWith("T09.DiagnosticHubTable.Reflection.Types.Page.", StringComparison.OrdinalIgnoreCase));
+        if (!hasReflectionPage)
+        {
+            failures.Add("Reflection types paged tables are missing.");
+        }
+        else
+        {
+            checks.Add("reflection-types-pages-present");
+        }
+
+        var parallelRequests = Enumerable.Range(0, 24)
+            .Select(_ => Task.Run(async () =>
+            {
+                for (var i = 0; i < 25; i++)
+                {
+                    var tableName = i % 2 == 0
+                        ? "T09.DiagnosticHubTable.Meta"
+                        : "T06.ThreadTable";
+                    var result = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+                    {
+                        TargetId = "runtime.root",
+                        Action = "table",
+                        Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["table"] = JsonSerializer.SerializeToElement(tableName)
+                        }
+                    });
+                    if (!result.Success)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }))
+            .ToArray();
+        var requestOutcomes = await Task.WhenAll(parallelRequests);
+        if (requestOutcomes.Any(x => !x))
+        {
+            failures.Add("Concurrent runtime.root table queries failed.");
+        }
+        else
+        {
+            checks.Add("runtime-root-concurrency-stable");
+        }
+
+        return failures.Count == 0
+            ? FunctionalScenarioResult.Pass("root-safety", checks.ToArray())
+            : FunctionalScenarioResult.Fail("root-safety", checks, failures);
+    }
+
+    private static Task<FunctionalScenarioResult> RunSharedFifoProtocolScenario(IServiceProvider provider)
+    {
+        var managed = provider.GetRequiredService<RuntimeManagedRegistry>();
+        var checks = new List<string>();
+        var failures = new List<string>();
+        var unitId = $"functional.sharedfifo.{Guid.NewGuid():N}";
+        var unitHash = RuntimeInjectorTransportCodec.ComputeStableHash32(unitId);
+        var state = CreateSnapshot(unitId);
+
+        managed.Register(unitId, "thread", "Functional", state);
+
+        var seedFrame = new RuntimeCommandFrame(
+            processId: Environment.ProcessId + 1000,
+            managedThreadId: 1,
+            sequence: 1,
+            targetIdHash: unitHash,
+            commandKind: (int)RuntimeManagedCommandKind.Stop,
+            timestampUtcTicks: DateTimeOffset.UtcNow.UtcTicks,
+            arg0: 0,
+            arg1: 0);
+        if (!DiagnosticSwitchboard.TryPutCommandFrame(seedFrame))
+        {
+            failures.Add("shared command frame enqueue failed.");
+            return Task.FromResult(FunctionalScenarioResult.Fail("sharedfifo-protocol", checks, failures));
+        }
+
+        if (!managed.TryDequeueCommand(unitId, out var imported) || imported is null || imported.Kind != RuntimeManagedCommandKind.Stop)
+        {
+            failures.Add("shared command frame was not imported/dequeued.");
+        }
+        else
+        {
+            checks.Add("shared-command-imported");
+        }
+
+        if (managed.ImportedSharedCommandCount <= 0)
+        {
+            failures.Add("shared command import counter did not increase.");
+        }
+        else
+        {
+            checks.Add("shared-command-counter-updated");
+        }
+
+        managed.UpdateState(unitId, state);
+        var stateSeen = false;
+        for (var i = 0; i < 200; i++)
+        {
+            if (DiagnosticSwitchboard.TryGetStateFrame(out var stateFrame))
+            {
+                if (stateFrame.EntityIdHash == unitHash)
+                {
+                    stateSeen = true;
+                    break;
+                }
+            }
+
+            Thread.Sleep(2);
+        }
+
+        if (!stateSeen)
+        {
+            failures.Add("shared state frame was not published.");
+        }
+        else
+        {
+            checks.Add("shared-state-published");
+        }
+
+        var produced = 0;
+        for (var i = 0; i < 64; i++)
+        {
+            var frame = new RuntimeCommandFrame(
+                processId: Environment.ProcessId + 2000 + i,
+                managedThreadId: i + 1,
+                sequence: 100 + i,
+                targetIdHash: unitHash,
+                commandKind: (int)RuntimeManagedCommandKind.Wakeup,
+                timestampUtcTicks: DateTimeOffset.UtcNow.UtcTicks,
+                arg0: i,
+                arg1: 0);
+            if (DiagnosticSwitchboard.TryPutCommandFrame(frame))
+            {
+                produced++;
+            }
+        }
+
+        var consumed = 0;
+        for (var i = 0; i < 128; i++)
+        {
+            if (managed.TryDequeueCommand(unitId, out var command) && command is not null)
+            {
+                consumed++;
+            }
+        }
+
+        if (produced == 0 || consumed == 0)
+        {
+            failures.Add($"shared command stress path failed (produced={produced}, consumed={consumed}).");
+        }
+        else
+        {
+            checks.Add("shared-command-stress-stable");
+        }
+
+        managed.Unregister(unitId);
+        return Task.FromResult(failures.Count == 0
+            ? FunctionalScenarioResult.Pass("sharedfifo-protocol", checks.ToArray())
+            : FunctionalScenarioResult.Fail("sharedfifo-protocol", checks, failures));
+    }
+
+    private static async Task<FunctionalScenarioResult> RunNumericBreakpointScenario(IServiceProvider provider)
+    {
+        var hub = provider.GetRequiredService<RuntimeDiagnosticHub>();
+        var checks = new List<string>();
+        var failures = new List<string>();
+        const string breakpointId = "numeric.default.threshold";
+
+        RuntimeOutputSwitch.Enabled = true;
+        var enableResult = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "diagnostics.breakpoints",
+            Action = "enable",
+            Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["id"] = JsonSerializer.SerializeToElement(breakpointId)
+            }
+        });
+        if (!enableResult.Success)
+        {
+            failures.Add($"enable breakpoint failed: {enableResult.Error}");
+            return FunctionalScenarioResult.Fail("numeric-breakpoint", checks, failures);
+        }
+        checks.Add("numeric-breakpoint-enabled");
+
+        var listDefault = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "diagnostics.breakpoints",
+            Action = "listNumeric"
+        });
+        if (!listDefault.Success)
+        {
+            failures.Add($"listNumeric failed: {listDefault.Error}");
+            return FunctionalScenarioResult.Fail("numeric-breakpoint", checks, failures);
+        }
+        var expectedBindings = new[] { breakpointId, "numeric.default.range", "numeric.default.delta" };
+        var loadedBindings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var defaultList = JsonSerializer.SerializeToElement(listDefault.Value);
+        if (defaultList.TryGetProperty("bindings", out var bindings) && bindings.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in bindings.EnumerateArray())
+            {
+                var hasId =
+                    item.TryGetProperty("breakpointId", out var idNode)
+                    || item.TryGetProperty("BreakpointId", out idNode);
+                if (hasId
+                    && idNode.ValueKind == JsonValueKind.String
+                    && expectedBindings.Contains(idNode.GetString() ?? string.Empty, StringComparer.OrdinalIgnoreCase))
+                {
+                    loadedBindings.Add(idNode.GetString()!);
+                }
+            }
+        }
+
+        if (loadedBindings.Count != expectedBindings.Length)
+        {
+            failures.Add("default numeric binding was not loaded from assembly attributes.");
+            return FunctionalScenarioResult.Fail("numeric-breakpoint", checks, failures);
+        }
+        checks.Add("numeric-default-binding-loaded");
+
+        var hitStart = DateTime.UtcNow;
+        await RuntimeOutput.BreakIfNumbers(breakpointId, 10, 5, new { phase = "gt2-hit" });
+        var hitElapsed = (DateTime.UtcNow - hitStart).TotalMilliseconds;
+        if (hitElapsed < 200)
+        {
+            failures.Add($"numeric breakpoint did not block as expected under gt2 (elapsed={hitElapsed:F0}ms).");
+        }
+        else
+        {
+            checks.Add("numeric-break-hit-default");
+        }
+
+        var bindLt = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "diagnostics.breakpoints",
+            Action = "setNumericThreshold",
+            Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["id"] = JsonSerializer.SerializeToElement(breakpointId),
+                ["operator"] = JsonSerializer.SerializeToElement("lt"),
+                ["threshold"] = JsonSerializer.SerializeToElement(7)
+            }
+        });
+        if (!bindLt.Success)
+        {
+            failures.Add($"setNumeric update failed: {bindLt.Error}");
+            return FunctionalScenarioResult.Fail("numeric-breakpoint", checks, failures);
+        }
+        checks.Add("numeric-threshold-updated");
+
+        var missStart = DateTime.UtcNow;
+        await RuntimeOutput.BreakIfNumbers(breakpointId, 10, 5, new { phase = "lt2-miss" });
+        var missElapsed = (DateTime.UtcNow - missStart).TotalMilliseconds;
+        if (missElapsed > 150)
+        {
+            failures.Add($"numeric breakpoint should not block under lt2 (elapsed={missElapsed:F0}ms).");
+        }
+        else
+        {
+            checks.Add("numeric-break-miss");
+        }
+
+        var listNumeric = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "diagnostics.breakpoints",
+            Action = "listNumeric"
+        });
+        if (!listNumeric.Success)
+        {
+            failures.Add($"listNumeric failed: {listNumeric.Error}");
+        }
+        else
+        {
+            checks.Add("numeric-binding-listed");
+        }
+
+        return failures.Count == 0
+            ? FunctionalScenarioResult.Pass("numeric-breakpoint", checks.ToArray())
+            : FunctionalScenarioResult.Fail("numeric-breakpoint", checks, failures);
+    }
+
+    private static async Task<FunctionalScenarioResult> RunPipeRegistryScenario(IServiceProvider provider, string diagnosticsPipeName)
+    {
+        var hub = provider.GetRequiredService<RuntimeDiagnosticHub>();
+        var checks = new List<string>();
+        var failures = new List<string>();
+
+        var staticName = $"functional-branch-{Guid.NewGuid():N}";
+        var staticPipe = RuntimePipeRegistry.AcquirePipe(staticName, diagnosticsPipeName);
+        if (string.IsNullOrWhiteSpace(staticPipe))
+        {
+            failures.Add("static acquire returned empty pipe name.");
+            return FunctionalScenarioResult.Fail("pipe-registry", checks, failures);
+        }
+        checks.Add("static-acquire-ok");
+
+        var duplicatePipe = RuntimePipeRegistry.AcquirePipe(staticName, diagnosticsPipeName);
+        if (string.Equals(staticPipe, duplicatePipe, StringComparison.OrdinalIgnoreCase))
+        {
+            failures.Add("duplicate acquire should append suffix and create another pipe name.");
+        }
+        else
+        {
+            checks.Add("duplicate-suffix-ok");
+        }
+
+        var acquireViaHub = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "diagnostics.pipes",
+            Action = "acquire",
+            Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["name"] = JsonSerializer.SerializeToElement($"functional-hub-{Guid.NewGuid():N}"),
+                ["aggregatePipeName"] = JsonSerializer.SerializeToElement(diagnosticsPipeName)
+            }
+        });
+        if (!acquireViaHub.Success)
+        {
+            failures.Add($"hub acquire failed: {acquireViaHub.Error}");
+            return FunctionalScenarioResult.Fail("pipe-registry", checks, failures);
+        }
+        checks.Add("hub-acquire-ok");
+
+        var list = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "diagnostics.pipes",
+            Action = "list"
+        });
+        if (!list.Success)
+        {
+            failures.Add($"list failed: {list.Error}");
+            return FunctionalScenarioResult.Fail("pipe-registry", checks, failures);
+        }
+
+        var leases = JsonSerializer.SerializeToElement(list.Value);
+        if (leases.ValueKind != JsonValueKind.Array || leases.GetArrayLength() == 0)
+        {
+            failures.Add("pipe registry list is empty.");
+            return FunctionalScenarioResult.Fail("pipe-registry", checks, failures);
+        }
+        checks.Add("pipe-list-ok");
+
+        var firstLease = leases.EnumerateArray().FirstOrDefault();
+        if (!firstLease.TryGetProperty("InternalId", out var internalIdNode)
+            || internalIdNode.ValueKind != JsonValueKind.Number
+            || !internalIdNode.TryGetInt32(out var internalId))
+        {
+            failures.Add("pipe lease missing numeric InternalId.");
+            return FunctionalScenarioResult.Fail("pipe-registry", checks, failures);
+        }
+        checks.Add("pipe-id-present");
+
+        var resolve = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "diagnostics.pipes",
+            Action = "resolve",
+            Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["id"] = JsonSerializer.SerializeToElement(internalId.ToString())
+            }
+        });
+        if (!resolve.Success)
+        {
+            failures.Add($"resolve by id failed: {resolve.Error}");
+        }
+        else
+        {
+            checks.Add("resolve-by-id-ok");
+        }
+
+        var release = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "diagnostics.pipes",
+            Action = "release",
+            Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["id"] = JsonSerializer.SerializeToElement(internalId.ToString())
+            }
+        });
+        if (!release.Success)
+        {
+            failures.Add($"release by id failed: {release.Error}");
+        }
+        else
+        {
+            checks.Add("release-by-id-ok");
+        }
+
+        return failures.Count == 0
+            ? FunctionalScenarioResult.Pass("pipe-registry", checks.ToArray())
+            : FunctionalScenarioResult.Fail("pipe-registry", checks, failures);
     }
 
     private static async Task<FunctionalScenarioResult> RunThreadScenario(IServiceProvider provider)
@@ -395,6 +838,31 @@ static class FunctionalChildRunner
         else
         {
             checks.Add("thread-running-visible");
+        }
+
+        var threadList = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "runtime.execution",
+            Action = "snapshot"
+        });
+        if (!threadList.Success)
+        {
+            failures.Add($"thread snapshot command failed: {threadList.Error}");
+        }
+        else
+        {
+            var threadJson = JsonSerializer.SerializeToElement(threadList.Value);
+            if (!threadJson.TryGetProperty("values", out var values)
+                || !values.TryGetProperty("DynamicThreads", out var dynamicThreads)
+                || dynamicThreads.ValueKind != JsonValueKind.Array
+                || !dynamicThreads.EnumerateArray().Any(x => x.TryGetProperty("Id", out var idNode) && idNode.GetString() == unitId))
+            {
+                failures.Add("thread snapshot command did not list the active thread.");
+            }
+            else
+            {
+                checks.Add("thread-list-command-ok");
+            }
         }
 
         var enqueue = await hub.ExecuteAsync(new RuntimeDiagnosticAction
@@ -526,6 +994,7 @@ static class FunctionalChildRunner
     private static async Task<FunctionalScenarioResult> RunProcessScenario(IServiceProvider provider)
     {
         var managed = provider.GetRequiredService<RuntimeManagedRegistry>();
+        var hub = provider.GetRequiredService<RuntimeDiagnosticHub>();
         var checks = new List<string>();
         var failures = new List<string>();
 
@@ -565,6 +1034,62 @@ static class FunctionalChildRunner
         else
         {
             checks.Add("process-started");
+        }
+
+        var announceDeadline = DateTimeOffset.UtcNow.AddSeconds(3);
+        var processGuardianAnnounced = false;
+        while (DateTimeOffset.UtcNow < announceDeadline && !processGuardianAnnounced)
+        {
+            var leaseList = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+            {
+                TargetId = "diagnostics.pipes",
+                Action = "list"
+            });
+            if (leaseList.Success)
+            {
+                var leaseJson = JsonSerializer.SerializeToElement(leaseList.Value);
+                processGuardianAnnounced = leaseJson.ValueKind == JsonValueKind.Array
+                    && leaseJson.EnumerateArray().Any(x =>
+                        x.TryGetProperty("RequestedName", out var requestedName)
+                        && requestedName.GetString() == process.UnitId);
+            }
+
+            if (!processGuardianAnnounced)
+            {
+                await Task.Delay(120);
+            }
+        }
+
+        if (!processGuardianAnnounced)
+        {
+            failures.Add("process guardian did not announce branch pipe to diagnostics.pipes.");
+        }
+        else
+        {
+            checks.Add("process-guardian-announced");
+        }
+
+        var processList = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "runtime.managed",
+            Action = "processes"
+        });
+        if (!processList.Success)
+        {
+            failures.Add($"process list command failed: {processList.Error}");
+        }
+        else
+        {
+            var processJson = JsonSerializer.SerializeToElement(processList.Value);
+            if (processJson.ValueKind != JsonValueKind.Array
+                || !processJson.EnumerateArray().Any(x => x.TryGetProperty("UnitId", out var idNode) && idNode.GetString() == process.UnitId))
+            {
+                failures.Add("process list command did not list the active process.");
+            }
+            else
+            {
+                checks.Add("process-list-command-ok");
+            }
         }
 
         if (!process.WaitForExit(10_000))
@@ -907,6 +1432,36 @@ static class FunctionalChildRunner
             failures.Add($"CLI config not found: {cliConfigPath}");
             return FunctionalScenarioResult.Fail("cli", checks, failures);
         }
+
+        var cliConfig = JsonSerializer.Deserialize<CommandConfig>(await File.ReadAllTextAsync(cliConfigPath), JsonDefaults.Options);
+        if (cliConfig == null)
+        {
+            failures.Add("CLI config could not be parsed.");
+            return FunctionalScenarioResult.Fail("cli", checks, failures);
+        }
+
+        if (!cliConfig.Pipes.TryGetValue("diagnostics", out var diagnosticsPipeFromConfig)
+            || string.IsNullOrWhiteSpace(diagnosticsPipeFromConfig))
+        {
+            failures.Add("CLI config missing pipes.diagnostics (first pipe slot).");
+            return FunctionalScenarioResult.Fail("cli", checks, failures);
+        }
+        checks.Add("cli-diagnostics-pipe-slot-present");
+
+        var commandNames = cliConfig.BaseCommands.Select(command => command.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var requiredCommands = new[] { "bp.listNumeric", "bp.setNumeric", "bp.setNumericThreshold", "bp.clearNumeric", "process.list", "thread.list" };
+        foreach (var requiredCommand in requiredCommands)
+        {
+            if (!commandNames.Contains(requiredCommand))
+            {
+                failures.Add($"CLI config missing command definition: {requiredCommand}");
+            }
+        }
+        if (failures.Count > 0)
+        {
+            return FunctionalScenarioResult.Fail("cli", checks, failures);
+        }
+        checks.Add("cli-numeric-command-definitions-present");
 
         checks.Add($"diagnostics-pipe:{diagnosticsPipeName}");
 
@@ -1393,6 +1948,6 @@ internal static class FunctionalHelp
         Console.WriteLine("Iwesun.Runtime.FunctionalTests");
         Console.WriteLine("Usage:");
         Console.WriteLine("  dotnet run --project Iwesun.Runtime.FunctionalTests");
-        Console.WriteLine("  dotnet run --project Iwesun.Runtime.FunctionalTests -- --child --scenario diagnostics|managed|thread|task|process|tree|tree-process|cli|probe");
+        Console.WriteLine("  dotnet run --project Iwesun.Runtime.FunctionalTests -- --child --scenario diagnostics|managed|thread|task|process|tree|root-safety|sharedfifo-protocol|numeric-breakpoint|pipe-registry|tree-process|cli|probe");
     }
 }

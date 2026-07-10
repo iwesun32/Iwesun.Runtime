@@ -39,6 +39,7 @@ ILogger / RuntimeOutput.TracePoint()
 - Schema 版本 4 默认静默启动：`globalEnabled`、管道输出、文件输出、每个 section、每个编译输出点均生成为 `false`
 - 保留用户对已知点 ID 的 `enabled` 更改，同时自动添加新编译的点 ID
 - 输出点是稳定的诊断采样入口；默认通过 `SetOutputPoint()` 控制启用/禁用
+- 逻辑断点与数值断点都支持编译期反射加载；数值断点使用 `DiagnosticNumericBreakpointAttribute`
 
 每个 `outputPoints[]` 条目是一个稳定监控点：
 
@@ -67,6 +68,9 @@ RuntimeOutput.TracePoint("pipeline.stage", "DnsUpdateStage",
 - `RuntimeOutput.TracePoint()`：输出结构化事件。
 - `RuntimeOutput.Watch()`：对对象做快照并投递到诊断管道。
 - `RuntimeOutput.BreakIf()`：协作式断点，命中后等待恢复信号。
+- `RuntimeOutput.BreakIfNumbers()`：固定数值通道断点，默认通过白名单谓词/阈值绑定控制。
+- `runtime.managed` 的 `processes/threads/tasks` 列表命令用于按单位类型查看注册项。
+- `runtime.execution` 的 `snapshot` 命令用于查看线程/任务执行快照。
 
 - 所有运行时追踪通过这些 API，不直接使用 `Console.WriteLine` 或文件写入
 - 由 `DiagnosticSwitchboard` 根据配置路由到输出点（管道、文件、日志）
@@ -85,6 +89,20 @@ Service 和 Agent 主机从 `diagnostic-switchboard.json` 启动专用运行时�
 
 不要实现自定义诊断客户端，使用 `Iwesun.Runtime.Cli` 连接。
 
+## 数值断点策略
+
+数值断点推荐保持“静态类型通道 + 运行时改参”：
+
+- 宿主程序集用 `DiagnosticNumericBreakpointAttribute` 声明默认绑定
+- 运行时仅调整 `operator` 与 `threshold1/threshold2`
+- `RuntimeNumericPredicateCatalog` 负责固定谓词原语（如 `gt2`、`between3`、`delta-le3`）
+- `RuntimeDiagnosticHub` 负责 CLI 入口与绑定修改
+
+这样能保证：
+- 不引入任意表达式执行
+- 不改变变量位/输入位
+- 只在白名单内做比较符和常量调整
+
 ## Serilog 集成
 
 `RuntimeDiagnosticLoggerProvider` 将 Serilog 事件路由到诊断开关板。日志事件通过 `log.*` 监控点输出，可按 section（如 `pipeline`、`agent-sync`、`peer-sync`）控制。
@@ -102,6 +120,7 @@ Service 和 Agent 主机从 `diagnostic-switchboard.json` 启动专用运行时�
 
 当前实现中的登记表主要由 `RuntimeDiagnosticHub` 提供：
 - `diagnostics.registry`：返回 watch points、breakpoints、hooks 的登记快照。
+- `diagnostics.pipes`：返回分支管道注册表，可申请/释放分支专有管道并按内部 ID 解析。
 - 反射目标：通过 `RegisterObject()` 暴露可读/可写/可调用成员。
 - 功能测试场景中的树对象：通过登记表和反射目标暴露树快照、节点路径、统计值、断点命中与输出点记录。
 
@@ -128,6 +147,9 @@ Service 和 Agent 主机从 `diagnostic-switchboard.json` 启动专用运行时�
 - 注入器标准化 → [05-runtime-tooling/INJECTOR_STANDARDIZATION.md](05-runtime-tooling/INJECTOR_STANDARDIZATION.md)
 - 注入器标准化技术方案 → [05-runtime-tooling/INJECTOR_STANDARDIZATION_PLAN.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_PLAN.md)
 - 注入器标准化任务书 → [05-runtime-tooling/INJECTOR_STANDARDIZATION_TASKS.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_TASKS.md)
+- 守护代理与管道注册中心设计 → [05-runtime-tooling/GUARDIAN_PIPE_REGISTRY_DESIGN.md](05-runtime-tooling/GUARDIAN_PIPE_REGISTRY_DESIGN.md)
+- 注入器静态方案（旧方案保留）→ [05-runtime-tooling/INJECTOR_STATIC_SCHEME.md](05-runtime-tooling/INJECTOR_STATIC_SCHEME.md)
+- 注入器动态缓冲池方案（对象级登记与回收）→ [05-runtime-tooling/INJECTOR_DYNAMIC_POOL_SCHEME.md](05-runtime-tooling/INJECTOR_DYNAMIC_POOL_SCHEME.md)
 - 统一界面规范 → [UNIFIED_INTERFACE.md](UNIFIED_INTERFACE.md)
 - AI 访问规则复核 → [AI_ACCESS_RECHECK.md](AI_ACCESS_RECHECK.md)
 - 全局访问规则 → [../.github/instructions/copilot-access-rules.instructions.md](../.github/instructions/copilot-access-rules.instructions.md)

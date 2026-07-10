@@ -2,6 +2,9 @@
   <Project Path="Iwesun.Runtime.Diagnostics/Iwesun.Runtime.Diagnostics.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
+  <Project Path="Iwesun.Runtime.Data/Iwesun.Runtime.Data.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
   <Project Path="Iwesun.Runtime.SampleHost/Iwesun.Runtime.SampleHost.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>

@@ -1,4 +1,5 @@
 namespace Iwesun.Runtime.Diagnostics;
+using Iwesun.Runtime.Data;
 
 /// <summary>
 /// Runtime diagnostic output facade for direct probes and future formal log paths.
@@ -52,7 +53,7 @@ public static class RuntimeOutput
 		if (!RuntimeOutputSwitch.Enabled)
 			return;
 
-		DiagnosticSwitchboard.ReportPoint("runtime.error", "error", "error", message, payload);
+		DiagnosticSwitchboard.ReportPoint(RuntimeStaticOutputPoint.RuntimeError, "error", "error", message, payload);
 	}
 
 	// ── Breakpoints (new) ─────────────────────────────────────────────
@@ -80,6 +81,16 @@ public static class RuntimeOutput
 	public static Task BreakIf(string breakpointId, Func<bool> condition, object context)
 	{
 		return BreakpointHelper.BreakIfAsync(breakpointId, condition, context);
+	}
+
+	public static Task BreakIfNumbers(string breakpointId, double value1, double value2, object? context = null)
+	{
+		return BreakpointHelper.BreakIfNumericAsync(breakpointId, value1, value2, 0, context);
+	}
+
+	public static Task BreakIfNumbers(string breakpointId, double value1, double value2, double value3, object? context = null)
+	{
+		return BreakpointHelper.BreakIfNumericAsync(breakpointId, value1, value2, value3, context);
 	}
 
 	/// <summary>
@@ -141,5 +152,12 @@ internal static class BreakpointHelper
 		if (_breakpoints == null)
 			return Task.CompletedTask;
 		return _breakpoints.WaitAsync(breakpointId, condition, context);
+	}
+
+	public static Task BreakIfNumericAsync(string breakpointId, double value1, double value2, double value3 = 0, object? context = null)
+	{
+		if (_breakpoints == null)
+			return Task.CompletedTask;
+		return _breakpoints.WaitNumericAsync(breakpointId, value1, value2, value3, context);
 	}
 }

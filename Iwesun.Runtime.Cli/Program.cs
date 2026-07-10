@@ -4,8 +4,9 @@ using System.Text.Json;
 using Iwesun.Runtime.Diagnostics;
 using Iwesun.Runtime.Cli;
 
-var options = CliOptions.Parse(args);
-var catalog = UnifiedCommandCatalog.Load(options.ConfigPath);
+var bootstrapOptions = CliOptions.Parse(args);
+var catalog = UnifiedCommandCatalog.Load(bootstrapOptions.ConfigPath);
+var options = bootstrapOptions.ResolveDiagnosticsPipeName(catalog.DiagnosticsPipeName);
 
 if (options.ShowHelp || options.CommandArgs.Count == 0)
 {
@@ -169,6 +170,7 @@ static string BuildHelpText(string help, string usage, IEnumerable<string> examp
 internal sealed class CliOptions
 {
 	public string DiagnosticsPipeName { get; private init; } = "DdnsSnap.RuntimeDiagnostics";
+	public bool DiagnosticsPipeOverridden { get; private init; }
 	public string ConfigPath { get; private init; } = "";
 	public TimeSpan ConnectTimeout { get; private init; } = TimeSpan.FromSeconds(5);
 	public TimeSpan RequestTimeout { get; private init; } = TimeSpan.FromSeconds(15);
@@ -179,6 +181,7 @@ internal sealed class CliOptions
 	public static CliOptions Parse(string[] args)
 	{
 		var pipeName = "DdnsSnap.RuntimeDiagnostics";
+		var pipeOverridden = false;
 		var configPath = ResolveDefaultConfigPath();
 		var connectTimeout = TimeSpan.FromSeconds(5);
 		var requestTimeout = TimeSpan.FromSeconds(15);
@@ -197,6 +200,7 @@ internal sealed class CliOptions
 			if (arg.StartsWith("--pipe=", StringComparison.OrdinalIgnoreCase))
 			{
 				pipeName = arg["--pipe=".Length..].Trim('"');
+				pipeOverridden = true;
 				continue;
 			}
 
@@ -236,12 +240,38 @@ internal sealed class CliOptions
 		return new CliOptions
 		{
 			DiagnosticsPipeName = pipeName,
+			DiagnosticsPipeOverridden = pipeOverridden,
 			ConfigPath = configPath,
 			ConnectTimeout = connectTimeout,
 			RequestTimeout = requestTimeout,
 			MaxResponseBytes = maxResponseBytes,
 			ShowHelp = showHelp,
 			CommandArgs = commandArgs
+		};
+	}
+
+	public CliOptions ResolveDiagnosticsPipeName(string? configuredDiagnosticsPipeName)
+	{
+		if (DiagnosticsPipeOverridden)
+		{
+			return this;
+		}
+
+		if (string.IsNullOrWhiteSpace(configuredDiagnosticsPipeName))
+		{
+			return this;
+		}
+
+		return new CliOptions
+		{
+			DiagnosticsPipeName = configuredDiagnosticsPipeName.Trim(),
+			DiagnosticsPipeOverridden = false,
+			ConfigPath = ConfigPath,
+			ConnectTimeout = ConnectTimeout,
+			RequestTimeout = RequestTimeout,
+			MaxResponseBytes = MaxResponseBytes,
+			ShowHelp = ShowHelp,
+			CommandArgs = CommandArgs
 		};
 	}
 
@@ -258,6 +288,7 @@ internal sealed class CliOptions
 internal sealed class UnifiedCommandCatalog
 {
 	public required CommandMeta Meta { get; init; }
+	public required string DiagnosticsPipeName { get; init; }
 	public required IReadOnlyList<BaseCommandDef> BaseCommands { get; init; }
 	public required IReadOnlyList<CompositeCommandDef> CompositeCommands { get; init; }
 	public required Dictionary<string, BaseCommandDef> BaseLookup { get; init; }
@@ -273,6 +304,9 @@ internal sealed class UnifiedCommandCatalog
 		return new UnifiedCommandCatalog
 		{
 			Meta = config.Meta,
+			DiagnosticsPipeName = config.Pipes.TryGetValue("diagnostics", out var diagnosticsPipeName)
+				? diagnosticsPipeName
+				: "DdnsSnap.RuntimeDiagnostics",
 			BaseCommands = config.BaseCommands,
 			CompositeCommands = config.CompositeCommands,
 			BaseLookup = CommandParser.BuildLookup(config.BaseCommands),

@@ -131,6 +131,64 @@
       }
     },
     {
+      "name": "pipe.acquire",
+      "aliases": ["pipe.register", "pipe-acquire"],
+      "help": "Acquire and register a dedicated branch pipe",
+      "usage": "pipe.acquire <name> [aggregatePipeName]",
+      "examples": ["pipe.acquire process-agent", "pipe-acquire process-agent DdnsSnap.RuntimeDiagnostics"],
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "register",
+      "targetId": "diagnostics.pipes",
+      "action": "acquire",
+      "params": {
+        "name": { "type": "string", "position": 0, "required": true },
+        "aggregatePipeName": { "type": "string", "position": 1, "required": false }
+      }
+    },
+    {
+      "name": "pipe.list",
+      "aliases": ["pipe.ls", "pipe-list"],
+      "help": "List registered branch pipes",
+      "usage": "pipe.list",
+      "examples": ["pipe.list", "pipe-list"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "targetId": "diagnostics.pipes",
+      "action": "list"
+    },
+    {
+      "name": "pipe.resolve",
+      "aliases": ["pipe.aggregate", "pipe-resolve"],
+      "help": "Resolve aggregate pipe by branch name or internal id",
+      "usage": "pipe.resolve <name|id>",
+      "examples": ["pipe.resolve process-agent", "pipe-resolve 1"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "get",
+      "targetId": "diagnostics.pipes",
+      "action": "resolve",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "pipe.release",
+      "aliases": ["pipe.unregister", "pipe-release"],
+      "help": "Release branch pipe by name or internal id",
+      "usage": "pipe.release <name|id>",
+      "examples": ["pipe.release process-agent", "pipe-release 1"],
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "disable",
+      "targetId": "diagnostics.pipes",
+      "action": "release",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
       "name": "bp.list",
       "aliases": ["bp.ls", "bp-list"],
       "help": "List all breakpoints",
@@ -198,6 +256,94 @@
       "operation": "resume",
       "targetId": "diagnostics.breakpoints",
       "action": "resumeAll"
+    },
+    {
+      "name": "bp.listNumeric",
+      "aliases": ["bp.numeric.list", "bp-list-numeric"],
+      "help": "List numeric breakpoint bindings",
+      "usage": "bp.listNumeric",
+      "examples": ["bp.listNumeric", "bp-list-numeric"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "targetId": "diagnostics.breakpoints",
+      "action": "listNumeric"
+    },
+    {
+      "name": "bp.setNumeric",
+      "aliases": ["bp.numeric.bind", "bp-set-numeric"],
+      "help": "Bind a numeric predicate",
+      "usage": "bp.setNumeric <id> <predicateId>",
+      "examples": ["bp.setNumeric numeric.default.threshold gt2", "bp-set-numeric numeric.default.range between3"],
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "set",
+      "targetId": "diagnostics.breakpoints",
+      "action": "setNumeric",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true },
+        "predicateId": { "type": "string", "position": 1, "required": true }
+      }
+    },
+    {
+      "name": "bp.setNumericThreshold",
+      "aliases": ["bp.numeric.threshold", "bp-set-numeric-threshold"],
+      "help": "Bind a threshold-style numeric predicate",
+      "usage": "bp.setNumericThreshold <id> <operator> <threshold1> [threshold2]",
+      "examples": ["bp.setNumericThreshold numeric.default.threshold gt 7", "bp-set-numeric-threshold numeric.default.range between 3 9"],
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "set",
+      "targetId": "diagnostics.breakpoints",
+      "action": "setNumericThreshold",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true },
+        "operator": { "type": "string", "position": 1, "required": true },
+        "threshold1": { "type": "double", "position": 2, "required": true },
+        "threshold2": { "type": "double", "position": 3, "required": false, "default": "0" }
+      }
+    },
+    {
+      "name": "bp.clearNumeric",
+      "aliases": ["bp.numeric.clear", "bp-clear-numeric"],
+      "help": "Remove numeric breakpoint binding",
+      "usage": "bp.clearNumeric <id>",
+      "examples": ["bp.clearNumeric numeric.default.threshold", "bp-clear-numeric numeric.default.delta"],
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "disable",
+      "targetId": "diagnostics.breakpoints",
+      "action": "clearNumeric",
+      "params": {
+        "id": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "process.list",
+      "aliases": ["process.ls", "process-list"],
+      "help": "List process registrations",
+      "usage": "process.list [count]",
+      "examples": ["process.list", "process-list 50"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "targetId": "runtime.managed",
+      "action": "processes",
+      "params": {
+        "count": { "type": "int", "position": 0, "required": false, "default": "100" }
+      }
+    },
+    {
+      "name": "thread.list",
+      "aliases": ["thread.ls", "thread-list"],
+      "help": "Snapshot thread execution state",
+      "usage": "thread.list [count]",
+      "examples": ["thread.list", "thread-list"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "snapshot",
+      "targetId": "runtime.execution",
+      "action": "snapshot"
     },
     {
       "name": "hook.list",

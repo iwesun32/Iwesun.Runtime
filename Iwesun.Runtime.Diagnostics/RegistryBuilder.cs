@@ -18,6 +18,7 @@ public static class RegistryBuilder
 	{
 		var watchPoints = new List<DiagnosticWatchPointAttribute>();
 		var bpAttrs = new List<DiagnosticBreakpointAttribute>();
+		var numericBpAttrs = new List<DiagnosticNumericBreakpointAttribute>();
 		var hookAttrs = new List<DiagnosticHookableEventAttribute>();
 
 		foreach (var attr in hostAssembly.GetCustomAttributes())
@@ -48,6 +49,13 @@ public static class RegistryBuilder
 					{
 						hooks.RegisterAvailable(
 							he.Id, he.TargetType!, he.EventName);
+					}
+					break;
+				case DiagnosticNumericBreakpointAttribute nbp:
+					numericBpAttrs.Add(nbp);
+					if (breakpoints != null)
+					{
+						breakpoints.SetNumericThresholdBinding(nbp.BreakpointId, nbp.Operator, nbp.Threshold1, nbp.Threshold2);
 					}
 					break;
 			}

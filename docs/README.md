@@ -8,6 +8,7 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | --- | --- |
 | [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | 项目总览：定位、结构、依赖关系、核心链路 |
 | [RUNTIME_DIAGNOSTICS.md](RUNTIME_DIAGNOSTICS.md) | 运行时诊断核心机制、协议与输出控制 |
+| [RUNTIME_ROOT_DATA_STRUCTURE.md](RUNTIME_ROOT_DATA_STRUCTURE.md) | RuntimeRoot 单根挂载的数据结构总览（T01~T10） |
 | [IWESUN_RUNTIME_CLI.md](IWESUN_RUNTIME_CLI.md) | CLI 命令手册、配置驱动与管道入口 |
 | [REQUIREMENTS_ACTIVE.md](REQUIREMENTS_ACTIVE.md) | 当前活跃需求、功能覆盖与执行复核 |
 | [UNIFIED_INTERFACE.md](UNIFIED_INTERFACE.md) | 统一界面与术语规范 |
@@ -19,6 +20,7 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 - `docs/README.md`：文档索引入口。
 - `docs/REQUIREMENTS_ACTIVE.md`：当前活跃需求与功能测试状态。
 - `docs/RUNTIME_DIAGNOSTICS.md`：诊断内核、开关板、Hub、输出点说明。
+- `docs/RUNTIME_ROOT_DATA_STRUCTURE.md`：统一根对象下的数据结构、键设计与关联关系。
 - `docs/IWESUN_RUNTIME_CLI.md`：CLI 配置、命令、管道与 WebRuntime 桥接说明。
 
 ### 专题文档
@@ -55,6 +57,11 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | [INJECTOR_STANDARDIZATION.md](05-runtime-tooling/INJECTOR_STANDARDIZATION.md) | 六大类注入器标准化、最简写法、宏式体验边界 |
 | [INJECTOR_STANDARDIZATION_PLAN.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_PLAN.md) | 注入器标准化技术方案、实现边界、分阶段实施 |
 | [INJECTOR_STANDARDIZATION_TASKS.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_TASKS.md) | 注入器标准化任务书、交付清单、验收标准 |
+| [GUARDIAN_PIPE_REGISTRY_DESIGN.md](05-runtime-tooling/GUARDIAN_PIPE_REGISTRY_DESIGN.md) | 守护代理、管道注册中心、注入器缓冲池登记与回收设计 |
+| [INJECTOR_STATIC_SCHEME.md](05-runtime-tooling/INJECTOR_STATIC_SCHEME.md) | 注入器静态方案（旧方案保留） |
+| [INJECTOR_DYNAMIC_POOL_SCHEME.md](05-runtime-tooling/INJECTOR_DYNAMIC_POOL_SCHEME.md) | 注入器动态缓冲池方案（对象级登记与回收） |
+| [DATA_PROJECT_RUNTIME_ROOT.md](05-runtime-tooling/DATA_PROJECT_RUNTIME_ROOT.md) | Data 公共项目的 RuntimeRoot 基础类技术说明 |
+| [RUNTIME_ROOT_CONTAINER_TECHNICAL.md](05-runtime-tooling/RUNTIME_ROOT_CONTAINER_TECHNICAL.md) | RuntimeRoot 容器技术实现（DLIST + 辅助索引） |
 
 ### 当前测试与诊断专题
 - `REQUIREMENTS_ACTIVE.md`：功能清单、测试矩阵、扩展层与树场景。

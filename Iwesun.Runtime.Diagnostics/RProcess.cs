@@ -1,15 +1,20 @@
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 
 namespace Iwesun.Runtime.Diagnostics;
 
 public class RProcess : Process
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly RuntimeExecutionManager? _execution;
     private readonly RuntimeManagedRegistry? _managed;
+    private readonly CancellationTokenSource _pipeGuardianCts = new();
     private int _registered;
+    private Task? _pipeGuardianTask;
+    private string? _branchPipeName;
 
     public RProcess(string? unitId = null)
     {
@@ -39,6 +44,7 @@ public class RProcess : Process
             State.TransitionTo("Working");
             _execution?.SetTaskState(UnitId, RuntimeTaskState.Running, step: "running", payload: State.Snapshot());
             _managed?.PublishEvent(UnitId, "process-running", "Process started.", State.Snapshot());
+            StartPipeGuardian();
         }
         else
         {
@@ -55,6 +61,8 @@ public class RProcess : Process
     public new void Kill()
     {
         base.Kill();
+        StopPipeGuardian();
+        RuntimePipeRegistry.ReleasePipe(UnitId);
         State.SetDetail("error", "killed");
         State.TransitionTo("Stop");
         _execution?.SetTaskState(UnitId, RuntimeTaskState.Cancelled, step: "killed", error: "Killed by caller.", payload: State.Snapshot());
@@ -64,6 +72,8 @@ public class RProcess : Process
     public new void Kill(bool entireProcessTree)
     {
         base.Kill(entireProcessTree);
+        StopPipeGuardian();
+        RuntimePipeRegistry.ReleasePipe(UnitId);
         State.SetDetail("error", entireProcessTree ? "killed-tree" : "killed");
         State.TransitionTo("Stop");
         _execution?.SetTaskState(UnitId, RuntimeTaskState.Cancelled, step: "killed", error: entireProcessTree ? "Killed process tree." : "Killed by caller.", payload: State.Snapshot());
@@ -172,16 +182,171 @@ public class RProcess : Process
             step: "registered",
             payload: State.Snapshot());
         _managed?.Register(UnitId, "process", "InternalManaged", State.Snapshot());
+        _branchPipeName = RuntimePipeRegistry.AcquirePipe(UnitId, DiagnosticSwitchboard.Snapshot().RuntimeDiagnosticsPipeName);
+        State.SetDetail("branchPipe", _branchPipeName);
+        _managed?.PublishEvent(UnitId, "process-branch-pipe-acquired", "Process branch pipe acquired.", new { unitId = UnitId, branchPipe = _branchPipeName });
     }
 
     private void OnExited(object? sender, EventArgs e)
     {
+        StopPipeGuardian();
+        RuntimePipeRegistry.ReleasePipe(UnitId);
         State.SetDetail("exitCode", ExitCode.ToString());
         State.TransitionTo("Stop");
         var state = ExitCode == 0 ? RuntimeTaskState.Completed : RuntimeTaskState.Faulted;
         _execution?.SetTaskState(UnitId, state, step: "exited", error: ExitCode == 0 ? null : $"ExitCode={ExitCode}", payload: State.Snapshot());
         _managed?.PublishEvent(UnitId, "process-exited", ExitCode == 0 ? "Process exited successfully." : $"Process exited with code {ExitCode}.", State.Snapshot());
         _managed?.Unregister(UnitId);
+    }
+
+    private void StartPipeGuardian()
+    {
+        if (_pipeGuardianTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        _pipeGuardianTask = Task.Run(() => PipeGuardianLoopAsync(_pipeGuardianCts.Token));
+    }
+
+    private void StopPipeGuardian()
+    {
+        try
+        {
+            _pipeGuardianCts.Cancel();
+        }
+        catch
+        {
+            // ignore cancellation races
+        }
+    }
+
+    private async Task PipeGuardianLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (HasProcessExitedSafely())
+            {
+                return;
+            }
+
+            try
+            {
+                if (await AnnounceToAggregateAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    return;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _managed?.PublishEvent(UnitId, "process-guardian-announce-failed", ex.Message, new { unitId = UnitId, branchPipe = _branchPipeName });
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private bool HasProcessExitedSafely()
+    {
+        try
+        {
+            return HasExited;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task<bool> AnnounceToAggregateAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_branchPipeName))
+        {
+            return false;
+        }
+
+        var aggregatePipe = RuntimePipeRegistry.ResolveAggregatePipe(UnitId)
+            ?? DiagnosticSwitchboard.Snapshot().RuntimeDiagnosticsPipeName;
+        if (string.IsNullOrWhiteSpace(aggregatePipe))
+        {
+            return false;
+        }
+
+        var requestFrame = new RuntimeDiagnosticFrame
+        {
+            Header = new RuntimeDiagnosticFrameHeader
+            {
+                Schema = RuntimeDiagnosticProtocol.V2Schema,
+                FrameType = "request",
+                Category = "instruction",
+                Operation = "announce",
+                RequestId = Guid.NewGuid().ToString("N")
+            },
+            Command = new RuntimeDiagnosticFrameCommand
+            {
+                Domain = "diagnostics",
+                Target = "diagnostics.pipes",
+                Action = "announce",
+                Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["name"] = JsonSerializer.SerializeToElement(UnitId),
+                    ["pipeName"] = JsonSerializer.SerializeToElement(_branchPipeName),
+                    ["aggregatePipeName"] = JsonSerializer.SerializeToElement(aggregatePipe),
+                    ["ownerProcessId"] = JsonSerializer.SerializeToElement(Environment.ProcessId)
+                }
+            }
+        };
+
+        var response = await SendFrameAsync(aggregatePipe, requestFrame, cancellationToken).ConfigureAwait(false);
+        if (response.Status?.Ok == true)
+        {
+            State.SetDetail("aggregatePipe", aggregatePipe);
+            _managed?.PublishEvent(UnitId, "process-guardian-announced", "Process guardian announced branch pipe to aggregate.", new
+            {
+                unitId = UnitId,
+                branchPipe = _branchPipeName,
+                aggregatePipe
+            });
+            return true;
+        }
+
+        return false;
+    }
+
+    private static async Task<RuntimeDiagnosticFrame> SendFrameAsync(string pipeName, RuntimeDiagnosticFrame request, CancellationToken cancellationToken)
+    {
+        await using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        connectCts.CancelAfter(TimeSpan.FromSeconds(1));
+        await client.ConnectAsync(connectCts.Token).ConfigureAwait(false);
+
+        using var ioCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        ioCts.CancelAfter(TimeSpan.FromSeconds(2));
+
+        var requestJson = JsonSerializer.Serialize(request, JsonOptions);
+        var requestBytes = Encoding.UTF8.GetBytes(requestJson);
+        var requestLength = BitConverter.GetBytes(requestBytes.Length);
+        await client.WriteAsync(requestLength, ioCts.Token).ConfigureAwait(false);
+        await client.WriteAsync(requestBytes, ioCts.Token).ConfigureAwait(false);
+        await client.FlushAsync(ioCts.Token).ConfigureAwait(false);
+
+        var responseLengthBuffer = new byte[4];
+        if (!await ReadExactAsync(client, responseLengthBuffer, ioCts.Token).ConfigureAwait(false))
+            throw new IOException("Aggregate diagnostics pipe closed before response length.");
+        var responseLength = BitConverter.ToInt32(responseLengthBuffer, 0);
+        if (responseLength <= 0 || responseLength > 1024 * 1024)
+            throw new InvalidOperationException($"Invalid aggregate response length: {responseLength}");
+
+        var responseBuffer = new byte[responseLength];
+        if (!await ReadExactAsync(client, responseBuffer, ioCts.Token).ConfigureAwait(false))
+            throw new IOException("Aggregate diagnostics pipe closed before full response.");
+        var responseJson = Encoding.UTF8.GetString(responseBuffer);
+        return JsonSerializer.Deserialize<RuntimeDiagnosticFrame>(responseJson, JsonOptions)
+            ?? throw new InvalidOperationException("Aggregate diagnostics response frame was null.");
     }
 
     private static async Task<bool> ReadExactAsync(Stream stream, byte[] buffer, CancellationToken cancellationToken)

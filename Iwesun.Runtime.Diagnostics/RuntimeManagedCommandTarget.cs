@@ -22,6 +22,15 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
             case "registrations":
             case "list":
                 return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, _registry.SnapshotRegistrations()));
+            case "processes":
+            case "listprocesses":
+                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, SnapshotByUnitType("process", ReadInt(command, "count") ?? 100)));
+            case "threads":
+            case "listthreads":
+                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, SnapshotByUnitType("thread", ReadInt(command, "count") ?? 100)));
+            case "tasks":
+            case "listtasks":
+                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, SnapshotByUnitType("task", ReadInt(command, "count") ?? 100)));
             case "events":
             case "drain":
                 return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, _registry.DrainEvents(ReadInt(command, "count") ?? 100)));
@@ -92,5 +101,13 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
             && value.TryGetInt32(out var number))
             return number;
         return null;
+    }
+
+    private IReadOnlyList<RuntimeManagedRegistration> SnapshotByUnitType(string unitType, int count)
+    {
+        return _registry.SnapshotRegistrations()
+            .Where(x => x.UnitType.Equals(unitType, StringComparison.OrdinalIgnoreCase))
+            .Take(Math.Clamp(count, 1, 4096))
+            .ToArray();
     }
 }
