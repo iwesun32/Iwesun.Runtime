@@ -20,6 +20,9 @@
 13. CLI v3 正式设计见 `docs/superpowers/specs/2026-07-12-cli-v3-redesign.md`。
 14. 新建 `docs/IWESUN_RUNTIME_USER_GUIDE.md` 作为业务接入权威手册，依次覆盖主程序替换、进程/线程/任务替换、诊断单点注入、业务状态与退出、JSON 与 CLI 清单。
 15. 用户手册设计见 `docs/superpowers/specs/2026-07-12-runtime-user-guide-design.md`；CLI v3 实施前必须将其标记为迁移中，不得冒充当前可用功能。
+16. 用户手册已落地为 `docs/IWESUN_RUNTIME_USER_GUIDE.md`，包含五个主章、Debug/Release 矩阵和完整接入/迁移检查表。
+17. Runtime 接入技能已安装到 `C:/Users/LYH/.codex/skills/iwesun-runtime-integration`，并保留字节级一致的仓库副本 `skills/iwesun-runtime-integration`。
+18. 技能主副本已分别通过 `skill-creator/quick_validate.py`，且目录对比无差异。
 
 ### 当前阶段执行状态
 

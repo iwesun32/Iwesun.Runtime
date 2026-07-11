@@ -1,0 +1,4 @@
+interface:
+  display_name: "Iwesun Runtime Integration"
+  short_description: "Integrate .NET hosts with Iwesun Runtime safely"
+  default_prompt: "Use $iwesun-runtime-integration to migrate this .NET host to the standard Runtime startup, managed execution, diagnostics, state, shutdown, and CLI patterns."

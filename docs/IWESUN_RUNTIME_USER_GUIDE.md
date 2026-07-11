@@ -601,3 +601,11 @@ CLI 客户端退出不改变服务端断点状态，也不触发宿主退出。
 - [ ] 删除 Release 中未隔离的 Break/Watch 调试注入。
 - [ ] 删除“CLI 断开自动恢复断点”的旧逻辑和文档。
 - [ ] CLI v3 完成后删除 v2 配置、旧命令名和文本 workflow 步骤。
+
+## 附录 E：Codex 接入技能
+
+Runtime 仓库包含可复制技能：
+
+`skills/iwesun-runtime-integration/`
+
+将该目录整体复制到其他 Codex 环境的技能目录后，可以通过 `$iwesun-runtime-integration` 触发主程序替换、受管对象替换、单点诊断注入、状态退出和 JSON/CLI 流程。
