@@ -174,15 +174,17 @@ Stopped                → IRManagedState.TransitionTo(BizState.Done)
 
 ## 五、注入界面（快速接入指南）
 
-### 5.1 宿主启动（三行接入）
+> **已迁移**：业务接入的当前权威步骤见 [IWESUN_RUNTIME_USER_GUIDE.md](IWESUN_RUNTIME_USER_GUIDE.md)。本章下方的旧片段只作为设计演进背景，不得作为新宿主的复制模板。
+
+### 5.1 宿主启动（当前标准）
 
 ```csharp
 // Program.cs 启动入口
 var builder = Host.CreateApplicationBuilder(args);
-builder.Services.AddRuntimeDiagnostics(runtimeDirectory);          // 注册服务
+builder.Logging.AddRuntimeDiagnostics();
+builder.Services.Start(runtimeDirectory);
 using var host = builder.Build();
-host.Services.UseRuntimeDiagnostics();                             // 激活管道
-host.Services.BuildDiagnosticRegistries(Assembly.GetExecutingAssembly()); // 扫描注册
+host.Services.Activate(Assembly.GetExecutingAssembly());
 await host.RunAsync();
 ```
 
@@ -325,6 +327,8 @@ await DiagnosticSwitchboard.ShutdownAsync();
 
 ## 六、JSON 指令格式规范
 
+> 用户可复制的当前帧样例和长度前缀规范见 [IWESUN_RUNTIME_USER_GUIDE.md](IWESUN_RUNTIME_USER_GUIDE.md#5-json-与-cli-清单)。
+
 ### 6.1 设计原则
 
 - JSON 帧是**指令帧**，数据是指令的附加；不是纯数据传输格式。
@@ -438,7 +442,7 @@ await DiagnosticSwitchboard.ShutdownAsync();
 命名管道上使用带长度前缀的帧：
 
 ```
-[4 bytes: payload length (big-endian int32)] [N bytes: UTF-8 JSON]
+[4 bytes: payload length (little-endian int32)] [N bytes: UTF-8 JSON]
 ```
 
 CLI 负责帧的组装与发送；业务侧不直接操作管道。
@@ -459,6 +463,8 @@ CLI 负责帧的组装与发送；业务侧不直接操作管道。
 ---
 
 ## 七、CLI 命令格式规范
+
+> **v2 已废弃，v3 迁移中**：本章下方的 `commands.v2`、`sw.*`、`bp.*`、`reg.*` 只是历史参考，不再是新 CLI 规范。已批准的 v3 设计见 [2026-07-12-cli-v3-redesign.md](superpowers/specs/2026-07-12-cli-v3-redesign.md)。
 
 ### 7.1 设计定位
 

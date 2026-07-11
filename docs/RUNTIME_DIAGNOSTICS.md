@@ -1,5 +1,7 @@
 # 运行时诊断
 
+> 业务宿主启动、受管进程/线程/任务、单点注入和协调退出的权威用法见 [IWESUN_RUNTIME_USER_GUIDE.md](IWESUN_RUNTIME_USER_GUIDE.md)。本文只解释诊断内核。
+
 > command/state 控制面使用固定宽度匿名共享 FIFO：主控 FIFO 深度 128，逐单元 FIFO 深度 64。状态发送 `RuntimeState.Code`，控制发送 `RuntimeManagedCommandKind`；复杂内容继续走诊断管道。旧的命名 command/state MMF 和字符串/Base64 帧已退出活动实现。
 
 > **状态**: CURRENT | **最后更新**: 2026-07-09

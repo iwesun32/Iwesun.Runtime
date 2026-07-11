@@ -4,6 +4,8 @@
 
 本文档用于统一 Runtime 文档、CLI 命令界面和诊断协议的表达方式，减少入口分散与术语不一致。
 
+> 业务操作入口统一为 [IWESUN_RUNTIME_USER_GUIDE.md](IWESUN_RUNTIME_USER_GUIDE.md)；CLI 当前正在从已废弃 v2 迁移到已批准 v3 架构。
+
 ## 1. 统一目标
 
 - **入口统一**：所有活跃文档从 `docs/README.md` 进入

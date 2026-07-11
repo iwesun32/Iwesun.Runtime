@@ -1,7 +1,9 @@
-# Iwesun Runtime CLI
+# Iwesun Runtime CLI（v2 历史手册）
 
-> **状态**: CURRENT | **最后更新**: 2026-07-09
+> **状态**: DEPRECATED / CLI v3 迁移中 | **最后更新**: 2026-07-12
 > **源码参考**: `Iwesun.Runtime.Cli/`
+
+> 本文完整记录尚待从源码删除的 v2 CLI，仅用于迁移对照，不再定义新命令。新配置、规范命名和结构化 workflow 见 [CLI v3 重构设计](superpowers/specs/2026-07-12-cli-v3-redesign.md)；业务接入与 JSON 概览见 [Iwesun Runtime 用户手册](IWESUN_RUNTIME_USER_GUIDE.md)。
 
 `Iwesun.Runtime.Cli` 是连接正在运行的服务的统一命令行入口，用于实时诊断、快照查询、事件排空、登记表读取和 WebRuntime 控制命令。
 

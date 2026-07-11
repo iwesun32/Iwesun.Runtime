@@ -7,6 +7,7 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | 文档 | 说明 |
 | --- | --- |
 | **[IWESUN_RUNTIME_DESIGN.md](IWESUN_RUNTIME_DESIGN.md)** | ⭐ **完整设计文档**：架构、功能分类、注入界面、JSON指令、CLI格式 |
+| **[IWESUN_RUNTIME_USER_GUIDE.md](IWESUN_RUNTIME_USER_GUIDE.md)** | 业务接入权威手册：主程序、受管执行、单点注入、状态退出、JSON/CLI |
 | [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | 项目总览：定位、结构、依赖关系、核心链路 |
 | [RUNTIME_DIAGNOSTICS.md](RUNTIME_DIAGNOSTICS.md) | 运行时诊断核心机制、协议与输出控制 |
 | [RUNTIME_ROOT_DATA_STRUCTURE.md](RUNTIME_ROOT_DATA_STRUCTURE.md) | RuntimeRoot 单根挂载的数据结构总览（T01~T10） |
