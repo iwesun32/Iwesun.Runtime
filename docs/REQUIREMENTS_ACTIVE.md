@@ -18,6 +18,8 @@
 11. CLI 全面重构为 v3，彻底删除旧 schema、旧命令名、旧命令字符串组合步骤和 v2 配置。
 12. CLI v3 保留并规范化用户别名、自定义命令、结构化 workflow、endpoint 覆盖、扩展、替换和禁用能力。
 13. CLI v3 正式设计见 `docs/superpowers/specs/2026-07-12-cli-v3-redesign.md`。
+14. 新建 `docs/IWESUN_RUNTIME_USER_GUIDE.md` 作为业务接入权威手册，依次覆盖主程序替换、进程/线程/任务替换、诊断单点注入、业务状态与退出、JSON 与 CLI 清单。
+15. 用户手册设计见 `docs/superpowers/specs/2026-07-12-runtime-user-guide-design.md`；CLI v3 实施前必须将其标记为迁移中，不得冒充当前可用功能。
 
 ### 当前阶段执行状态
 
