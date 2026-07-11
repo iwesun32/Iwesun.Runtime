@@ -431,8 +431,8 @@ public class RProcess : Process
                 Action = "announce",
                 Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["name"] = JsonSerializer.SerializeToElement(UnitId),
-                    ["pipeName"] = JsonSerializer.SerializeToElement(_branchPipeName),
+					["requestedPipeName"] = JsonSerializer.SerializeToElement(UnitId),
+					["resolvedPipeName"] = JsonSerializer.SerializeToElement(_branchPipeName),
                     ["aggregatePipeName"] = JsonSerializer.SerializeToElement(aggregatePipe),
                     ["ownerProcessId"] = JsonSerializer.SerializeToElement(Environment.ProcessId)
                 }

@@ -7,9 +7,9 @@ namespace Iwesun.Runtime.Diagnostics;
 
 public sealed record RuntimePipeLeaseSnapshot(
 	int InternalId,
-	string BranchId,
-	string RequestedName,
-	string PipeName,
+	string Name,
+	string RequestedPipeName,
+	string ResolvedPipeName,
 	string AggregatePipeName,
 	int OwnerProcessId,
 	bool Active,
@@ -25,12 +25,12 @@ public static class RuntimePipeRegistry
 	private static int _nextInternalId;
 
 	public static string AcquirePipe(
-		string requestedName,
+		string requestedPipeName,
 		string? aggregatePipeName = null,
 		string? pipePrefix = null)
 	{
-		ArgumentException.ThrowIfNullOrWhiteSpace(requestedName);
-		var normalizedRequest = NormalizeName(requestedName);
+		ArgumentException.ThrowIfNullOrWhiteSpace(requestedPipeName);
+		var normalizedRequest = NormalizeName(requestedPipeName);
 		var effectiveAggregate = string.IsNullOrWhiteSpace(aggregatePipeName)
 			? DiagnosticSwitchboardCompiledConfig.DefaultRuntimeDiagnosticsPipeName
 			: aggregatePipeName.Trim();
@@ -39,33 +39,33 @@ public static class RuntimePipeRegistry
 			: pipePrefix.Trim();
 		var now = DateTimeOffset.UtcNow;
 		var currentPid = Environment.ProcessId;
-		var branchId = BuildUniqueBranchId(normalizedRequest);
+		var name = BuildUniqueName(normalizedRequest);
 		var internalId = Interlocked.Increment(ref _nextInternalId);
-		var pipeName = BuildPipeName(branchId, effectivePrefix);
-		EnsurePipeCreatable(pipeName);
+		var resolvedPipeName = ResolvePipeName(name, effectivePrefix);
+		EnsurePipeCreatable(resolvedPipeName);
 		var lease = RuntimePipeLeaseState.Create(
 			internalId,
-			branchId,
+			name,
 			normalizedRequest,
-			pipeName,
+			resolvedPipeName,
 			effectiveAggregate,
 			currentPid,
 			now);
-		Leases[branchId] = lease;
+		Leases[name] = lease;
 		LeasesById[internalId] = lease;
-		return lease.PipeName;
+		return lease.ResolvedPipeName;
 	}
 
 	public static RuntimePipeLeaseSnapshot AnnouncePipe(
-		string requestedName,
-		string pipeName,
+		string requestedPipeName,
+		string resolvedPipeName,
 		string? aggregatePipeName = null,
 		int? ownerProcessId = null)
 	{
-		ArgumentException.ThrowIfNullOrWhiteSpace(requestedName);
-		ArgumentException.ThrowIfNullOrWhiteSpace(pipeName);
-		var normalizedRequest = NormalizeName(requestedName);
-		var normalizedPipeName = pipeName.Trim();
+		ArgumentException.ThrowIfNullOrWhiteSpace(requestedPipeName);
+		ArgumentException.ThrowIfNullOrWhiteSpace(resolvedPipeName);
+		var normalizedRequest = NormalizeName(requestedPipeName);
+		var normalizedPipeName = resolvedPipeName.Trim();
 		var effectiveAggregate = string.IsNullOrWhiteSpace(aggregatePipeName)
 			? DiagnosticSwitchboardCompiledConfig.DefaultRuntimeDiagnosticsPipeName
 			: aggregatePipeName.Trim();
@@ -73,8 +73,8 @@ public static class RuntimePipeRegistry
 		var effectiveOwnerProcessId = ownerProcessId ?? Environment.ProcessId;
 
 		var existing = Leases.Values.FirstOrDefault(x =>
-			x.RequestedName.Equals(normalizedRequest, StringComparison.OrdinalIgnoreCase)
-			&& x.PipeName.Equals(normalizedPipeName, StringComparison.OrdinalIgnoreCase));
+			x.RequestedPipeName.Equals(normalizedRequest, StringComparison.OrdinalIgnoreCase)
+			&& x.ResolvedPipeName.Equals(normalizedPipeName, StringComparison.OrdinalIgnoreCase));
 		if (existing is not null)
 		{
 			existing.AggregatePipeName = effectiveAggregate;
@@ -84,25 +84,25 @@ public static class RuntimePipeRegistry
 			return existing.ToSnapshot();
 		}
 
-		var branchId = BuildUniqueBranchId(normalizedRequest);
+		var name = BuildUniqueName(normalizedRequest);
 		var internalId = Interlocked.Increment(ref _nextInternalId);
 		var lease = RuntimePipeLeaseState.Create(
 			internalId,
-			branchId,
+			name,
 			normalizedRequest,
 			normalizedPipeName,
 			effectiveAggregate,
 			effectiveOwnerProcessId,
 			now);
-		Leases[branchId] = lease;
+		Leases[name] = lease;
 		LeasesById[internalId] = lease;
 		return lease.ToSnapshot();
 	}
 
-	public static bool ReleasePipe(string branchOrId)
+	public static bool ReleasePipe(string nameOrId)
 	{
-		ArgumentException.ThrowIfNullOrWhiteSpace(branchOrId);
-		if (!TryResolve(branchOrId, out var lease))
+		ArgumentException.ThrowIfNullOrWhiteSpace(nameOrId);
+		if (!TryResolve(nameOrId, out var lease))
 		{
 			return false;
 		}
@@ -112,10 +112,10 @@ public static class RuntimePipeRegistry
 		return true;
 	}
 
-	public static string? ResolveAggregatePipe(string branchOrId)
+	public static string? ResolveAggregatePipe(string nameOrId)
 	{
-		ArgumentException.ThrowIfNullOrWhiteSpace(branchOrId);
-		if (!TryResolve(branchOrId, out var lease) || !lease.Active)
+		ArgumentException.ThrowIfNullOrWhiteSpace(nameOrId);
+		if (!TryResolve(nameOrId, out var lease) || !lease.Active)
 		{
 			return null;
 		}
@@ -123,10 +123,10 @@ public static class RuntimePipeRegistry
 		return lease.AggregatePipeName;
 	}
 
-	public static RuntimePipeLeaseSnapshot? GetLease(string branchOrId)
+	public static RuntimePipeLeaseSnapshot? GetLease(string nameOrId)
 	{
-		ArgumentException.ThrowIfNullOrWhiteSpace(branchOrId);
-		return TryResolve(branchOrId, out var lease)
+		ArgumentException.ThrowIfNullOrWhiteSpace(nameOrId);
+		return TryResolve(nameOrId, out var lease)
 			? lease.ToSnapshot()
 			: null;
 	}
@@ -135,7 +135,7 @@ public static class RuntimePipeRegistry
 	{
 		return Leases.Values
 			.Where(x => includeInactive || x.Active)
-			.OrderBy(x => x.BranchId, StringComparer.OrdinalIgnoreCase)
+			.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
 			.Select(x => x.ToSnapshot())
 			.ToArray();
 	}
@@ -166,26 +166,26 @@ public static class RuntimePipeRegistry
 		return normalized;
 	}
 
-	private static string BuildUniqueBranchId(string normalizedRequest)
+	private static string BuildUniqueName(string normalizedRequest)
 	{
 		var suffix = 0;
 		while (true)
 		{
-			var branchId = suffix == 0
+			var name = suffix == 0
 				? normalizedRequest
-				: $"{normalizedRequest}-{suffix:00}";
-			if (!Leases.ContainsKey(branchId))
+				: $"{normalizedRequest}_{suffix:000}";
+			if (!Leases.ContainsKey(name))
 			{
-				return branchId;
+				return name;
 			}
 
 			suffix++;
 		}
 	}
 
-	private static string BuildPipeName(string branchId, string prefix)
+	private static string ResolvePipeName(string name, string prefix)
 	{
-		return $"{prefix}.{branchId}";
+		return $"{prefix}.{name}";
 	}
 
 	private static void EnsurePipeCreatable(string pipeName)
@@ -198,24 +198,24 @@ public static class RuntimePipeRegistry
 			PipeOptions.Asynchronous);
 	}
 
-	private static bool TryResolve(string branchOrId, out RuntimePipeLeaseState lease)
+	private static bool TryResolve(string nameOrId, out RuntimePipeLeaseState lease)
 	{
 		lease = null!;
-		if (int.TryParse(branchOrId.Trim(), out var internalId))
+		if (int.TryParse(nameOrId.Trim(), out var internalId))
 		{
 			return LeasesById.TryGetValue(internalId, out lease!);
 		}
 
-		return Leases.TryGetValue(NormalizeName(branchOrId), out lease!);
+		return Leases.TryGetValue(NormalizeName(nameOrId), out lease!);
 	}
 
 	private sealed class RuntimePipeLeaseState
 	{
 		private RuntimePipeLeaseState(
 			int internalId,
-			string branchId,
-			string requestedName,
-			string pipeName,
+			string name,
+			string requestedPipeName,
+			string resolvedPipeName,
 			string aggregatePipeName,
 			int ownerProcessId,
 			DateTimeOffset createdAt,
@@ -223,9 +223,9 @@ public static class RuntimePipeRegistry
 			bool active)
 		{
 			InternalId = internalId;
-			BranchId = branchId;
-			RequestedName = requestedName;
-			PipeName = pipeName;
+			Name = name;
+			RequestedPipeName = requestedPipeName;
+			ResolvedPipeName = resolvedPipeName;
 			AggregatePipeName = aggregatePipeName;
 			OwnerProcessId = ownerProcessId;
 			CreatedAt = createdAt;
@@ -234,9 +234,9 @@ public static class RuntimePipeRegistry
 		}
 
 		public int InternalId { get; }
-		public string BranchId { get; }
-		public string RequestedName { get; }
-		public string PipeName { get; }
+		public string Name { get; }
+		public string RequestedPipeName { get; }
+		public string ResolvedPipeName { get; }
 		public string AggregatePipeName { get; set; }
 		public int OwnerProcessId { get; set; }
 		public bool Active { get; set; }
@@ -247,9 +247,9 @@ public static class RuntimePipeRegistry
 		{
 			return new RuntimePipeLeaseSnapshot(
 				InternalId,
-				BranchId,
-				RequestedName,
-				PipeName,
+				Name,
+				RequestedPipeName,
+				ResolvedPipeName,
 				AggregatePipeName,
 				OwnerProcessId,
 				Active,
@@ -259,18 +259,18 @@ public static class RuntimePipeRegistry
 
 		public static RuntimePipeLeaseState Create(
 			int internalId,
-			string branchId,
-			string requestedName,
-			string pipeName,
+			string name,
+			string requestedPipeName,
+			string resolvedPipeName,
 			string aggregatePipeName,
 			int ownerProcessId,
 			DateTimeOffset now)
 		{
 			return new RuntimePipeLeaseState(
 				internalId,
-				branchId,
-				requestedName,
-				pipeName,
+				name,
+				requestedPipeName,
+				resolvedPipeName,
 				aggregatePipeName,
 				ownerProcessId,
 				now,

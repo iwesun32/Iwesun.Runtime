@@ -1257,9 +1257,9 @@ static class FunctionalChildRunner
         checks.Add("static-acquire-ok");
 
         var duplicatePipe = RuntimePipeRegistry.AcquirePipe(staticName, diagnosticsPipeName);
-        if (string.Equals(staticPipe, duplicatePipe, StringComparison.OrdinalIgnoreCase))
+		if (!duplicatePipe.Equals($"{staticPipe}_001", StringComparison.OrdinalIgnoreCase))
         {
-            failures.Add("duplicate acquire should append suffix and create another pipe name.");
+			failures.Add($"duplicate acquire should resolve to '{staticPipe}_001', actual '{duplicatePipe}'.");
         }
         else
         {
@@ -1311,6 +1311,28 @@ static class FunctionalChildRunner
             return FunctionalScenarioResult.Fail("pipe-registry", checks, failures);
         }
         checks.Add("pipe-id-present");
+
+		if (!firstLease.TryGetProperty("RequestedPipeName", out var requestedPipeNameNode)
+			|| requestedPipeNameNode.ValueKind != JsonValueKind.String
+			|| string.IsNullOrWhiteSpace(requestedPipeNameNode.GetString()))
+		{
+			failures.Add("pipe lease missing RequestedPipeName.");
+		}
+		else
+		{
+			checks.Add("requested-pipe-name-present");
+		}
+
+		if (!firstLease.TryGetProperty("ResolvedPipeName", out var resolvedPipeNameNode)
+			|| resolvedPipeNameNode.ValueKind != JsonValueKind.String
+			|| string.IsNullOrWhiteSpace(resolvedPipeNameNode.GetString()))
+		{
+			failures.Add("pipe lease missing ResolvedPipeName.");
+		}
+		else
+		{
+			checks.Add("resolved-pipe-name-present");
+		}
 
         var resolve = await hub.ExecuteAsync(new RuntimeDiagnosticAction
         {
@@ -1716,7 +1738,7 @@ static class FunctionalChildRunner
                 var leaseJson = JsonSerializer.SerializeToElement(leaseList.Value);
                 processGuardianAnnounced = leaseJson.ValueKind == JsonValueKind.Array
                     && leaseJson.EnumerateArray().Any(x =>
-                        x.TryGetProperty("RequestedName", out var requestedName)
+					x.TryGetProperty("RequestedPipeName", out var requestedName)
                         && requestedName.GetString() == process.UnitId);
             }
 

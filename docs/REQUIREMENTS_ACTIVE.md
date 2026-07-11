@@ -1,7 +1,29 @@
 # 活跃需求文档
 
 > 状态：ACTIVE  
-> 最后更新：2026-07-11
+> 最后更新：2026-07-12
+
+## 当前任务（WebView2 JSON 协议与 CLI 重规划）
+
+1. `Iwesun.Runtime.WebView2` 需借用 Runtime 的命名管道与 JSON 转发能力。
+2. 第一阶段不改变 WebView2 业务功能；先统一 JSON 命名、请求/响应包装、错误结构、请求标识和类型化 payload 风格。
+3. JSON 协议是权威层；CLI 只负责把人类命令编译为协议 JSON，不得反向让协议迎合 CLI 文本。
+4. 命名管道申请必须同时检查进程内活动租约与操作系统实际占用。
+5. 申请名已占用时，依次使用 `_001`、`_002`、`_003` 后缀；首个未占用名作为最终管道名返回。
+6. 名称检查、排他创建和租约登记必须是同一个原子流程；不允许“试创建后立即释放，仅返回字符串”的竞争窗口。
+7. 管道服务端或专用租约对象必须持有排他管道实例，直到正式释放租约。
+8. 在完成 JSON 风格统一和管道所有权边界设计后，再统一重规划 CLI 命令、组合命令、批处理和 WebRuntime 转发。
+9. 管道登记模型仿照文件登记：`Name` 是登记键，`RequestedPipeName` 是原始申请名，`ResolvedPipeName` 是避让冲突后真正落地的管道名。
+10. `RequestedPipeName` 与 `ResolvedPipeName` 必须在 JSON 中作为两个独立字段返回，不再使用 `BranchId` / `PipeName` 承担多重含义。
+
+### 当前阶段执行状态
+
+- [x] 管道租约快照已统一为 `Name / RequestedPipeName / ResolvedPipeName`。
+- [x] 重名避让后缀已统一为 `_001`、`_002` 顺序。
+- [x] CLI `pipe.acquire` 参数已改为 `requestedPipeName`。
+- [x] RProcess 跨进程公告已使用 `requestedPipeName / resolvedPipeName`。
+- [x] Debug / Release 构建通过；`pipe-registry`、`process`、`tree-process` 真实场景通过。
+- [ ] 操作系统排他占位句柄与多进程同名竞争尚待下一阶段实施。
 
 ## 当前任务（临时追加）
 

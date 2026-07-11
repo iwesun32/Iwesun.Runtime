@@ -11,6 +11,7 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | [RUNTIME_DIAGNOSTICS.md](RUNTIME_DIAGNOSTICS.md) | 运行时诊断核心机制、协议与输出控制 |
 | [RUNTIME_ROOT_DATA_STRUCTURE.md](RUNTIME_ROOT_DATA_STRUCTURE.md) | RuntimeRoot 单根挂载的数据结构总览（T01~T10） |
 | [IWESUN_RUNTIME_CLI.md](IWESUN_RUNTIME_CLI.md) | CLI 命令手册、配置驱动与管道入口 |
+| [WEBVIEW2_JSON_PIPE_CLI_PLAN.md](WEBVIEW2_JSON_PIPE_CLI_PLAN.md) | WebView2 统一 JSON 协议、管道唯一申请与 CLI 重规划 |
 | [REQUIREMENTS_ACTIVE.md](REQUIREMENTS_ACTIVE.md) | 当前活跃需求、功能覆盖与执行复核 |
 | [UNIFIED_INTERFACE.md](UNIFIED_INTERFACE.md) | 统一界面与术语规范 |
 | [AI_ACCESS_RECHECK.md](AI_ACCESS_RECHECK.md) | AI 忽略/禁止/推荐读取范围复核 |

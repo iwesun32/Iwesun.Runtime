@@ -29,9 +29,9 @@ public sealed class RuntimeProxyCommandTarget : RuntimeDiagnosticTargetBase
 		if (string.IsNullOrWhiteSpace(module))
 			return RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "module is required.");
 
-		var pipeToken = ReadString(command, "pipe") ?? ReadString(command, "name") ?? ReadString(command, "branchId") ?? ReadString(command, "id");
+		var pipeToken = ReadString(command, "pipe") ?? ReadString(command, "name") ?? ReadString(command, "id");
 		if (string.IsNullOrWhiteSpace(pipeToken))
-			return RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "pipe/name/branchId/id is required.");
+			return RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "pipe/name/id is required.");
 
 		var lease = RuntimePipeRegistry.GetLease(pipeToken);
 		if (lease == null)
@@ -41,7 +41,7 @@ public sealed class RuntimeProxyCommandTarget : RuntimeDiagnosticTargetBase
 		if (!DiagnosticSwitchboard.IsProxyModuleAllowed(module))
 			return RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, $"Module '{module}' is blocked by proxy module whitelist.");
 		if (!IsModuleAuthorized(module, lease))
-			return RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, $"Module '{module}' is not authorized for lease '{lease.BranchId}'.");
+			return RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, $"Module '{module}' is not authorized for lease '{lease.Name}'.");
 
 		var targetId = ReadString(command, "targetId") ?? "web.runtime";
 		var proxyAction = ReadString(command, "proxyAction") ?? ReadString(command, "forwardAction") ?? ReadString(command, "webAction");
@@ -78,7 +78,7 @@ public sealed class RuntimeProxyCommandTarget : RuntimeDiagnosticTargetBase
 				RequestId = Guid.NewGuid().ToString("N"),
 				Timestamp = DateTimeOffset.UtcNow,
 				Source = "runtime.proxy",
-				Destination = lease.PipeName
+				Destination = lease.ResolvedPipeName
 			},
 			Command = new RuntimeDiagnosticFrameCommand
 			{
@@ -94,7 +94,7 @@ public sealed class RuntimeProxyCommandTarget : RuntimeDiagnosticTargetBase
 		{
 			var connectTimeoutMs = ReadInt(command, "connectTimeoutMs") ?? 3000;
 			var ioTimeoutMs = ReadInt(command, "ioTimeoutMs") ?? 15000;
-			var response = await SendFrameAsync(lease.PipeName, request, connectTimeoutMs, ioTimeoutMs, ct).ConfigureAwait(false);
+			var response = await SendFrameAsync(lease.ResolvedPipeName, request, connectTimeoutMs, ioTimeoutMs, ct).ConfigureAwait(false);
 
 			if (response.Status?.Ok != true)
 			{
@@ -136,10 +136,10 @@ public sealed class RuntimeProxyCommandTarget : RuntimeDiagnosticTargetBase
 	private static bool IsModuleAuthorized(string module, RuntimePipeLeaseSnapshot lease)
 	{
 		var normalizedModule = module.Trim();
-		return lease.RequestedName.Equals(normalizedModule, StringComparison.OrdinalIgnoreCase)
-			|| lease.BranchId.Equals(normalizedModule, StringComparison.OrdinalIgnoreCase)
-			|| lease.BranchId.StartsWith($"{normalizedModule}.", StringComparison.OrdinalIgnoreCase)
-			|| lease.BranchId.StartsWith($"{normalizedModule}-", StringComparison.OrdinalIgnoreCase);
+		return lease.RequestedPipeName.Equals(normalizedModule, StringComparison.OrdinalIgnoreCase)
+			|| lease.Name.Equals(normalizedModule, StringComparison.OrdinalIgnoreCase)
+			|| lease.Name.StartsWith($"{normalizedModule}.", StringComparison.OrdinalIgnoreCase)
+			|| lease.Name.StartsWith($"{normalizedModule}_", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static Dictionary<string, JsonElement> BuildForwardedArgs(Dictionary<string, JsonElement>? args)
@@ -153,7 +153,6 @@ public sealed class RuntimeProxyCommandTarget : RuntimeDiagnosticTargetBase
 			"module",
 			"pipe",
 			"name",
-			"branchId",
 			"id",
 			"targetId",
 			"proxyAction",

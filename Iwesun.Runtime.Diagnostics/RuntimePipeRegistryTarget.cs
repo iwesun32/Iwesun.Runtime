@@ -21,32 +21,31 @@ public sealed class RuntimePipeRegistryTarget : RuntimeDiagnosticTargetBase
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, RuntimePipeRegistry.Snapshot(ReadBool(command, "includeInactive") ?? true)));
 			case "acquire":
 			case "register":
-				var requestedName = ReadString(command, "name")
-					?? ReadString(command, "requestedName")
-					?? ReadString(command, "branchId")
+				var requestedName = ReadString(command, "requestedPipeName")
+					?? ReadString(command, "name")
 					?? ReadString(command, "module");
 				if (string.IsNullOrWhiteSpace(requestedName))
-					return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "name/requestedName/branchId/module is required."));
+					return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "requestedPipeName/name/module is required."));
 				var acquiredPipe = RuntimePipeRegistry.AcquirePipe(
 					requestedName,
 					ReadString(command, "aggregatePipeName"),
 					ReadString(command, "pipePrefix"));
 				var acquiredLease = RuntimePipeRegistry.Snapshot(includeInactive: true)
-					.FirstOrDefault(x => x.PipeName.Equals(acquiredPipe, StringComparison.OrdinalIgnoreCase));
+					.FirstOrDefault(x => x.ResolvedPipeName.Equals(acquiredPipe, StringComparison.OrdinalIgnoreCase));
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, new
 				{
-					pipeName = acquiredPipe,
+					requestedPipeName = requestedName,
+					resolvedPipeName = acquiredPipe,
 					lease = acquiredLease
 				}));
 			case "release":
 			case "unregister":
 				var releaseToken = ReadString(command, "pipe")
 					?? ReadString(command, "name")
-					?? ReadString(command, "branchId")
 					?? ReadString(command, "id")
 					?? ReadString(command, "module");
 				if (string.IsNullOrWhiteSpace(releaseToken))
-					return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "pipe/name/branchId/id/module is required."));
+					return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "pipe/name/id/module is required."));
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, new
 				{
 					released = RuntimePipeRegistry.ReleasePipe(releaseToken),
@@ -56,11 +55,10 @@ public sealed class RuntimePipeRegistryTarget : RuntimeDiagnosticTargetBase
 			case "resolveaggregate":
 				var resolveToken = ReadString(command, "pipe")
 					?? ReadString(command, "name")
-					?? ReadString(command, "branchId")
 					?? ReadString(command, "id")
 					?? ReadString(command, "module");
 				if (string.IsNullOrWhiteSpace(resolveToken))
-					return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "pipe/name/branchId/id/module is required."));
+					return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "pipe/name/id/module is required."));
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, new
 				{
 					aggregatePipeName = RuntimePipeRegistry.ResolveAggregatePipe(resolveToken),
@@ -69,12 +67,11 @@ public sealed class RuntimePipeRegistryTarget : RuntimeDiagnosticTargetBase
 			case "announce":
 			case "connect":
 				var announceName = ReadString(command, "name")
-					?? ReadString(command, "branchId")
-					?? ReadString(command, "requestedName")
+					?? ReadString(command, "requestedPipeName")
 					?? ReadString(command, "module");
-				var announcePipe = ReadString(command, "pipeName") ?? ReadString(command, "pipe");
+				var announcePipe = ReadString(command, "resolvedPipeName") ?? ReadString(command, "pipe");
 				if (string.IsNullOrWhiteSpace(announceName) || string.IsNullOrWhiteSpace(announcePipe))
-					return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "name/requestedName/module and pipeName/pipe are required."));
+					return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "requestedPipeName/name/module and resolvedPipeName/pipe are required."));
 				var ownerProcessId = ReadInt(command, "ownerProcessId") ?? ReadInt(command, "processId");
 				var announced = RuntimePipeRegistry.AnnouncePipe(
 					announceName,
@@ -85,11 +82,10 @@ public sealed class RuntimePipeRegistryTarget : RuntimeDiagnosticTargetBase
 			case "get":
 				var getToken = ReadString(command, "pipe")
 					?? ReadString(command, "name")
-					?? ReadString(command, "branchId")
 					?? ReadString(command, "id")
 					?? ReadString(command, "module");
 				if (string.IsNullOrWhiteSpace(getToken))
-					return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "pipe/name/branchId/id/module is required."));
+					return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "pipe/name/id/module is required."));
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, RuntimePipeRegistry.GetLease(getToken)));
 			case "purge":
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, new
