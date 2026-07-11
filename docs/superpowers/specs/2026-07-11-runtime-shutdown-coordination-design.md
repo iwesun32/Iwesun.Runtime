@@ -44,6 +44,12 @@
 - 从 RuntimeManagedRegistry、执行登记表和反射目标中注销自身。
 - 返回正常结束结果并退出执行体。
 
+### 对象销毁与反登记
+
+`RProcess`、`RThread`、`RTask` 创建后即持有登记责任。除正常完成和协调关机路径外，显式 `Dispose`/`DisposeAsync` 也必须进入同一个幂等终止路径：停止或等待底层执行体、记录最终状态、移除反射目标、从执行表和 RuntimeManagedRegistry 反登记。对象尚未启动就被销毁时同样必须撤销预登记；重复销毁不得重复清理或抛出登记不存在错误。
+
+GC 终结器不执行异步业务清理、FIFO 通信或等待，只允许报告未显式销毁的泄漏诊断。业务正确性不能依赖终结器时机。
+
 ### RuntimeManagedRegistry 与 RuntimeRoot
 
 - RuntimeManagedRegistry 继续作为活动单元权威登记表。
@@ -105,6 +111,7 @@ StopDraining
 
 - 关机入口使用单飞任务：并发调用共享同一关机结果。
 - 每个 Guardian 使用原子状态保证清理处理器最多执行一次。
+- 正常完成、协调关机、显式销毁三条路径共享同一个终止任务和一次性反登记门。
 - Stop 命令可以重复发送，FIFO 消费与全局轮询可以同时命中。
 - 注销操作采用 Try/幂等语义；已经注销视为成功。
 - `StopRequested` 发布后，Registry 的新注册必须拒绝，或由协调器立即补发 Stop。
@@ -151,6 +158,12 @@ StopDraining
 
 - 并发触发多次 safe-shutdown，验证共享同一请求和结果。
 - 在 StopRequested 后尝试注册新单元，验证被拒绝或立即收到 Stop。
+
+### 对象销毁
+
+- 创建但不启动 RProcess/RThread/RTask，随后销毁，验证预登记和反射目标清空。
+- 在运行中调用 `DisposeAsync`，验证先进入规定清理流程，再反登记。
+- 重复调用 Dispose/DisposeAsync，验证清理与反登记都只执行一次。
 
 ### Release
 
