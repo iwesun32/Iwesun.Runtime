@@ -395,6 +395,9 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 		var managedRegistrations = _managed.SnapshotRegistrations();
 		var managedCommandQueues = _managed.SnapshotCommandQueues();
 		var managedEvents = _managed.SnapshotEvents(256);
+		var globalLifecycle = _managed.GlobalLifecycleState;
+		var globalLifecycleHistory = _managed.SnapshotGlobalLifecycleHistory(64);
+		var unitStateHistories = _managed.SnapshotAllUnitStateHistories(64);
 		_root.SetTableEntries("T08.ManagedTable.Registrations",
 			managedRegistrations.Select(registration => Entry(
 				$"managed.registration.{registration.UnitId}",
@@ -429,6 +432,35 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 					("table", "T08"),
 					("unitId", evt.UnitId),
 					("kind", evt.Kind)))));
+		_root.SetTableEntries("T08.ManagedTable.GlobalLifecycle",
+		[
+			Entry(
+				"managed.global.lifecycle.current",
+				globalLifecycle.CurrentState.Code.ToString(),
+				new
+				{
+					globalLifecycle,
+					exitDeadlineUtc = _managed.GlobalExitDeadlineUtc
+				},
+				Secondary(("table", "T08"), ("kind", "global-lifecycle"), ("name", globalLifecycle.CurrentState.Name)))
+		]);
+		_root.SetTableEntries("T08.ManagedTable.GlobalLifecycleHistory",
+			globalLifecycleHistory.Select((state, index) => Entry(
+				$"managed.global.lifecycle.history.{index}.{state.Code}",
+				$"{index:000}-{state.Code}",
+				state,
+				Secondary(("table", "T08"), ("kind", "global-lifecycle-history"), ("name", state.Name)))));
+		_root.SetTableEntries("T08.ManagedTable.UnitStateHistory",
+			unitStateHistories.SelectMany(pair =>
+				pair.Value.Select((state, index) => Entry(
+					$"managed.unit.history.{pair.Key}.{index}.{state.Code}",
+					$"{pair.Key}:{index:000}",
+					new
+					{
+						unitId = pair.Key,
+						state
+					},
+					Secondary(("table", "T08"), ("kind", "unit-state-history"), ("unitId", pair.Key), ("name", state.Name))))));
 		_root.SetTableEntries("T08.ManagedTable.Meta",
 		[
 			Entry(
@@ -440,7 +472,10 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 					commandQueueCount = managedCommandQueues.Count,
 					pendingCommandCount = _managed.PendingCommandCount,
 					droppedCommandCount = _managed.DroppedCommandCount,
-					eventCount = managedEvents.Count
+					eventCount = managedEvents.Count,
+					globalLifecycleState = globalLifecycle.CurrentState.Name,
+					globalLifecycleHistoryCount = globalLifecycleHistory.Count,
+					unitStateHistoryCount = unitStateHistories.Count
 				},
 				Secondary(("table", "T08")))
 		]);

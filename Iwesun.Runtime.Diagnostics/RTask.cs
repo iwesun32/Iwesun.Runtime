@@ -5,6 +5,7 @@ namespace Iwesun.Runtime.Diagnostics;
 
 public class RTask : Task
 {
+	private readonly RuntimeManagedUnitBase _unit;
 	private readonly RuntimeExecutionManager? _execution;
 	private readonly RuntimeManagedRegistry? _managed;
 	private readonly RuntimeExecutionLifetime _lifetime;
@@ -22,14 +23,16 @@ public class RTask : Task
 		string sourceLocation = "")
 		: base(action)
 	{
-		UnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
-		_execution = RuntimeInjectionContext.Execution;
-		_managed = RuntimeInjectionContext.Managed;
+		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		UnitId = _unit.UnitId;
+		_execution = _unit.Execution;
+		_managed = _unit.Managed;
 		_lifetime = lifetime;
 		_category = category;
 		_threadId = threadId;
 		_sourceLocation = sourceLocation;
-		State = new RManagedState(UnitId);
+		State = _unit.State;
 		AttachCompletion();
 	}
 
@@ -43,14 +46,16 @@ public class RTask : Task
 		string sourceLocation = "")
 		: base(action, cancellationToken)
 	{
-		UnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
-		_execution = RuntimeInjectionContext.Execution;
-		_managed = RuntimeInjectionContext.Managed;
+		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		UnitId = _unit.UnitId;
+		_execution = _unit.Execution;
+		_managed = _unit.Managed;
 		_lifetime = lifetime;
 		_category = category;
 		_threadId = threadId;
 		_sourceLocation = sourceLocation;
-		State = new RManagedState(UnitId);
+		State = _unit.State;
 		AttachCompletion();
 	}
 
@@ -64,14 +69,16 @@ public class RTask : Task
 		string sourceLocation = "")
 		: base(action, state)
 	{
-		UnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
-		_execution = RuntimeInjectionContext.Execution;
-		_managed = RuntimeInjectionContext.Managed;
+		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		UnitId = _unit.UnitId;
+		_execution = _unit.Execution;
+		_managed = _unit.Managed;
 		_lifetime = lifetime;
 		_category = category;
 		_threadId = threadId;
 		_sourceLocation = sourceLocation;
-		State = new RManagedState(UnitId);
+		State = _unit.State;
 		AttachCompletion();
 	}
 
@@ -86,28 +93,40 @@ public class RTask : Task
 		string sourceLocation = "")
 		: base(action, state, cancellationToken)
 	{
-		UnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
-		_execution = RuntimeInjectionContext.Execution;
-		_managed = RuntimeInjectionContext.Managed;
+		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		UnitId = _unit.UnitId;
+		_execution = _unit.Execution;
+		_managed = _unit.Managed;
 		_lifetime = lifetime;
 		_category = category;
 		_threadId = threadId;
 		_sourceLocation = sourceLocation;
-		State = new RManagedState(UnitId);
+		State = _unit.State;
 		AttachCompletion();
 	}
 
 	public string UnitId { get; }
 	public IRManagedState State { get; }
 
-	public void SetDetail(string key, string value) => State.SetDetail(key, value);
-	public bool TryGetDetail(string key, out string? value) => State.TryGetDetail(key, out value);
-	public RuntimeState TransitionTo(string stateName) => State.TransitionTo(stateName);
-	public bool TryTransitionTo(string stateName) => State.TryTransitionTo(stateName);
+	public void SetDetail(string key, string value) => _unit.SetDetail(key, value);
+	public bool TryGetDetail(string key, out string? value) => _unit.TryGetDetail(key, out value);
+	public RuntimeState TransitionTo(string stateName) => _unit.TransitionTo(stateName);
+	public bool TryTransitionTo(string stateName) => _unit.TryTransitionTo(stateName);
 
 	public new void Start()
 	{
 		EnsureRegistered();
+		if (_managed?.IsGlobalStopOrExitRequested == true)
+		{
+			State.SetDetail("error", "global-stop");
+			State.TransitionTo("Stop");
+			_execution?.SetTaskState(UnitId, RuntimeTaskState.Cancelled, step: "global-stop", threadId: _threadId, payload: State.Snapshot());
+			_managed?.PublishEvent(UnitId, "task-global-stop", "Task start cancelled due to global stop/exit state.", State.Snapshot());
+			_managed?.Unregister(UnitId);
+			return;
+		}
+
 		MarkRunning();
 		base.Start();
 	}
@@ -116,6 +135,16 @@ public class RTask : Task
 	{
 		ArgumentNullException.ThrowIfNull(scheduler);
 		EnsureRegistered();
+		if (_managed?.IsGlobalStopOrExitRequested == true)
+		{
+			State.SetDetail("error", "global-stop");
+			State.TransitionTo("Stop");
+			_execution?.SetTaskState(UnitId, RuntimeTaskState.Cancelled, step: "global-stop", threadId: _threadId, payload: State.Snapshot());
+			_managed?.PublishEvent(UnitId, "task-global-stop", "Task start cancelled due to global stop/exit state.", State.Snapshot());
+			_managed?.Unregister(UnitId);
+			return;
+		}
+
 		MarkRunning();
 		base.Start(scheduler);
 	}

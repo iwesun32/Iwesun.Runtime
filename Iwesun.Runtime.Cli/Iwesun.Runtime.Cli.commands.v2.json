@@ -334,6 +334,183 @@
       }
     },
     {
+      "name": "process.mem.get",
+      "aliases": ["process.ref.get", "process-get"],
+      "help": "Read one process memory member via reflection",
+      "usage": "process.mem.get <unitId> <member>",
+      "examples": ["process.mem.get process.abc123 UnitId", "process-get process.abc123 _branchPipeName"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "get",
+      "targetId": "runtime.managed",
+      "action": "process.mem.get",
+      "params": {
+        "unitId": { "type": "string", "position": 0, "required": true },
+        "member": { "type": "string", "position": 1, "required": true }
+      }
+    },
+    {
+      "name": "process.mem.nav",
+      "aliases": ["process.ref.nav", "process-nav"],
+      "help": "Navigate process object path via reflection",
+      "usage": "process.mem.nav <unitId> <path>",
+      "examples": ["process.mem.nav process.abc123 StartInfo.FileName", "process-nav process.abc123 State.State.CurrentPath"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "navigate",
+      "targetId": "runtime.managed",
+      "action": "process.mem.nav",
+      "params": {
+        "unitId": { "type": "string", "position": 0, "required": true },
+        "member": { "type": "string", "position": 1, "required": true }
+      }
+    },
+    {
+      "name": "lifecycle.get",
+      "aliases": ["state.global.get", "lifecycle-get"],
+      "help": "Get global lifecycle state and history",
+      "usage": "lifecycle.get [count]",
+      "examples": ["lifecycle.get", "lifecycle.get 32"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "get",
+      "targetId": "runtime.managed",
+      "action": "lifecycle.get",
+      "params": {
+        "count": { "type": "int", "position": 0, "required": false, "default": "32" }
+      }
+    },
+    {
+      "name": "lifecycle.set",
+      "aliases": ["state.global.set", "lifecycle-set"],
+      "help": "Set global lifecycle state (Initialize/Running/Pause/Stop/Exit)",
+      "usage": "lifecycle.set <name> [countdownMs]",
+      "examples": ["lifecycle.set Running", "lifecycle.set Stop 8000"],
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "set",
+      "targetId": "runtime.managed",
+      "action": "lifecycle.set",
+      "params": {
+        "name": { "type": "string", "position": 0, "required": true },
+        "countdownMs": { "type": "int", "position": 1, "required": false }
+      }
+    },
+    {
+      "name": "lifecycle.shutdown",
+      "aliases": ["shutdown.request", "lifecycle-shutdown"],
+      "help": "Set global stop state with deadline and broadcast stop command",
+      "usage": "lifecycle.shutdown [countdownMs]",
+      "examples": ["lifecycle.shutdown", "lifecycle.shutdown 10000"],
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "shutdown",
+      "targetId": "runtime.managed",
+      "action": "lifecycle.shutdown",
+      "params": {
+        "countdownMs": { "type": "int", "position": 0, "required": false, "default": "5000" }
+      }
+    },
+    {
+      "name": "lifecycle.status",
+      "aliases": ["shutdown.status", "lifecycle-status"],
+      "help": "Evaluate shutdown readiness and suggested exit code",
+      "usage": "lifecycle.status",
+      "examples": ["lifecycle.status"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "status",
+      "targetId": "runtime.managed",
+      "action": "lifecycle.status"
+    },
+    {
+      "name": "reflection.refresh",
+      "aliases": ["registry.refresh", "reflection-refresh"],
+      "help": "Refresh reflection registry/target list",
+      "usage": "reflection.refresh",
+      "examples": ["reflection.refresh"],
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "refresh",
+      "targetId": "runtime.managed",
+      "action": "reflection.refresh"
+    },
+    {
+      "name": "reflection.list",
+      "aliases": ["registry.targets", "reflection-list"],
+      "help": "List current registered reflection targets",
+      "usage": "reflection.list",
+      "examples": ["reflection.list"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "targetId": "runtime.managed",
+      "action": "reflection.list"
+    },
+    {
+      "name": "unit.state.get",
+      "aliases": ["state.unit.get", "unit-state-get"],
+      "help": "Get one unit shared state",
+      "usage": "unit.state.get <unitId>",
+      "examples": ["unit.state.get process.abc123"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "get",
+      "targetId": "runtime.managed",
+      "action": "unit.state.get",
+      "params": {
+        "unitId": { "type": "string", "position": 0, "required": true }
+      }
+    },
+    {
+      "name": "unit.state.history",
+      "aliases": ["state.unit.history", "unit-state-history"],
+      "help": "Get one unit DList-like state history",
+      "usage": "unit.state.history <unitId> [count]",
+      "examples": ["unit.state.history process.abc123", "unit.state.history thread.xyz 50"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "list",
+      "targetId": "runtime.managed",
+      "action": "unit.state.history",
+      "params": {
+        "unitId": { "type": "string", "position": 0, "required": true },
+        "count": { "type": "int", "position": 1, "required": false, "default": "32" }
+      }
+    },
+    {
+      "name": "unit.state.transition",
+      "aliases": ["state.unit.transition", "unit-state-transition"],
+      "help": "Transition one unit state by state name",
+      "usage": "unit.state.transition <unitId> <stateName>",
+      "examples": ["unit.state.transition process.abc123 Stop"],
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "set",
+      "targetId": "runtime.managed",
+      "action": "unit.state.transition",
+      "params": {
+        "unitId": { "type": "string", "position": 0, "required": true },
+        "stateName": { "type": "string", "position": 1, "required": true }
+      }
+    },
+    {
+      "name": "unit.state.subtask.append",
+      "aliases": ["state.unit.subtask.append", "unit-state-subtask-append"],
+      "help": "Append one state to unit subtask DList",
+      "usage": "unit.state.subtask.append <unitId> <stateName>",
+      "examples": ["unit.state.subtask.append task.abc123 Working"],
+      "transport": "diagnostics",
+      "category": "instruction",
+      "operation": "append",
+      "targetId": "runtime.managed",
+      "action": "unit.state.subtask.append",
+      "params": {
+        "unitId": { "type": "string", "position": 0, "required": true },
+        "stateName": { "type": "string", "position": 1, "required": true }
+      }
+    },
+    {
       "name": "thread.list",
       "aliases": ["thread.ls", "thread-list"],
       "help": "Snapshot thread execution state",

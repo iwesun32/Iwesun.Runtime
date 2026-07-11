@@ -9,19 +9,32 @@ namespace Iwesun.Runtime.Diagnostics;
 public class RProcess : Process
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly RuntimeManagedUnitBase _unit;
     private readonly RuntimeExecutionManager? _execution;
     private readonly RuntimeManagedRegistry? _managed;
+    private readonly RuntimeDiagnosticHub? _hub;
+    private readonly DelegateRuntimeManagedCommandHandler _commandHandler;
     private readonly CancellationTokenSource _pipeGuardianCts = new();
     private int _registered;
+    private int _globalStopHandled;
     private Task? _pipeGuardianTask;
     private string? _branchPipeName;
 
     public RProcess(string? unitId = null)
     {
-        UnitId = string.IsNullOrWhiteSpace(unitId) ? $"process.{Guid.NewGuid():N}" : unitId;
-        State = new RManagedState(UnitId);
-        _execution = RuntimeInjectionContext.Execution;
-        _managed = RuntimeInjectionContext.Managed;
+        var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"process.{Guid.NewGuid():N}" : unitId;
+        _unit = new RuntimeManagedUnitBase(resolvedUnitId);
+        UnitId = _unit.UnitId;
+        State = _unit.State;
+        _execution = _unit.Execution;
+        _managed = _unit.Managed;
+        _hub = RuntimeInjectionContext.Hub;
+        _commandHandler = new DelegateRuntimeManagedCommandHandler(UnitId, _managed)
+        {
+            OnStopAction = command => TryHandleGlobalStop(command.Payload),
+            OnWakeupAction = command => _managed?.PublishEvent(UnitId, "process-guardian-wakeup", "Process guardian received wakeup command.", new { command.Sequence, command.Payload }),
+            OnSnapshotAction = _ => _managed?.PublishEvent(UnitId, "process-guardian-snapshot", "Process guardian snapshot requested.", State.Snapshot())
+        };
         EnableRaisingEvents = true;
         Exited += OnExited;
     }
@@ -30,10 +43,10 @@ public class RProcess : Process
     public string RuntimeProcessId => UnitId;
     public IRManagedState State { get; }
 
-    public void SetDetail(string key, string value) => State.SetDetail(key, value);
-    public bool TryGetDetail(string key, out string? value) => State.TryGetDetail(key, out value);
-    public RuntimeState TransitionTo(string stateName) => State.TransitionTo(stateName);
-    public bool TryTransitionTo(string stateName) => State.TryTransitionTo(stateName);
+    public void SetDetail(string key, string value) => _unit.SetDetail(key, value);
+    public bool TryGetDetail(string key, out string? value) => _unit.TryGetDetail(key, out value);
+    public RuntimeState TransitionTo(string stateName) => _unit.TransitionTo(stateName);
+    public bool TryTransitionTo(string stateName) => _unit.TryTransitionTo(stateName);
 
     public new bool Start()
     {
@@ -63,6 +76,7 @@ public class RProcess : Process
         base.Kill();
         StopPipeGuardian();
         RuntimePipeRegistry.ReleasePipe(UnitId);
+        UnregisterReflectionTarget();
         State.SetDetail("error", "killed");
         State.TransitionTo("Stop");
         _execution?.SetTaskState(UnitId, RuntimeTaskState.Cancelled, step: "killed", error: "Killed by caller.", payload: State.Snapshot());
@@ -74,6 +88,7 @@ public class RProcess : Process
         base.Kill(entireProcessTree);
         StopPipeGuardian();
         RuntimePipeRegistry.ReleasePipe(UnitId);
+        UnregisterReflectionTarget();
         State.SetDetail("error", entireProcessTree ? "killed-tree" : "killed");
         State.TransitionTo("Stop");
         _execution?.SetTaskState(UnitId, RuntimeTaskState.Cancelled, step: "killed", error: entireProcessTree ? "Killed process tree." : "Killed by caller.", payload: State.Snapshot());
@@ -182,6 +197,7 @@ public class RProcess : Process
             step: "registered",
             payload: State.Snapshot());
         _managed?.Register(UnitId, "process", "InternalManaged", State.Snapshot());
+        RegisterReflectionTarget();
         _branchPipeName = RuntimePipeRegistry.AcquirePipe(UnitId, DiagnosticSwitchboard.Snapshot().RuntimeDiagnosticsPipeName);
         State.SetDetail("branchPipe", _branchPipeName);
         _managed?.PublishEvent(UnitId, "process-branch-pipe-acquired", "Process branch pipe acquired.", new { unitId = UnitId, branchPipe = _branchPipeName });
@@ -191,6 +207,7 @@ public class RProcess : Process
     {
         StopPipeGuardian();
         RuntimePipeRegistry.ReleasePipe(UnitId);
+        UnregisterReflectionTarget();
         State.SetDetail("exitCode", ExitCode.ToString());
         State.TransitionTo("Stop");
         var state = ExitCode == 0 ? RuntimeTaskState.Completed : RuntimeTaskState.Faulted;
@@ -205,9 +222,55 @@ public class RProcess : Process
         {
             return;
         }
-
         _pipeGuardianTask = Task.Run(() => PipeGuardianLoopAsync(_pipeGuardianCts.Token));
     }
+
+    private void RegisterReflectionTarget()
+    {
+        if (_hub == null)
+        {
+            return;
+        }
+
+        var targetId = GetReflectionTargetId(UnitId);
+        _hub.Unregister(targetId);
+        _hub.RegisterObject(targetId, this, BuildReflectionAccess());
+        _managed?.PublishEvent(UnitId, "process-reflection-registered", "Process reflection target registered.", new { targetId });
+    }
+
+    private void UnregisterReflectionTarget()
+    {
+        if (_hub == null)
+        {
+            return;
+        }
+
+        var targetId = GetReflectionTargetId(UnitId);
+        if (_hub.Unregister(targetId))
+        {
+            _managed?.PublishEvent(UnitId, "process-reflection-unregistered", "Process reflection target unregistered.", new { targetId });
+        }
+    }
+
+    private static RuntimeDiagnosticObjectAccess BuildReflectionAccess()
+    {
+        return new RuntimeDiagnosticObjectAccess
+        {
+            AllowReadAllPublic = true,
+            ReadableMembers =
+            [
+                nameof(UnitId),
+                nameof(RuntimeProcessId),
+                nameof(State),
+                nameof(StartInfo),
+                nameof(EnableRaisingEvents),
+                "_branchPipeName",
+                "_registered"
+            ]
+        };
+    }
+
+    private static string GetReflectionTargetId(string unitId) => $"runtime.process.{unitId}";
 
     private void StopPipeGuardian()
     {
@@ -225,6 +288,16 @@ public class RProcess : Process
     {
         while (!cancellationToken.IsCancellationRequested)
         {
+            if (_managed?.IsGlobalStopOrExitRequested == true && Interlocked.Exchange(ref _globalStopHandled, 1) == 0)
+            {
+                TryHandleGlobalStop();
+            }
+
+            if (_managed?.TryDequeueCommand(UnitId, out var command) == true && command is not null)
+            {
+                _commandHandler.Handle(command);
+            }
+
             if (HasProcessExitedSafely())
             {
                 return;
@@ -246,7 +319,36 @@ public class RProcess : Process
                 _managed?.PublishEvent(UnitId, "process-guardian-announce-failed", ex.Message, new { unitId = UnitId, branchPipe = _branchPipeName });
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private void TryHandleGlobalStop(string? commandPayload = null)
+    {
+        try
+        {
+            var deadline = RuntimeManagedPayloadInterpreter.GetDateTimeOffset(commandPayload, "deadlineUtc");
+            _managed?.PublishEvent(UnitId, "process-global-stop", "Global stop/exit state observed by process guardian.", new { unitId = UnitId, deadlineUtc = deadline });
+            if (HasExited)
+            {
+                return;
+            }
+
+            if (CloseMainWindow())
+            {
+                if (!WaitForExit(1500))
+                {
+                    Kill(entireProcessTree: true);
+                }
+
+                return;
+            }
+
+            Kill(entireProcessTree: true);
+        }
+        catch (Exception ex)
+        {
+            _managed?.PublishEvent(UnitId, "process-global-stop-faulted", ex.Message, new { unitId = UnitId });
         }
     }
 

@@ -8,12 +8,14 @@ public sealed class RThread
 	private const int NormalExitCode = 0;
 	private const int TimeoutExitCode = 124;
 	private readonly Thread _inner;
+	private readonly RuntimeManagedUnitBase _unit;
 	private readonly RuntimeExecutionManager? _execution;
 	private readonly RuntimeManagedRegistry? _managed;
 	private readonly RuntimeExecutionLifetime _lifetime;
 	private readonly RuntimeThreadKind _kind;
 	private readonly string _owner;
 	private readonly string _sourceLocation;
+	private readonly DelegateRuntimeManagedCommandHandler _commandHandler;
 	private readonly int _stopTimeoutMilliseconds;
 	private readonly CancellationTokenSource _guardianCts = new();
 	private Task? _guardianLoop;
@@ -21,6 +23,7 @@ public sealed class RThread
 	private int _guardianStarted;
 	private int _exitCode = NormalExitCode;
 	private int _exitCompletedRaised;
+	private int _globalStopHandled;
 
 	public RThread(
 		ThreadStart start,
@@ -33,16 +36,24 @@ public sealed class RThread
 		int stopTimeoutMilliseconds = 5000)
 	{
 		ArgumentNullException.ThrowIfNull(start);
-		UnitId = string.IsNullOrWhiteSpace(unitId) ? $"thread.{Guid.NewGuid():N}" : unitId;
+		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"thread.{Guid.NewGuid():N}" : unitId;
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		UnitId = _unit.UnitId;
 		_lifetime = lifetime;
 		_kind = kind;
 		_owner = owner;
 		_sourceLocation = sourceLocation;
 		_stopTimeoutMilliseconds = Math.Max(100, stopTimeoutMilliseconds);
-		_execution = RuntimeInjectionContext.Execution;
-		_managed = RuntimeInjectionContext.Managed;
-		State = new RManagedState(UnitId);
+		_execution = _unit.Execution;
+		_managed = _unit.Managed;
+		State = _unit.State;
 		_inner = new Thread(() => Execute(start));
+		_commandHandler = new DelegateRuntimeManagedCommandHandler(UnitId, _managed)
+		{
+			OnStopAction = HandleStopCommand,
+			OnWakeupAction = cmd => _managed?.PublishEvent(UnitId, "thread-wakeup-command", "Wakeup command received.", new { cmd.Sequence, cmd.Payload }),
+			OnSnapshotAction = _ => _managed?.PublishEvent(UnitId, "thread-snapshot-command", "Snapshot command received.", State.Snapshot())
+		};
 		if (!string.IsNullOrWhiteSpace(name))
 		{
 			_inner.Name = name;
@@ -60,16 +71,24 @@ public sealed class RThread
 		int stopTimeoutMilliseconds = 5000)
 	{
 		ArgumentNullException.ThrowIfNull(start);
-		UnitId = string.IsNullOrWhiteSpace(unitId) ? $"thread.{Guid.NewGuid():N}" : unitId;
+		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"thread.{Guid.NewGuid():N}" : unitId;
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		UnitId = _unit.UnitId;
 		_lifetime = lifetime;
 		_kind = kind;
 		_owner = owner;
 		_sourceLocation = sourceLocation;
 		_stopTimeoutMilliseconds = Math.Max(100, stopTimeoutMilliseconds);
-		_execution = RuntimeInjectionContext.Execution;
-		_managed = RuntimeInjectionContext.Managed;
-		State = new RManagedState(UnitId);
+		_execution = _unit.Execution;
+		_managed = _unit.Managed;
+		State = _unit.State;
 		_inner = new Thread(parameter => Execute(start, parameter));
+		_commandHandler = new DelegateRuntimeManagedCommandHandler(UnitId, _managed)
+		{
+			OnStopAction = HandleStopCommand,
+			OnWakeupAction = cmd => _managed?.PublishEvent(UnitId, "thread-wakeup-command", "Wakeup command received.", new { cmd.Sequence, cmd.Payload }),
+			OnSnapshotAction = _ => _managed?.PublishEvent(UnitId, "thread-snapshot-command", "Snapshot command received.", State.Snapshot())
+		};
 		if (!string.IsNullOrWhiteSpace(name))
 		{
 			_inner.Name = name;
@@ -81,6 +100,7 @@ public sealed class RThread
 	public int ExitCode => Volatile.Read(ref _exitCode);
 	public event EventHandler<RThreadExitRequestedEventArgs>? ExitRequested;
 	public event EventHandler<RThreadExitResultEventArgs>? ExitCompleted;
+	public event EventHandler<RThreadExitRequestedEventArgs>? ExitHandlingRequested;
 
 	public string? Name
 	{
@@ -104,10 +124,10 @@ public sealed class RThread
 	public ThreadState ThreadState => _inner.ThreadState;
 	public int ManagedThreadId => _inner.ManagedThreadId;
 
-	public void SetDetail(string key, string value) => State.SetDetail(key, value);
-	public bool TryGetDetail(string key, out string? value) => State.TryGetDetail(key, out value);
-	public RuntimeState TransitionTo(string stateName) => State.TransitionTo(stateName);
-	public bool TryTransitionTo(string stateName) => State.TryTransitionTo(stateName);
+	public void SetDetail(string key, string value) => _unit.SetDetail(key, value);
+	public bool TryGetDetail(string key, out string? value) => _unit.TryGetDetail(key, out value);
+	public RuntimeState TransitionTo(string stateName) => _unit.TransitionTo(stateName);
+	public bool TryTransitionTo(string stateName) => _unit.TryTransitionTo(stateName);
 
 	public void Start()
 	{
@@ -133,15 +153,22 @@ public sealed class RThread
 	private RThread(Thread thread)
 	{
 		_inner = thread;
-		UnitId = $"thread.current.{thread.ManagedThreadId}";
-		State = new RManagedState(UnitId);
-		_execution = RuntimeInjectionContext.Execution;
-		_managed = RuntimeInjectionContext.Managed;
+		_unit = new RuntimeManagedUnitBase($"thread.current.{thread.ManagedThreadId}");
+		UnitId = _unit.UnitId;
+		State = _unit.State;
+		_execution = _unit.Execution;
+		_managed = _unit.Managed;
 		_stopTimeoutMilliseconds = 5000;
 		_lifetime = RuntimeExecutionLifetime.Dynamic;
 		_kind = RuntimeThreadKind.Custom;
 		_owner = "";
 		_sourceLocation = "";
+		_commandHandler = new DelegateRuntimeManagedCommandHandler(UnitId, _managed)
+		{
+			OnStopAction = HandleStopCommand,
+			OnWakeupAction = cmd => _managed?.PublishEvent(UnitId, "thread-wakeup-command", "Wakeup command received.", new { cmd.Sequence, cmd.Payload }),
+			OnSnapshotAction = _ => _managed?.PublishEvent(UnitId, "thread-snapshot-command", "Snapshot command received.", State.Snapshot())
+		};
 	}
 
 	private void EnsureRegistered()
@@ -183,12 +210,14 @@ public sealed class RThread
 	{
 		while (!cancellationToken.IsCancellationRequested)
 		{
+			if (_managed?.IsGlobalStopOrExitRequested == true && Interlocked.Exchange(ref _globalStopHandled, 1) == 0)
+			{
+				HandleStopCommand(new RuntimeManagedCommand(0, UnitId, RuntimeManagedCommandKind.Stop, "global-stop", DateTimeOffset.UtcNow));
+			}
+
 			if (_managed?.TryDequeueCommand(UnitId, out var command) == true && command is not null)
 			{
-				if (command.Kind == RuntimeManagedCommandKind.Stop)
-				{
-					HandleStopCommand(command);
-				}
+				_commandHandler.Handle(command);
 			}
 
 			try
@@ -205,7 +234,9 @@ public sealed class RThread
 	private void HandleStopCommand(RuntimeManagedCommand command)
 	{
 		State.SetDetail("stopCommandSeq", command.Sequence.ToString());
-		ExitRequested?.Invoke(this, new RThreadExitRequestedEventArgs(command.Sequence, command.Payload));
+		var args = new RThreadExitRequestedEventArgs(command.Sequence, command.Payload);
+		ExitRequested?.Invoke(this, args);
+		ExitHandlingRequested?.Invoke(this, args);
 		_managed?.PublishEvent(UnitId, "thread-exit-requested", "Stop command received by guardian loop.", new { command.Sequence, command.Payload });
 
 		try

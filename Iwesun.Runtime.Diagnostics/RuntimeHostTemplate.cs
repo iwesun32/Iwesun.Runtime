@@ -24,6 +24,7 @@ public static class RuntimeHostTemplate
 		provider.BuildDiagnosticRegistries(hostAssembly);
 		RuntimeInjectionContext.Configure(provider.GetService<RuntimeExecutionManager>());
 		RuntimeInjectionContext.ConfigureManaged(provider.GetService<RuntimeManagedRegistry>());
+		RuntimeInjectionContext.ConfigureHub(provider.GetService<RuntimeDiagnosticHub>());
 		return provider;
 	}
 
@@ -51,9 +52,11 @@ internal static class RuntimeInjectionContext
 {
 	private static RuntimeExecutionManager? _execution;
 	private static RuntimeManagedRegistry? _managed;
+	private static RuntimeDiagnosticHub? _hub;
 
 	public static RuntimeExecutionManager? Execution => Volatile.Read(ref _execution);
 	public static RuntimeManagedRegistry? Managed => Volatile.Read(ref _managed);
+	public static RuntimeDiagnosticHub? Hub => Volatile.Read(ref _hub);
 
 	public static void Configure(RuntimeExecutionManager? execution)
 	{
@@ -63,6 +66,11 @@ internal static class RuntimeInjectionContext
 	public static void ConfigureManaged(RuntimeManagedRegistry? managed)
 	{
 		Volatile.Write(ref _managed, managed);
+	}
+
+	public static void ConfigureHub(RuntimeDiagnosticHub? hub)
+	{
+		Volatile.Write(ref _hub, hub);
 	}
 }
 

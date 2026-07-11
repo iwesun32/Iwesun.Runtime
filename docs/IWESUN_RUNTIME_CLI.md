@@ -20,8 +20,10 @@ CLI 的职责是"发令"，不是"解释业务"。
 - `host.info` / `host.*`：主机信息与快照
 - `reg.*`：登记表与 watch/break/hook 查询
 - `bp.*`：断点列表、启用、恢复、数值断点绑定
-- `process.*`：进程注册列表
+- `process.*`：进程注册列表 + 进程反射内存变量读取
 - `thread.*`：线程执行快照
+- `lifecycle.*`：全局生命周期状态（Initialize/Running/Pause/Stop/Exit）与停机广播
+- `unit.state.*`：进程/线程/任务共享状态与状态历史（DList 语义）
 - `pipe.*`：分支管道申请、列表、解析、释放
 - `hook.*`：钩子列表、挂接、卸载
 - `sw.*`：开关板状态、输出点、FIFO、pipe 配置
@@ -105,6 +107,26 @@ iwrt bp setNumericThreshold numeric.default.range between 3 9
 # 进程/线程列表
 iwrt process.list
 iwrt thread.list
+
+# 进程反射读取内存变量（按 unitId）
+iwrt process.mem.get process.abc123 UnitId
+iwrt process.mem.nav process.abc123 StartInfo.FileName
+
+# 全局生命周期状态
+iwrt lifecycle.get
+iwrt lifecycle.set Running
+iwrt lifecycle.shutdown 10000
+iwrt lifecycle.status
+
+# 单个单元状态与历史（DList 语义）
+iwrt unit.state.get process.abc123
+iwrt unit.state.history process.abc123 50
+iwrt unit.state.transition process.abc123 Stop
+iwrt unit.state.subtask.append task.abc123 Working
+
+# 反射登记表刷新与目标列表
+iwrt reflection.refresh
+iwrt reflection.list
 
 # 分支专有管道注册与解析
 iwrt pipe.acquire webview2-agent

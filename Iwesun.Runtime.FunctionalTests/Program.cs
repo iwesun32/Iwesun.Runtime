@@ -350,6 +350,51 @@ static class FunctionalChildRunner
             checks.Add("events-present");
         }
 
+        var lifecycleSet = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "runtime.managed",
+            Action = "globalStateSet",
+            Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["name"] = JsonSerializer.SerializeToElement("Running")
+            }
+        });
+        if (!lifecycleSet.Success)
+        {
+            failures.Add($"global state set failed: {lifecycleSet.Error}");
+        }
+        else
+        {
+            checks.Add("global-state-set-ok");
+        }
+
+        var unitHistory = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = "runtime.managed",
+            Action = "unitStateHistory",
+            Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["unitId"] = JsonSerializer.SerializeToElement(unitId),
+                ["count"] = JsonSerializer.SerializeToElement(10)
+            }
+        });
+        if (!unitHistory.Success)
+        {
+            failures.Add($"unit state history failed: {unitHistory.Error}");
+        }
+        else
+        {
+            var historyJson = JsonSerializer.SerializeToElement(unitHistory.Value);
+            if (historyJson.ValueKind != JsonValueKind.Array || historyJson.GetArrayLength() == 0)
+            {
+                failures.Add("unit state history was empty.");
+            }
+            else
+            {
+                checks.Add("unit-state-history-ok");
+            }
+        }
+
         managed.Unregister(unitId);
         if (managed.SnapshotRegistrations().Any(x => x.UnitId == unitId))
         {
@@ -1089,6 +1134,29 @@ static class FunctionalChildRunner
             else
             {
                 checks.Add("process-list-command-ok");
+            }
+        }
+
+        var reflectionGet = await hub.ExecuteAsync(new RuntimeDiagnosticAction
+        {
+            TargetId = $"runtime.process.{process.UnitId}",
+            Action = "get",
+            Member = "UnitId"
+        });
+        if (!reflectionGet.Success)
+        {
+            failures.Add($"process reflection get failed: {reflectionGet.Error}");
+        }
+        else
+        {
+            var reflectedUnitId = JsonSerializer.SerializeToElement(reflectionGet.Value).GetString();
+            if (!string.Equals(reflectedUnitId, process.UnitId, StringComparison.Ordinal))
+            {
+                failures.Add($"process reflection returned unexpected UnitId: {reflectedUnitId}");
+            }
+            else
+            {
+                checks.Add("process-reflection-access-ok");
             }
         }
 
