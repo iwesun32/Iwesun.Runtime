@@ -26,10 +26,11 @@ try
 			composite,
 			parsed,
 			catalog.BaseLookup,
-			cmd => SendDiagnosticV2Async(options, null, null, cmd),
+			frame => SendDiagnosticFrameAsync(options, frame),
 			catalog.Memory);
 		Console.WriteLine(compositeResult);
-		return 0;
+		var compositeFrame = JsonSerializer.Deserialize<RuntimeDiagnosticFrame>(compositeResult, JsonDefaults.Options);
+		return compositeFrame?.Status?.Ok == true ? 0 : 1;
 	}
 
 	if (!catalog.BaseLookup.TryGetValue(parsed.FullName, out var commandDef))
@@ -67,6 +68,11 @@ static async Task<string> SendDiagnosticV2Async(
 	var semantic = CliSemanticCommand.From(parsed, commandDef, command);
 	var frame = RuntimeDiagnosticsFrameFactory.Wrap(semantic);
 
+	return await SendDiagnosticFrameAsync(options, frame);
+}
+
+static async Task<string> SendDiagnosticFrameAsync(CliOptions options, RuntimeDiagnosticFrame frame)
+{
 	var json = JsonSerializer.Serialize(frame, JsonDefaults.Options);
 	return await SendLengthPrefixedJsonAsync(
 		options.DiagnosticsPipeName,

@@ -82,10 +82,16 @@ RuntimeOutput.TracePoint("pipeline.stage", "DnsUpdateStage",
 
 Service 和 Agent 主机从 `diagnostic-switchboard.json` 启动专用运行时诊断管道（默认名：`DdnsSnap.Runtime.Diagnostics`）。
 
-管道接受 4 字节小端长度前缀的 `RuntimeDiagnosticFrame` JSON 消息（`schema=rtdiag/2.0`，`frameType=request`），并返回 `RuntimeDiagnosticFrame` 响应（`frameType=response`）。
+管道接受 4 字节小端长度前缀的 `RuntimeDiagnosticFrame` JSON 消息，并返回 `RuntimeDiagnosticFrame` 响应（`frameType=response`）。`rtdiag/2.0` 保留单命令兼容；`rtdiag/3.0` 提供服务端原生 batch，一次连接可完成多个有序功能步骤。
 
 统一协议约束：
 - 管道协议以 JSON Frame 为唯一入口，不再支持旧命令对象直连。
+- JSON 是权威功能协议，CLI 只是输入适配器；组合命令必须编译成一个 `rtdiag/3.0` batch frame，不能由客户端逐条重连发送。
+- batch 最多 128 步，每步有稳定 `id`、独立状态、数据和耗时；支持统一 deadline、`stopOnError`、单步 `continueOnError`、延迟及基于前序步骤成功状态的条件执行。
+- `when.path`/`when.expected` 可对前序步骤的 JSON 结果做字段条件；`bindings` 可把前序结果字段按原始 JSON 类型绑定到后续命令参数。绑定不经过字符串格式化，数字、布尔值、字符串和对象类型均保持不变。
+- 服务端按步骤返回 `OK`、`ERROR`、`SKIPPED` 或 `DEADLINE_EXCEEDED`，整体状态反映是否存在失败步骤。
+
+托管执行对象的退出规则：`RThread`、`RTask` 和 `RProcess` 只有在底层执行单元真实结束后才允许从 managed 登记表移除。token-aware `RTask` 通过 FIFO Stop 取消其框架拥有的 token；无 token 任务收到 Stop 后保持登记并等待自然完成，因此主控会在其未完成时正确进入超时，而不会误报正常退出。运行中的 `Dispose` 仅请求/延迟清理，不能提前反登记。
 - CLI 命令语法仅作为人机接口，最终全部包装为 Frame 下发到运行时。
 - 新增字段应优先扩展 `header`、`status`、`extStatus`、`data`，避免回退到旧结构。
 

@@ -7,6 +7,10 @@
 
 > 规范：系统内置命令统一使用 **dot-style 标准命令名**（如 `lifecycle.status`）。默认模板仅保留 canonical 名称（`aliases: []`）；解释器仍保持可配置，用户可在 `Iwesun.Runtime.Cli.commands.v2.json` 自行添加 aliases、compositeCommands 和新命令。
 
+组合命令不再由 CLI 逐条连接执行。CLI 只负责把命令配置和用户参数编译成一个 `rtdiag/3.0` batch frame；步骤顺序、延迟、deadline、失败停止和逐步结果均由 Diagnostics 服务端执行。这样组合命令无论包含多少步骤，都只发生一次管道请求。
+
+新的组合步骤可直接声明 `target`、`action`、`member`、`args`、`when` 和 `bindings`，不需要写 CLI 命令字符串。旧的 `command` 字符串形式暂时保留为兼容输入，编译后仍只发送结构化 batch。
+
 ## 定位
 
 CLI 不直接拥有浏览器，也不直接实现业务 HTTP。它负责把类 PowerShell 命令语法解析为语义命令，再统一包装为 JSON Frame，通过命名管道调用运行中的服务。

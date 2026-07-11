@@ -27,6 +27,7 @@ public sealed class RThread : IDisposable
 	private int _exitCompletedRaised;
 	private int _globalStopHandled;
 	private int _disposed;
+	private int _cleanupCompleted;
 
 	public RThread(
 		ThreadStart start,
@@ -292,13 +293,12 @@ public sealed class RThread : IDisposable
 			_execution?.SetThreadState(UnitId, RuntimeThreadState.Completed, managedThreadId: Environment.CurrentManagedThreadId, payload: State.Snapshot());
 			_managed?.PublishEvent(UnitId, "thread-completed", "Thread completed.", State.Snapshot());
 		}
-		catch (OperationCanceledException)
+		catch (Exception ex) when (ex is OperationCanceledException or ThreadInterruptedException)
 		{
 			State.SetDetail("error", "cancelled");
 			State.TransitionTo("Stop");
 			_execution?.SetThreadState(UnitId, RuntimeThreadState.Cancelled, managedThreadId: Environment.CurrentManagedThreadId, payload: State.Snapshot());
 			_managed?.PublishEvent(UnitId, "thread-cancelled", "Thread cancelled.", State.Snapshot());
-			throw;
 		}
 		catch (Exception ex)
 		{
@@ -310,6 +310,7 @@ public sealed class RThread : IDisposable
 		}
 		finally
 		{
+			ConsumePendingInterrupt();
 			if (Interlocked.Exchange(ref _exitCode, ExitCode) == ExitCode)
 			{
 				// Preserve current exit code; just ensuring the field is observed before final completion.
@@ -322,8 +323,7 @@ public sealed class RThread : IDisposable
 				RaiseExitCompletedOnce(new RThreadExitResultEventArgs(Volatile.Read(ref _exitCode), timedOut, message));
 			}
 
-			_guardianCts.Cancel();
-			_managed?.Unregister(UnitId);
+			CompleteLifetime();
 		}
 	}
 
@@ -339,13 +339,12 @@ public sealed class RThread : IDisposable
 			_execution?.SetThreadState(UnitId, RuntimeThreadState.Completed, managedThreadId: Environment.CurrentManagedThreadId, payload: State.Snapshot());
 			_managed?.PublishEvent(UnitId, "thread-completed", "Thread completed.", State.Snapshot());
 		}
-		catch (OperationCanceledException)
+		catch (Exception ex) when (ex is OperationCanceledException or ThreadInterruptedException)
 		{
 			State.SetDetail("error", "cancelled");
 			State.TransitionTo("Stop");
 			_execution?.SetThreadState(UnitId, RuntimeThreadState.Cancelled, managedThreadId: Environment.CurrentManagedThreadId, payload: State.Snapshot());
 			_managed?.PublishEvent(UnitId, "thread-cancelled", "Thread cancelled.", State.Snapshot());
-			throw;
 		}
 		catch (Exception ex)
 		{
@@ -357,6 +356,7 @@ public sealed class RThread : IDisposable
 		}
 		finally
 		{
+			ConsumePendingInterrupt();
 			if (Volatile.Read(ref _exitCompletedRaised) == 0)
 			{
 				var timedOut = Volatile.Read(ref _exitCode) == TimeoutExitCode;
@@ -364,8 +364,7 @@ public sealed class RThread : IDisposable
 				RaiseExitCompletedOnce(new RThreadExitResultEventArgs(Volatile.Read(ref _exitCode), timedOut, message));
 			}
 
-			_guardianCts.Cancel();
-			_managed?.Unregister(UnitId);
+			CompleteLifetime();
 		}
 	}
 
@@ -379,6 +378,22 @@ public sealed class RThread : IDisposable
 		ExitCompleted?.Invoke(this, args);
 	}
 
+	private static void ConsumePendingInterrupt()
+	{
+		try { Thread.Sleep(0); }
+		catch (ThreadInterruptedException) { }
+	}
+
+	private void CompleteLifetime()
+	{
+		if (Interlocked.Exchange(ref _cleanupCompleted, 1) == 1)
+			return;
+		try { _guardianCts.Cancel(); } catch (ObjectDisposedException) { }
+		_commandRegistration?.Dispose();
+		_managed?.Unregister(UnitId);
+		_guardianCts.Dispose();
+	}
+
 	public void Dispose()
 	{
 		if (Interlocked.Exchange(ref _disposed, 1) == 1)
@@ -389,11 +404,10 @@ public sealed class RThread : IDisposable
 		if (_inner.IsAlive)
 		{
 			HandleStopCommand(new RuntimeManagedCommand(0, UnitId, RuntimeManagedCommandKind.Stop, "dispose", DateTimeOffset.UtcNow));
+			if (_inner.IsAlive)
+				return;
 		}
 
-		_guardianCts.Cancel();
-		_commandRegistration?.Dispose();
-		_managed?.Unregister(UnitId);
-		_guardianCts.Dispose();
+		CompleteLifetime();
 	}
 }

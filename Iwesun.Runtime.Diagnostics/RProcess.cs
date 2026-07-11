@@ -55,10 +55,19 @@ public class RProcess : Process
 
     public new bool Start()
     {
-        EnsureRegistered();
-		if (!StartInfo.UseShellExecute && !string.IsNullOrWhiteSpace(_branchPipeName))
-			StartInfo.Environment["IWESUN_RUNTIME_DIAGNOSTICS_PIPE"] = _branchPipeName;
-        var started = base.Start();
+		bool started;
+		try
+		{
+			EnsureRegistered();
+			if (!StartInfo.UseShellExecute && !string.IsNullOrWhiteSpace(_branchPipeName))
+				StartInfo.Environment["IWESUN_RUNTIME_DIAGNOSTICS_PIPE"] = _branchPipeName;
+			started = base.Start();
+		}
+		catch
+		{
+			RollbackFailedStart();
+			throw;
+		}
         if (started)
         {
             State.TransitionTo("Working");
@@ -78,6 +87,25 @@ public class RProcess : Process
 
         return started;
     }
+
+	private void RollbackFailedStart()
+	{
+		StopPipeGuardian();
+		RuntimePipeRegistry.ReleasePipe(UnitId);
+		UnregisterReflectionTarget();
+		_managed?.Unregister(UnitId);
+		Interlocked.Exchange(ref _registered, 0);
+		try
+		{
+			State.SetDetail("error", "start-failed");
+			State.TransitionTo("Stop");
+			_execution?.SetTaskState(UnitId, RuntimeTaskState.Faulted, step: "start-failed", error: "Process start failed.", payload: State.Snapshot());
+		}
+		catch
+		{
+			// Preserve the original process start exception.
+		}
+	}
 
     public new void Kill()
     {
@@ -536,10 +564,33 @@ public class RProcess : Process
 			}
 			await Task.Delay(100, cancellationToken).ConfigureAwait(false);
 		}
+		_managed.ResumeLocalUnitDispatch(UnitId);
+		_managed.PublishEvent(UnitId, "process-instruction-handles-unavailable", "Child did not attach instruction handles; parent dispatcher resumed.", null);
 	}
 
 	protected override void Dispose(bool disposing)
 	{
+		if (Volatile.Read(ref _disposed) != 0)
+			return;
+
+		if (disposing && Volatile.Read(ref _registered) != 0 && !HasProcessExitedSafely())
+		{
+			var deadline = DateTimeOffset.UtcNow.AddSeconds(3);
+			_managed?.TryEnqueueCommand(UnitId, RuntimeManagedCommandKind.Stop,
+				RuntimeManagedPayloadInterpreter.ToJson(new { reason = "dispose", deadlineUtc = deadline }));
+			try { WaitForExit(1500); } catch { }
+			if (!HasProcessExitedSafely())
+			{
+				TryHandleGlobalStop(RuntimeManagedPayloadInterpreter.ToJson(new { reason = "dispose-timeout", deadlineUtc = deadline }));
+				try { WaitForExit(1500); } catch { }
+			}
+			if (!HasProcessExitedSafely())
+			{
+				_managed?.PublishEvent(UnitId, "process-dispose-deferred", "Process disposal deferred because the child is still alive.", new { deadline });
+				return;
+			}
+		}
+
 		if (Interlocked.Exchange(ref _disposed, 1) == 0)
 		{
 			StopPipeGuardian();

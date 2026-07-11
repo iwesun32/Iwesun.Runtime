@@ -54,6 +54,12 @@ public sealed class ParamDef
 public sealed class CompositeStep
 {
 	public string Command { get; init; } = "";
+	public string? Target { get; init; }
+	public string? Action { get; init; }
+	public string? Member { get; init; }
+	public Dictionary<string, JsonElement>? Args { get; init; }
+	public Dictionary<string, RuntimeDiagnosticBatchBinding>? Bindings { get; init; }
+	public RuntimeDiagnosticBatchCondition? When { get; init; }
 	public int Delay { get; init; }
 	public bool SkipOnError { get; init; }
 	public string? Condition { get; init; }

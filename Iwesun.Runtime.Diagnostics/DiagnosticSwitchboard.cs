@@ -51,12 +51,10 @@ public static class DiagnosticSwitchboard
 	private static readonly ConcurrentDictionary<string, DiagnosticStatementState> Statements = new(StringComparer.OrdinalIgnoreCase);
 	private static readonly SemaphoreSlim FifoSignal = new(0);
 	private static readonly object PumpGate = new();
-	private static readonly object SharedFifoGate = new();
 	private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 	private static ConcurrentQueue<string> Fifo = new();
 	private static DiagnosticSwitchboardConfigStore? _configStore;
 	private static RuntimeDiagnosticHub? _hub;
-	private static DiagnosticSharedFifoBus? _sharedFifo;
 	private static CancellationTokenSource? _pumpCts;
 	private static Task? _pumpTask;
 	private static List<DiagnosticOutputPointConfig> _outputPoints = [];
@@ -235,21 +233,10 @@ public static class DiagnosticSwitchboard
 
 	public static bool PutFifo(string value)
 	{
-		return PutFifo(value, DiagnosticSharedFifoChannelKind.Monitor);
-	}
-
-	private static bool PutFifo(string value, DiagnosticSharedFifoChannelKind channelKind)
-	{
 		if (!RuntimeOutputSwitch.Enabled)
 			return false;
 
 		value ??= "";
-		if (TryPutSharedFifo(channelKind, value))
-		{
-			FifoSignal.Release();
-			return true;
-		}
-
 		if (Volatile.Read(ref _fifoCount) >= _fifoDepth)
 		{
 			Interlocked.Increment(ref _fifoDropped);
@@ -369,7 +356,6 @@ public static class DiagnosticSwitchboard
 			: outputPointId;
 		var injectorRuntimeId = $"{processId}:{managedThreadId}:{injectorCompileId}";
 
-		var channelKind = ResolveSharedChannelKind(section, kind, outputPointId);
 		var raw = JsonSerializer.Serialize(new DiagnosticFifoEnvelope(
 			outputPointId,
 			section,
@@ -381,7 +367,7 @@ public static class DiagnosticSwitchboard
 			managedThreadId,
 			injectorCompileId,
 			injectorRuntimeId), JsonOptions);
-		PutFifo(raw, channelKind);
+		PutFifo(raw);
 	}
 
 	private static void ProcessEnvelope(DiagnosticFifoEnvelope envelope)
@@ -520,7 +506,6 @@ public static class DiagnosticSwitchboard
 		}
 
 		UpdateInputEnabled();
-		ResetSharedFifo();
 		EnsurePump();
 		if (publishEvent)
 			PublishControlEvent("runtime.diagnostics", "config-reloaded", new { global = GlobalEnabled, sections = config.Sections.Count });
@@ -630,7 +615,6 @@ public static class DiagnosticSwitchboard
 		{
 			fileWriteThread?.Join(500);
 			fileWriteCts?.Dispose();
-			DisposeSharedFifo();
 			return;
 		}
 
@@ -654,7 +638,6 @@ public static class DiagnosticSwitchboard
 		finally
 		{
 			pumpCts.Dispose();
-			DisposeSharedFifo();
 		}
 
 		// Wait for file thread to drain its queue (up to 2 s).
@@ -682,111 +665,6 @@ public static class DiagnosticSwitchboard
 				}
 			}
 
-			while (TryGetSharedFifo(out var sharedRaw))
-			{
-				try
-				{
-					var envelope = JsonSerializer.Deserialize<DiagnosticFifoEnvelope>(sharedRaw, JsonOptions);
-					if (envelope != null)
-						ProcessEnvelope(envelope with { Raw = sharedRaw });
-				}
-				catch
-				{
-					var invalidSharedPoint = RuntimeStaticInjectorCatalog.GetOutputPointId(RuntimeStaticOutputPoint.DiagnosticsSharedFifoInvalid);
-					ProcessEnvelope(new DiagnosticFifoEnvelope(invalidSharedPoint, "error", "diagnostic.sharedfifo.invalid", "Invalid shared FIFO entry.", null, DateTimeOffset.UtcNow, Environment.ProcessId, Environment.CurrentManagedThreadId, invalidSharedPoint, $"{Environment.ProcessId}:{Environment.CurrentManagedThreadId}:{invalidSharedPoint}", sharedRaw));
-				}
-			}
-		}
-	}
-
-	private static DiagnosticSharedFifoChannelKind ResolveSharedChannelKind(string section, string kind, string? outputPointId)
-	{
-		if (RuntimeStaticInjectorCatalog.TryResolve(outputPointId, section, kind, out var descriptor))
-		{
-			return descriptor.Channel == RuntimeInjectorChannelKind.Breakpoint
-				? DiagnosticSharedFifoChannelKind.Breakpoint
-				: DiagnosticSharedFifoChannelKind.Monitor;
-		}
-
-		return DiagnosticSharedFifoChannelKind.Monitor;
-	}
-
-	private static bool TryPutSharedFifo(DiagnosticSharedFifoChannelKind kind, string value)
-	{
-		if (!OperatingSystem.IsWindows())
-		{
-			return false;
-		}
-
-		var shared = EnsureSharedFifo();
-		if (shared == null)
-		{
-			return false;
-		}
-
-		return shared.TryEnqueue(kind, value);
-	}
-
-	private static bool TryGetSharedFifo(out string value)
-	{
-		value = string.Empty;
-		if (!OperatingSystem.IsWindows())
-		{
-			return false;
-		}
-
-		var shared = EnsureSharedFifo();
-		if (shared == null)
-		{
-			return false;
-		}
-
-		return shared.TryDequeue(out value);
-	}
-
-	private static DiagnosticSharedFifoBus? EnsureSharedFifo()
-	{
-		if (!OperatingSystem.IsWindows())
-		{
-			return null;
-		}
-
-		lock (SharedFifoGate)
-		{
-			if (_sharedFifo != null)
-			{
-				return _sharedFifo;
-			}
-
-			var scope = $"{DiagnosticPipePrefix.Prefix}.{_runtimeDiagnosticsPipeName}";
-			_sharedFifo = DiagnosticSharedFifoBus.TryCreate(scope);
-			return _sharedFifo;
-		}
-	}
-
-	private static void ResetSharedFifo()
-	{
-		lock (SharedFifoGate)
-		{
-			if (OperatingSystem.IsWindows())
-			{
-				_sharedFifo?.Dispose();
-			}
-
-			_sharedFifo = null;
-		}
-	}
-
-	private static void DisposeSharedFifo()
-	{
-		lock (SharedFifoGate)
-		{
-			if (OperatingSystem.IsWindows())
-			{
-				_sharedFifo?.Dispose();
-			}
-
-			_sharedFifo = null;
 		}
 	}
 

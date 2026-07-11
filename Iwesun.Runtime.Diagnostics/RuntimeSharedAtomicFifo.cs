@@ -19,6 +19,7 @@ internal sealed unsafe class RuntimeSharedAtomicFifo : IDisposable
 	private readonly bool _attached;
 	private readonly int _capacity;
 	private readonly int _mask;
+	private readonly object _lifetimeGate = new();
 	private byte* _pointer;
 	private int _disposed;
 
@@ -56,14 +57,14 @@ internal sealed unsafe class RuntimeSharedAtomicFifo : IDisposable
 	public static RuntimeSharedAtomicFifo Attach(nint mappingHandle, nint eventHandle, int capacity) =>
 		new(mappingHandle, eventHandle, capacity);
 
-	public nint MappingHandle => _mapping?.SafeMemoryMappedFileHandle.DangerousGetHandle() ?? _attachedMappingHandle;
-	public nint EventHandle => _wakeEvent.SafeWaitHandle.DangerousGetHandle();
+	public nint MappingHandle { get { lock (_lifetimeGate) { ThrowIfDisposed(); return _mapping?.SafeMemoryMappedFileHandle.DangerousGetHandle() ?? _attachedMappingHandle; } } }
+	public nint EventHandle { get { lock (_lifetimeGate) { ThrowIfDisposed(); return _wakeEvent.SafeWaitHandle.DangerousGetHandle(); } } }
 
 	public int Capacity => _capacity;
-	public long PendingCount => Math.Max(0, Volatile.Read(ref WritePosition) - Volatile.Read(ref ReadPosition));
-	public long DroppedCount => Volatile.Read(ref Dropped);
-	public long CommitGeneration => Volatile.Read(ref Generation);
-	public WaitHandle WakeHandle => _wakeEvent;
+	public long PendingCount { get { lock (_lifetimeGate) { ThrowIfDisposed(); return Math.Max(0, Volatile.Read(ref WritePosition) - Volatile.Read(ref ReadPosition)); } } }
+	public long DroppedCount { get { lock (_lifetimeGate) { ThrowIfDisposed(); return Volatile.Read(ref Dropped); } } }
+	public long CommitGeneration { get { lock (_lifetimeGate) { ThrowIfDisposed(); return Volatile.Read(ref Generation); } } }
+	public WaitHandle WakeHandle { get { lock (_lifetimeGate) { ThrowIfDisposed(); return _wakeEvent; } } }
 
 	private ref long WritePosition => ref Unsafe.AsRef<long>(_pointer + 16);
 	private ref long ReadPosition => ref Unsafe.AsRef<long>(_pointer + 24);
@@ -72,7 +73,9 @@ internal sealed unsafe class RuntimeSharedAtomicFifo : IDisposable
 
 	public bool TryEnqueue(in RuntimeValueInstruction instruction)
 	{
-		ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+		lock (_lifetimeGate)
+		{
+		ThrowIfDisposed();
 		while (true)
 		{
 			var position = Volatile.Read(ref WritePosition);
@@ -96,12 +99,15 @@ internal sealed unsafe class RuntimeSharedAtomicFifo : IDisposable
 			}
 			Thread.SpinWait(1);
 		}
+		}
 	}
 
 	public bool TryDequeue(out RuntimeValueInstruction instruction)
 	{
 		instruction = default;
-		ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+		lock (_lifetimeGate)
+		{
+		ThrowIfDisposed();
 		while (true)
 		{
 			var position = Volatile.Read(ref ReadPosition);
@@ -120,9 +126,19 @@ internal sealed unsafe class RuntimeSharedAtomicFifo : IDisposable
 				return false;
 			Thread.SpinWait(1);
 		}
+		}
 	}
 
-	public void Signal() => _wakeEvent.Set();
+	public void Signal()
+	{
+		lock (_lifetimeGate)
+		{
+			ThrowIfDisposed();
+			_wakeEvent.Set();
+		}
+	}
+
+	private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
 	private void Initialize()
 	{
@@ -141,17 +157,20 @@ internal sealed unsafe class RuntimeSharedAtomicFifo : IDisposable
 
 	public void Dispose()
 	{
-		if (Interlocked.Exchange(ref _disposed, 1) == 1)
-			return;
-		_wakeEvent.Set();
-		if (_view != null)
-			_view.SafeMemoryMappedViewHandle.ReleasePointer();
-		else if (_attached && _pointer != null)
-			UnmapViewOfFile((nint)_pointer);
-		_wakeEvent.Dispose();
-		_view?.Dispose();
-		_mapping?.Dispose();
-		_pointer = null;
+		lock (_lifetimeGate)
+		{
+			if (Interlocked.Exchange(ref _disposed, 1) == 1)
+				return;
+			_wakeEvent.Set();
+			if (_view != null)
+				_view.SafeMemoryMappedViewHandle.ReleasePointer();
+			else if (_attached && _pointer != null)
+				UnmapViewOfFile((nint)_pointer);
+			_wakeEvent.Dispose();
+			_view?.Dispose();
+			_mapping?.Dispose();
+			_pointer = null;
+		}
 	}
 
 	[DllImport("kernel32.dll", SetLastError = true)]

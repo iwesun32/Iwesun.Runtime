@@ -527,6 +527,89 @@ static class FunctionalChildRunner
             checks.Add("pipe-frame-snapshot-present");
         }
 
+        var batchResponse = await SendFrameAsync(monitor.PipeName, new RuntimeDiagnosticFrame
+        {
+            Header = new RuntimeDiagnosticFrameHeader
+            {
+                Schema = RuntimeDiagnosticProtocol.V3Schema,
+                FrameType = "request",
+                Category = "batch",
+                Operation = "execute",
+                RequestId = Guid.NewGuid().ToString("N")
+            },
+            Batch = new RuntimeDiagnosticBatchRequest
+            {
+                Options = new RuntimeDiagnosticBatchOptions { StopOnError = true, DeadlineMs = 5000 },
+                Steps =
+                [
+                    new RuntimeDiagnosticBatchStep
+                    {
+                        Id = "snapshot-before",
+                        Command = new RuntimeDiagnosticFrameCommand { Target = "runtime.managed", Action = "snapshot" }
+                    },
+                    new RuntimeDiagnosticBatchStep
+                    {
+                        Id = "snapshot-after",
+                        When = new RuntimeDiagnosticBatchCondition { StepId = "snapshot-before", RequireOk = true },
+                        Command = new RuntimeDiagnosticFrameCommand { Target = "runtime.managed", Action = "snapshot" }
+                    }
+                ]
+            }
+        });
+        if (batchResponse.Status?.Ok != true
+            || batchResponse.BatchResult?.Steps.Count != 2
+            || batchResponse.BatchResult.Steps.Any(x => !x.Ok))
+        {
+            failures.Add("Native batch request did not execute two dependent steps in one frame.");
+        }
+        else
+        {
+            checks.Add("native-batch-two-steps-one-frame");
+        }
+
+        var bindingResponse = await SendFrameAsync(monitor.PipeName, new RuntimeDiagnosticFrame
+        {
+            Header = new RuntimeDiagnosticFrameHeader
+            {
+                Schema = RuntimeDiagnosticProtocol.V3Schema,
+                FrameType = "request",
+                Category = "batch",
+                Operation = "execute",
+                RequestId = Guid.NewGuid().ToString("N")
+            },
+            Batch = new RuntimeDiagnosticBatchRequest
+            {
+                Steps =
+                [
+                    new RuntimeDiagnosticBatchStep
+                    {
+                        Id = "read-label",
+                        Command = new RuntimeDiagnosticFrameCommand { Target = "diagnostics.selftest", Action = "get", Member = "Label" }
+                    },
+                    new RuntimeDiagnosticBatchStep
+                    {
+                        Id = "write-label",
+                        When = new RuntimeDiagnosticBatchCondition { StepId = "read-label", Path = "$", Exists = true },
+                        Bindings = new Dictionary<string, RuntimeDiagnosticBatchBinding>
+                        {
+                            ["value"] = new() { StepId = "read-label", Path = "$" }
+                        },
+                        Command = new RuntimeDiagnosticFrameCommand { Target = "diagnostics.selftest", Action = "set", Member = "Label" }
+                    }
+                ]
+            }
+        });
+        if (bindingResponse.Status?.Ok != true
+            || bindingResponse.BatchResult?.Steps.Count != 2
+            || bindingResponse.BatchResult.Steps[1].Skipped)
+        {
+            failures.Add("Native batch did not bind a typed JSON field into a later step.");
+        }
+        else
+        {
+            checks.Add("native-batch-typed-result-binding");
+        }
+
         var hubSnapshot = hub.Snapshot("runtime.managed");
         if (hubSnapshot is not null)
         {
@@ -851,6 +934,34 @@ static class FunctionalChildRunner
 				failures.Add("dispatcher invoked callbacks after disposal.");
 			else
 				checks.Add("dispatcher-dispose-stable");
+		}
+
+		var disposedFifo = new RuntimeSharedAtomicFifo(64);
+		disposedFifo.Dispose();
+		try
+		{
+			_ = disposedFifo.PendingCount;
+			failures.Add("disposed FIFO allowed pointer-backed state access.");
+		}
+		catch (ObjectDisposedException)
+		{
+			checks.Add("disposed-fifo-access-contained");
+		}
+
+		using (var callbackFifo = new RuntimeSharedAtomicFifo(64))
+		{
+			var callbacks = 0;
+			using var callbackDispatcher = new RuntimeInstructionDispatcher(callbackFifo, _ =>
+			{
+				if (Interlocked.Increment(ref callbacks) == 1)
+					throw new InvalidOperationException("functional dispatcher callback failure");
+			});
+			callbackFifo.TryEnqueue(new RuntimeValueInstruction(101, Environment.ProcessId, Environment.CurrentManagedThreadId, (int)RuntimeInstructionEntityKind.Task, 1, 1, 0, 0, 0));
+			callbackFifo.TryEnqueue(new RuntimeValueInstruction(102, Environment.ProcessId, Environment.CurrentManagedThreadId, (int)RuntimeInstructionEntityKind.Task, 1, 2, 0, 0, 0));
+			if (!SpinWait.SpinUntil(() => Volatile.Read(ref callbacks) == 2, 2000))
+				failures.Add("dispatcher stopped after one business callback threw.");
+			else
+				checks.Add("dispatcher-callback-failure-contained");
 		}
 
         managed.Unregister(unitId);
@@ -1251,21 +1362,13 @@ static class FunctionalChildRunner
         var failures = new List<string>();
         var unitId = $"functional.thread.{Guid.NewGuid():N}";
         var bodyEntered = new ManualResetEventSlim(false);
-        var interrupted = false;
         var exitRequested = false;
         var exitCompleted = false;
 
         var thread = new RThread(() =>
         {
             bodyEntered.Set();
-            try
-            {
-                Thread.Sleep(Timeout.Infinite);
-            }
-            catch (ThreadInterruptedException)
-            {
-                interrupted = true;
-            }
+            Thread.Sleep(Timeout.Infinite);
         }, unitId, "Functional Thread", RuntimeExecutionLifetime.Dynamic, RuntimeThreadKind.Worker, "FunctionalTests", nameof(FunctionalChildRunner));
 
         thread.ExitRequested += (_, _) => exitRequested = true;
@@ -1346,14 +1449,7 @@ static class FunctionalChildRunner
         }
 
         var endSnapshot = execution.Snapshot();
-        if (!interrupted)
-        {
-            failures.Add("thread body did not observe ThreadInterruptedException.");
-        }
-        else
-        {
-            checks.Add("interrupt-observed");
-        }
+        checks.Add("uncaught-interrupt-contained-by-wrapper");
 
         if (!exitRequested)
         {
@@ -1373,13 +1469,13 @@ static class FunctionalChildRunner
             checks.Add("exit-completed-event");
         }
 
-        if (!endSnapshot.DynamicThreads.Any(x => x.Id == unitId && x.State == RuntimeThreadState.Completed))
+        if (!endSnapshot.DynamicThreads.Any(x => x.Id == unitId && x.State == RuntimeThreadState.Cancelled))
         {
-            failures.Add("thread did not end in Completed state.");
+            failures.Add("thread did not end in Cancelled state after a managed stop.");
         }
         else
         {
-            checks.Add("thread-completed-visible");
+            checks.Add("thread-cancelled-visible");
         }
 
         if (managed.SnapshotRegistrations().Any(x => x.UnitId == unitId))
@@ -1390,6 +1486,29 @@ static class FunctionalChildRunner
         {
             checks.Add("thread-unregistered");
         }
+
+		var stubbornUnitId = $"functional.thread.stubborn.{Guid.NewGuid():N}";
+		var stubbornEntered = new ManualResetEventSlim(false);
+		var stubbornRelease = new ManualResetEventSlim(false);
+		var stubbornThread = new RThread(() =>
+		{
+			stubbornEntered.Set();
+			while (!stubbornRelease.IsSet)
+				Thread.SpinWait(128);
+		}, stubbornUnitId, "Stubborn Functional Thread", RuntimeExecutionLifetime.Dynamic, RuntimeThreadKind.Worker, "FunctionalTests", nameof(FunctionalChildRunner), 100);
+		stubbornThread.Start();
+		stubbornEntered.Wait(TimeSpan.FromSeconds(2));
+		stubbornThread.Dispose();
+		if (!managed.SnapshotRegistrations().Any(x => x.UnitId == stubbornUnitId))
+			failures.Add("live thread was unregistered after its stop timeout.");
+		else
+			checks.Add("thread-timeout-keeps-live-registration");
+		stubbornRelease.Set();
+		stubbornThread.Join(TimeSpan.FromSeconds(2));
+		if (managed.SnapshotRegistrations().Any(x => x.UnitId == stubbornUnitId))
+			failures.Add("thread registration remained after actual exit.");
+		else
+			checks.Add("thread-unregisters-after-actual-exit");
 
         return failures.Count == 0
             ? FunctionalScenarioResult.Pass("thread", checks.ToArray())
@@ -1437,6 +1556,48 @@ static class FunctionalChildRunner
             checks.Add("task-unregistered");
         }
 
+		var cancelableUnitId = $"functional.task.cancelable.{Guid.NewGuid():N}";
+		var cancelableEntered = new ManualResetEventSlim(false);
+		var cancelableTask = new RTask((CancellationToken token) =>
+		{
+			cancelableEntered.Set();
+			token.WaitHandle.WaitOne();
+			token.ThrowIfCancellationRequested();
+		}, cancelableUnitId, "functional", threadId: "functional.thread", lifetime: RuntimeExecutionLifetime.Dynamic, sourceLocation: nameof(FunctionalChildRunner));
+		cancelableTask.Start();
+		if (!cancelableEntered.Wait(TimeSpan.FromSeconds(2)))
+			failures.Add("cancelable task did not start.");
+		var stopResult = managed.TryEnqueueCommand(cancelableUnitId, RuntimeManagedCommandKind.Stop);
+		if (!stopResult.Sent)
+			failures.Add($"cancelable task Stop command was not sent: {stopResult.Status}.");
+		try { await cancelableTask; } catch (OperationCanceledException) { }
+		if (!cancelableTask.IsCanceled || managed.SnapshotRegistrations().Any(x => x.UnitId == cancelableUnitId))
+			failures.Add("cancelable task did not cancel and unregister after Stop.");
+		else
+			checks.Add("task-stop-cooperative-cancel");
+
+		var disposeUnitId = $"functional.task.dispose.{Guid.NewGuid():N}";
+		var disposeEntered = new ManualResetEventSlim(false);
+		var disposeRelease = new ManualResetEventSlim(false);
+		var runningTask = new RTask(() =>
+		{
+			disposeEntered.Set();
+			disposeRelease.Wait();
+		}, disposeUnitId, "functional", threadId: "functional.thread", lifetime: RuntimeExecutionLifetime.Dynamic, sourceLocation: nameof(FunctionalChildRunner));
+		runningTask.Start();
+		disposeEntered.Wait(TimeSpan.FromSeconds(2));
+		runningTask.Dispose();
+		if (!managed.SnapshotRegistrations().Any(x => x.UnitId == disposeUnitId))
+			failures.Add("running task Dispose removed its registration before execution ended.");
+		else
+			checks.Add("task-dispose-keeps-live-registration");
+		disposeRelease.Set();
+		await runningTask;
+		if (managed.SnapshotRegistrations().Any(x => x.UnitId == disposeUnitId))
+			failures.Add("disposed task registration remained after actual completion.");
+		else
+			checks.Add("task-dispose-unregisters-after-completion");
+
         return failures.Count == 0
             ? FunctionalScenarioResult.Pass("task", checks.ToArray())
             : FunctionalScenarioResult.Fail("task", checks, failures);
@@ -1472,7 +1633,54 @@ static class FunctionalChildRunner
 
         await pipeServerTask;
 
+		var failedUnitId = $"functional.process.failed.{Guid.NewGuid():N}";
+		using (var failedProcess = new RProcess(failedUnitId)
+		{
+			StartInfo = new ProcessStartInfo($"missing-runtime-executable-{Guid.NewGuid():N}") { UseShellExecute = false }
+		})
+		{
+			try
+			{
+				failedProcess.Start();
+				failures.Add("invalid process start unexpectedly succeeded.");
+			}
+			catch
+			{
+				if (managed.SnapshotRegistrations().Any(x => x.UnitId == failedUnitId)
+					|| hub.TargetIds.Contains($"runtime.process.{failedUnitId}", StringComparer.OrdinalIgnoreCase))
+					failures.Add("failed process start left managed or reflection registrations behind.");
+				else
+					checks.Add("process-start-failure-rolled-back");
+			}
+		}
+
         var dllPath = Assembly.GetExecutingAssembly().Location;
+		var disposeProcessUnitId = $"functional.process.dispose.{Guid.NewGuid():N}";
+		var disposeProcess = new RProcess(disposeProcessUnitId)
+		{
+			StartInfo = new ProcessStartInfo("dotnet", $"\"{dllPath}\" --child --scenario probe")
+			{
+				UseShellExecute = false,
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				CreateNoWindow = true
+			}
+		};
+		disposeProcess.Start();
+		var disposeProcessId = disposeProcess.Id;
+		disposeProcess.Dispose();
+		var osProcessAlive = false;
+		try
+		{
+			using var osProcess = Process.GetProcessById(disposeProcessId);
+			osProcessAlive = !osProcess.HasExited;
+		}
+		catch (ArgumentException) { }
+		if (osProcessAlive || managed.SnapshotRegistrations().Any(x => x.UnitId == disposeProcessUnitId))
+			failures.Add("RProcess.Dispose returned while the owned child or its registration remained alive.");
+		else
+			checks.Add("process-dispose-stops-before-unregister");
+
         using var process = new RProcess($"functional.process.{Guid.NewGuid():N}")
         {
             StartInfo = new ProcessStartInfo("dotnet", $"\"{dllPath}\" --child --scenario probe")
@@ -1579,7 +1787,13 @@ static class FunctionalChildRunner
 		if (!handlesAttached)
 			failures.Add("child process did not attach duplicated anonymous instruction handles.");
 		else
+		{
 			checks.Add("process-instruction-handles-attached");
+			if (managed.IsLocalUnitDispatchEnabled(process.UnitId))
+				failures.Add("parent and child remained competing consumers of the process FIFO.");
+			else
+				checks.Add("process-fifo-single-child-consumer");
+		}
 		if (await Task.WhenAny(childStateInstruction.Task, Task.Delay(3000)) != childStateInstruction.Task)
 			failures.Add("child process state Code did not reach the parent controller FIFO.");
 		else
@@ -2011,8 +2225,23 @@ static class FunctionalChildRunner
         checks.Add("cli-numeric-command-definitions-present");
 
         checks.Add($"diagnostics-pipe:{diagnosticsPipeName}");
+		var cliBuild = new ProcessStartInfo("dotnet", $"build \"{cliProjectPath}\" -c Debug --nologo")
+		{
+			UseShellExecute = false,
+			RedirectStandardOutput = true,
+			RedirectStandardError = true,
+			CreateNoWindow = true,
+			WorkingDirectory = rootDirectory
+		};
+		using (var buildProcess = Process.Start(cliBuild) ?? throw new InvalidOperationException("Failed to build CLI process."))
+		{
+			await buildProcess.WaitForExitAsync();
+			if (buildProcess.ExitCode != 0)
+				return FunctionalScenarioResult.Fail("cli", checks, new[] { "CLI debug build failed before execution." });
+		}
+		var cliDllPath = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "bin", "Debug", "net10.0", "Iwesun.Runtime.Cli.dll");
 
-        var psi = new ProcessStartInfo("dotnet", $"run --project \"{cliProjectPath}\" -- --config=\"{cliConfigPath}\" --pipe={diagnosticsPipeName} host.info")
+		var psi = new ProcessStartInfo("dotnet", $"\"{cliDllPath}\" --config=\"{cliConfigPath}\" --pipe={diagnosticsPipeName} host.info")
         {
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -2078,6 +2307,41 @@ static class FunctionalChildRunner
             {
                 failures.Add("CLI host snapshot did not expose any registered targets.");
             }
+        }
+
+        var batchPsi = new ProcessStartInfo("dotnet", $"\"{cliDllPath}\" --config=\"{cliConfigPath}\" --pipe={diagnosticsPipeName} status")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            WorkingDirectory = rootDirectory
+        };
+        using var batchProcess = Process.Start(batchPsi) ?? throw new InvalidOperationException("Failed to start CLI batch process.");
+        var batchStdoutTask = batchProcess.StandardOutput.ReadToEndAsync();
+        var batchStderrTask = batchProcess.StandardError.ReadToEndAsync();
+        await batchProcess.WaitForExitAsync();
+        var batchStdout = await batchStdoutTask;
+        var batchStderr = await batchStderrTask;
+        RuntimeDiagnosticFrame? cliBatchFrame = null;
+        try
+        {
+            cliBatchFrame = JsonSerializer.Deserialize<RuntimeDiagnosticFrame>(batchStdout, JsonDefaults.Options);
+        }
+        catch (JsonException ex)
+        {
+            failures.Add($"CLI batch output was not valid JSON: {ex.Message}. stderr={batchStderr.Trim()}");
+        }
+        if (batchProcess.ExitCode != 0
+            || cliBatchFrame?.Header.Schema != RuntimeDiagnosticProtocol.V3Schema
+            || cliBatchFrame.BatchResult?.Steps.Count != 3
+            || cliBatchFrame.BatchResult.Steps.Any(x => !x.Ok))
+        {
+            failures.Add($"CLI composite did not execute as one native three-step batch. stdout={batchStdout.Trim()} stderr={batchStderr.Trim()}");
+        }
+        else
+        {
+            checks.Add("cli-composite-native-batch-one-request");
         }
 
         return failures.Count == 0

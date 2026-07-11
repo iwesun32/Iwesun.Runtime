@@ -195,6 +195,23 @@ public static class RuntimeInjector
 	}
 
 	public static RTask CreateTask(
+		Action<CancellationToken> action,
+		string? unitId = null,
+		string category = "task",
+		string threadId = "",
+		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
+		string sourceLocation = "",
+		CancellationToken cancellationToken = default,
+		bool startImmediately = true)
+	{
+		ArgumentNullException.ThrowIfNull(action);
+		var task = new RTask(action, unitId, category, threadId, lifetime, sourceLocation, cancellationToken);
+		if (startImmediately)
+			task.Start(TaskScheduler.Default);
+		return task;
+	}
+
+	public static RTask CreateTask(
 		Action action,
 		string? unitId = null,
 		string category = "task",

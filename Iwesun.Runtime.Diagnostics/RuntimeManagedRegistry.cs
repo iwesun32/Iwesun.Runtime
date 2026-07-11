@@ -462,7 +462,18 @@ public sealed class RuntimeManagedRegistry : IDisposable
 	{
 		if (!_unitInboxes.TryGetValue(unitId, out var inbox))
 			throw new InvalidOperationException($"Managed unit inbox not found: {unitId}");
-		return RuntimeInstructionHandleBootstrap.DuplicateToProcess(process, _controllerInbox, inbox.Fifo);
+		var descriptor = RuntimeInstructionHandleBootstrap.DuplicateToProcess(process, _controllerInbox, inbox.Fifo);
+		inbox.SuspendLocalDispatch();
+		return descriptor;
+	}
+
+	internal bool IsLocalUnitDispatchEnabled(string unitId) =>
+		_unitInboxes.TryGetValue(unitId, out var inbox) && inbox.IsLocalDispatchEnabled;
+
+	internal void ResumeLocalUnitDispatch(string unitId)
+	{
+		if (_unitInboxes.TryGetValue(unitId, out var inbox))
+			inbox.ResumeLocalDispatch();
 	}
 
 	private void DispatchControllerInstruction(RuntimeValueInstruction instruction)

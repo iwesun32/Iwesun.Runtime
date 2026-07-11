@@ -1094,9 +1094,9 @@
       "help": "Host + switchboard + target summary",
       "mode": "sequential",
       "steps": [
-        { "command": "host.info" },
-        { "command": "sw.list" },
-        { "command": "host.list" }
+        { "action": "host" },
+        { "target": "diagnostics.switchboard", "action": "snapshot" },
+        { "action": "list" }
       ]
     },
     {

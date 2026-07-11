@@ -1,10 +1,10 @@
-using System.Text.Json;
 using Iwesun.Runtime.Diagnostics;
 
 namespace Iwesun.Runtime.Cli;
 
 /// <summary>
-/// Executes composite commands by running their steps sequentially or in parallel.
+/// Compiles a CLI composite into one authoritative runtime batch frame.
+/// The runtime owns ordering, deadlines, conditions, and error policy.
 /// </summary>
 public static class CompositeCommandExecutor
 {
@@ -12,87 +12,130 @@ public static class CompositeCommandExecutor
 		CompositeCommandDef composite,
 		ParsedCommand parsed,
 		Dictionary<string, BaseCommandDef> baseCommands,
-		Func<RuntimeDiagnosticFrameCommand, Task<string>> sendAsync,
+		Func<RuntimeDiagnosticFrame, Task<string>> sendAsync,
 		Dictionary<string, string> memory)
 	{
-		var variables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		if (!composite.Mode.Equals("sequential", StringComparison.OrdinalIgnoreCase))
+			throw new NotSupportedException($"Composite mode '{composite.Mode}' is not supported by the sequential runtime batch contract.");
 
-		// Seed variables from parsed input
-		variables["target"] = parsed.Target ?? "";
+		var variables = new Dictionary<string, string>(memory, StringComparer.OrdinalIgnoreCase)
+		{
+			["target"] = parsed.Target ?? ""
+		};
 		foreach (var (key, value) in parsed.Args)
 			variables[key] = value;
 		foreach (var flag in parsed.Flags)
 			variables[flag] = "true";
 
-		// Seed from memory
-		foreach (var (key, value) in memory)
-			variables[key] = value;
-
-		var outputs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-		var results = new List<string>();
-
-		foreach (var step in composite.Steps)
+		var steps = new List<RuntimeDiagnosticBatchStep>(composite.Steps.Count);
+		for (var index = 0; index < composite.Steps.Count; index++)
 		{
-			// Apply variable substitution
-			var resolvedCommand = ResolveVariables(step.Command, variables);
-
-			// Check condition
-			if (!string.IsNullOrEmpty(step.Condition) && !EvaluateCondition(step.Condition, variables, outputs))
+			var source = composite.Steps[index];
+			if (!string.IsNullOrWhiteSpace(source.Condition) && !EvaluateInputCondition(source.Condition, variables))
 				continue;
 
-			// Delay if specified
-			if (step.Delay > 0)
-				await Task.Delay(step.Delay);
-
-			// Parse and execute
-			var stepParsed = CommandParser.Parse(resolvedCommand);
-			var cmd = CommandParser.Resolve(stepParsed, baseCommands);
-
-			try
+			RuntimeDiagnosticFrameCommand command;
+			if (!string.IsNullOrWhiteSpace(source.Command))
 			{
-				var result = await sendAsync(cmd);
-				results.Add(result);
-
-				// Capture output
-				if (!string.IsNullOrEmpty(step.Capture))
+				var parsedStep = CommandParser.Parse(ResolveVariables(source.Command, variables));
+				command = CommandParser.Resolve(parsedStep, baseCommands);
+			}
+			else
+			{
+				if (string.IsNullOrWhiteSpace(source.Action))
+					throw new InvalidOperationException($"Composite '{composite.Name}' step {index + 1} requires command or action.");
+				command = new RuntimeDiagnosticFrameCommand
 				{
-					outputs[step.Capture] = result;
-					variables[step.Capture] = result;
-				}
+					Target = source.Target ?? "",
+					Action = source.Action,
+					Member = source.Member,
+					Args = ResolveStructuredArgs(source.Args, variables)
+				};
 			}
-			catch when (step.SkipOnError)
+			steps.Add(new RuntimeDiagnosticBatchStep
 			{
-				results.Add($"{{\"error\":\"Step skipped: {step.Command}\"}}");
-			}
+				Id = $"step-{index + 1:D3}",
+				Command = command,
+				Bindings = source.Bindings,
+				When = source.When,
+				ContinueOnError = source.SkipOnError,
+				DelayMs = Math.Max(0, source.Delay)
+			});
 		}
 
-		return JsonSerializer.Serialize(new
+		if (steps.Count == 0)
+			throw new InvalidOperationException($"Composite command '{composite.Name}' produced no executable steps.");
+
+		var frame = new RuntimeDiagnosticFrame
 		{
-			composite = composite.Name,
-			steps = composite.Steps.Count,
-			results
-		}, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+			Header = new RuntimeDiagnosticFrameHeader
+			{
+				Schema = RuntimeDiagnosticProtocol.V3Schema,
+				FrameType = "request",
+				Category = "batch",
+				Operation = "execute",
+				RequestId = Guid.NewGuid().ToString("N"),
+				Timestamp = DateTimeOffset.UtcNow,
+				Source = "cli",
+				Destination = "runtime"
+			},
+			Batch = new RuntimeDiagnosticBatchRequest
+			{
+				Options = new RuntimeDiagnosticBatchOptions
+				{
+					StopOnError = true,
+					DeadlineMs = Math.Clamp(30_000 + steps.Sum(x => x.DelayMs), 100, 60_000)
+				},
+				Steps = steps
+			}
+		};
+
+		return await sendAsync(frame);
 	}
 
-	private static string ResolveVariables(string command, Dictionary<string, string> variables)
+	private static Dictionary<string, System.Text.Json.JsonElement>? ResolveStructuredArgs(
+		IReadOnlyDictionary<string, System.Text.Json.JsonElement>? args,
+		IReadOnlyDictionary<string, string> variables)
 	{
-		foreach (var (key, value) in variables)
+		if (args == null)
+			return null;
+		var resolved = new Dictionary<string, System.Text.Json.JsonElement>(StringComparer.OrdinalIgnoreCase);
+		foreach (var (key, value) in args)
 		{
-			command = command.Replace($"${key}", value);
+			if (value.ValueKind == System.Text.Json.JsonValueKind.String
+				&& value.GetString() is { } text
+				&& text.StartsWith('$')
+				&& variables.TryGetValue(text[1..], out var variable))
+			{
+				resolved[key] = bool.TryParse(variable, out var boolean)
+					? System.Text.Json.JsonSerializer.SerializeToElement(boolean)
+					: long.TryParse(variable, out var integer)
+						? System.Text.Json.JsonSerializer.SerializeToElement(integer)
+						: double.TryParse(variable, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number)
+							? System.Text.Json.JsonSerializer.SerializeToElement(number)
+							: System.Text.Json.JsonSerializer.SerializeToElement(variable);
+			}
+			else
+			{
+				resolved[key] = value.Clone();
+			}
 		}
+		return resolved;
+	}
+
+	private static string ResolveVariables(string command, IReadOnlyDictionary<string, string> variables)
+	{
+		foreach (var (key, value) in variables.OrderByDescending(x => x.Key.Length))
+			command = command.Replace($"${key}", value, StringComparison.OrdinalIgnoreCase);
 		return command;
 	}
 
-	private static bool EvaluateCondition(string condition, Dictionary<string, string> variables, Dictionary<string, string> outputs)
+	private static bool EvaluateInputCondition(string condition, IReadOnlyDictionary<string, string> variables)
 	{
-		// Simple condition: $variable exists and is truthy
-		var trimmed = condition.TrimStart('$');
-		if (variables.TryGetValue(trimmed, out var value))
-			return !string.IsNullOrEmpty(value) && value != "false" && value != "0";
-
-		if (outputs.TryGetValue(trimmed, out var output))
-			return !string.IsNullOrEmpty(output) && output != "false" && output != "0";
-
-		return false;
+		var key = condition.Trim().TrimStart('$');
+		return variables.TryGetValue(key, out var value)
+			&& !string.IsNullOrWhiteSpace(value)
+			&& !value.Equals("false", StringComparison.OrdinalIgnoreCase)
+			&& value != "0";
 	}
 }

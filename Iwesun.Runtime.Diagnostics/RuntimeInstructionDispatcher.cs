@@ -28,7 +28,24 @@ internal sealed class RuntimeInstructionDispatcher : IDisposable
 			{
 				var generation = _fifo.CommitGeneration;
 				while (_fifo.TryDequeue(out var instruction))
-					_dispatch(instruction);
+				{
+					try
+					{
+						_dispatch(instruction);
+					}
+					catch (Exception ex)
+					{
+						RuntimeOutput.Error("Runtime instruction callback failed.", new
+						{
+							instruction.Sequence,
+							instruction.EntityIdHash,
+							instruction.EntityKind,
+							instruction.Value,
+							exception = ex.GetType().Name,
+							ex.Message
+						});
+					}
+				}
 				if (generation == _fifo.CommitGeneration)
 					break;
 			}

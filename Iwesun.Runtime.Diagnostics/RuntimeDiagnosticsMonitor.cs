@@ -134,7 +134,8 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 					requestFrame = JsonSerializer.Deserialize<RuntimeDiagnosticFrame>(json, JsonOptions)
 						?? throw new InvalidOperationException("Invalid frame payload: frame is null.");
 
-					if (!string.Equals(requestFrame.Header.Schema, RuntimeDiagnosticProtocol.V2Schema, StringComparison.OrdinalIgnoreCase))
+					if (!string.Equals(requestFrame.Header.Schema, RuntimeDiagnosticProtocol.V2Schema, StringComparison.OrdinalIgnoreCase)
+						&& !string.Equals(requestFrame.Header.Schema, RuntimeDiagnosticProtocol.V3Schema, StringComparison.OrdinalIgnoreCase))
 						throw new InvalidOperationException($"Unsupported schema: {requestFrame.Header.Schema}");
 
 					if (!string.Equals(requestFrame.Header.FrameType, "request", StringComparison.OrdinalIgnoreCase))

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 
@@ -158,36 +159,215 @@ public sealed class RuntimeDiagnosticHub
 
 	public async Task<RuntimeDiagnosticFrame> ExecuteFrameAsync(RuntimeDiagnosticFrame request, CancellationToken ct = default)
 	{
+		if (request.Batch != null)
+			return await ExecuteBatchFrameAsync(request, request.Batch, ct);
+
 		if (request.Command == null)
 			return BuildFrameResponse(request, RuntimeDiagnosticActionResult.Fail("", request.Header.Operation, "command is required."));
 
-		var action = !string.IsNullOrWhiteSpace(request.Command.Action)
-			? request.Command.Action
-			: request.Header.Operation;
-
-		var command = new RuntimeDiagnosticAction
-		{
-			TargetId = request.Command.Target,
-			Action = action,
-			Member = request.Command.Member,
-			Args = request.Command.Args
-		};
-
-		if (command.Args != null && command.Args.TryGetValue("value", out var valueArg))
-		{
-			command = new RuntimeDiagnosticAction
-			{
-				TargetId = command.TargetId,
-				Action = command.Action,
-				Member = command.Member,
-				Value = valueArg.Clone(),
-				Args = command.Args.Where(x => !x.Key.Equals("value", StringComparison.OrdinalIgnoreCase))
-					.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase)
-			};
-		}
-
+		var command = ConvertFrameCommand(request.Command, request.Header.Operation);
 		var result = await ExecuteAsync(command, ct);
 		return BuildFrameResponse(request, result);
+	}
+
+	private async Task<RuntimeDiagnosticFrame> ExecuteBatchFrameAsync(
+		RuntimeDiagnosticFrame request,
+		RuntimeDiagnosticBatchRequest batch,
+		CancellationToken ct)
+	{
+		if (batch.Steps.Count is < 1 or > 128)
+			return BuildFrameResponse(request, RuntimeDiagnosticActionResult.Fail("", "batch", "batch must contain between 1 and 128 steps."));
+
+		var duplicateId = batch.Steps.GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase).FirstOrDefault(x => string.IsNullOrWhiteSpace(x.Key) || x.Count() > 1);
+		if (duplicateId != null)
+			return BuildFrameResponse(request, RuntimeDiagnosticActionResult.Fail("", "batch", "batch step IDs must be non-empty and unique."));
+
+		var deadlineMs = Math.Clamp(batch.Options.DeadlineMs, 100, 60_000);
+		using var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+		deadlineCts.CancelAfter(deadlineMs);
+		var started = Stopwatch.GetTimestamp();
+		var results = new List<RuntimeDiagnosticBatchStepResult>(batch.Steps.Count);
+		var byId = new Dictionary<string, RuntimeDiagnosticBatchStepResult>(StringComparer.OrdinalIgnoreCase);
+		var stoppedOnError = false;
+
+		foreach (var step in batch.Steps)
+		{
+			if (step.When != null)
+			{
+				var conditionMet = EvaluateBatchCondition(step.When, byId);
+				if (!conditionMet)
+				{
+					var skipped = new RuntimeDiagnosticBatchStepResult { Id = step.Id, Ok = true, Skipped = true, Code = "SKIPPED" };
+					results.Add(skipped);
+					byId[step.Id] = skipped;
+					continue;
+				}
+			}
+
+			if (step.DelayMs > 0)
+			{
+				try
+				{
+					await Task.Delay(Math.Min(step.DelayMs, 60_000), deadlineCts.Token);
+				}
+				catch (OperationCanceledException) when (deadlineCts.IsCancellationRequested)
+				{
+					var timedOut = new RuntimeDiagnosticBatchStepResult { Id = step.Id, Code = "DEADLINE_EXCEEDED", Error = "batch deadline exceeded." };
+					results.Add(timedOut);
+					byId[step.Id] = timedOut;
+					stoppedOnError = true;
+					break;
+				}
+			}
+
+			var stepStarted = Stopwatch.GetTimestamp();
+			RuntimeDiagnosticActionResult actionResult;
+			var resolvedCommand = ResolveBatchBindings(step, byId, out var bindingError);
+			if (bindingError != null)
+			{
+				actionResult = RuntimeDiagnosticActionResult.Fail(step.Command.Target, step.Command.Action ?? "invoke", bindingError);
+			}
+			else
+			try
+			{
+				actionResult = await ExecuteAsync(ConvertFrameCommand(resolvedCommand, resolvedCommand.Action ?? "invoke"), deadlineCts.Token);
+			}
+			catch (OperationCanceledException) when (deadlineCts.IsCancellationRequested)
+			{
+				actionResult = RuntimeDiagnosticActionResult.Fail(step.Command.Target, step.Command.Action ?? "invoke", "batch deadline exceeded.");
+			}
+
+			var stepResult = new RuntimeDiagnosticBatchStepResult
+			{
+				Id = step.Id,
+				Ok = actionResult.Success,
+				Code = actionResult.Success ? "OK" : "ERROR",
+				Error = actionResult.Error,
+				Data = actionResult.Value == null ? null : JsonSerializer.SerializeToElement(actionResult.Value),
+				DurationMs = (long)Stopwatch.GetElapsedTime(stepStarted).TotalMilliseconds
+			};
+			results.Add(stepResult);
+			byId[step.Id] = stepResult;
+
+			if (!stepResult.Ok && batch.Options.StopOnError && !step.ContinueOnError)
+			{
+				stoppedOnError = true;
+				break;
+			}
+		}
+
+		var batchResult = new RuntimeDiagnosticBatchResult
+		{
+			Steps = results,
+			StoppedOnError = stoppedOnError,
+			DurationMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds
+		};
+		var ok = results.All(x => x.Ok);
+		return BuildBatchFrameResponse(request, batchResult, ok);
+	}
+
+	private static bool EvaluateBatchCondition(
+		RuntimeDiagnosticBatchCondition condition,
+		IReadOnlyDictionary<string, RuntimeDiagnosticBatchStepResult> results)
+	{
+		if (!results.TryGetValue(condition.StepId, out var dependency) || dependency.Ok != condition.RequireOk)
+			return false;
+		if (string.IsNullOrWhiteSpace(condition.Path))
+			return true;
+
+		var found = TryResolveJsonPath(dependency.Data, condition.Path, out var value);
+		if (condition.Exists.HasValue && found != condition.Exists.Value)
+			return false;
+		if (condition.Expected.HasValue)
+			return found && JsonElement.DeepEquals(value, condition.Expected.Value);
+		return found;
+	}
+
+	private static RuntimeDiagnosticFrameCommand ResolveBatchBindings(
+		RuntimeDiagnosticBatchStep step,
+		IReadOnlyDictionary<string, RuntimeDiagnosticBatchStepResult> results,
+		out string? error)
+	{
+		error = null;
+		if (step.Bindings == null || step.Bindings.Count == 0)
+			return step.Command;
+
+		var args = step.Command.Args == null
+			? new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+			: new Dictionary<string, JsonElement>(step.Command.Args, StringComparer.OrdinalIgnoreCase);
+		foreach (var (argumentName, binding) in step.Bindings)
+		{
+			var value = default(JsonElement);
+			var found = results.TryGetValue(binding.StepId, out var source)
+				&& TryResolveJsonPath(source.Data, binding.Path, out value);
+			if (!found)
+			{
+				if (binding.Required)
+				{
+					error = $"Required binding '{argumentName}' could not resolve {binding.StepId}:{binding.Path}.";
+					return step.Command;
+				}
+				continue;
+			}
+			args[argumentName] = value.Clone();
+		}
+
+		return new RuntimeDiagnosticFrameCommand
+		{
+			Domain = step.Command.Domain,
+			Target = step.Command.Target,
+			Member = step.Command.Member,
+			Action = step.Command.Action,
+			Args = args
+		};
+	}
+
+	private static bool TryResolveJsonPath(JsonElement? root, string path, out JsonElement value)
+	{
+		value = default;
+		if (!root.HasValue)
+			return false;
+		var current = root.Value;
+		foreach (var segment in path.Trim().TrimStart('$', '.').Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+		{
+			if (current.ValueKind != JsonValueKind.Object)
+				return false;
+			var matched = false;
+			foreach (var property in current.EnumerateObject())
+			{
+				if (!property.Name.Equals(segment, StringComparison.OrdinalIgnoreCase))
+					continue;
+				current = property.Value;
+				matched = true;
+				break;
+			}
+			if (!matched)
+				return false;
+		}
+		value = current;
+		return true;
+	}
+
+	private static RuntimeDiagnosticAction ConvertFrameCommand(RuntimeDiagnosticFrameCommand frameCommand, string fallbackAction)
+	{
+		var action = string.IsNullOrWhiteSpace(frameCommand.Action) ? fallbackAction : frameCommand.Action;
+		var args = frameCommand.Args;
+		JsonElement? value = null;
+		if (args != null && args.TryGetValue("value", out var valueArg))
+		{
+			value = valueArg.Clone();
+			args = args.Where(x => !x.Key.Equals("value", StringComparison.OrdinalIgnoreCase))
+				.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+		}
+
+		return new RuntimeDiagnosticAction
+		{
+			TargetId = frameCommand.Target,
+			Action = action,
+			Member = frameCommand.Member,
+			Value = value,
+			Args = args
+		};
 	}
 
 	public void Publish(RuntimeDiagnosticEvent diagnosticEvent)
@@ -248,7 +428,7 @@ public sealed class RuntimeDiagnosticHub
 		{
 			Header = new RuntimeDiagnosticFrameHeader
 			{
-				Schema = RuntimeDiagnosticProtocol.V2Schema,
+				Schema = request.Header.Schema,
 				FrameType = "response",
 				Category = request.Header.Category,
 				Operation = request.Header.Operation,
@@ -276,6 +456,34 @@ public sealed class RuntimeDiagnosticHub
 			Data = data
 		};
 	}
+
+	private static RuntimeDiagnosticFrame BuildBatchFrameResponse(
+		RuntimeDiagnosticFrame request,
+		RuntimeDiagnosticBatchResult result,
+		bool ok) =>
+		new()
+		{
+			Header = new RuntimeDiagnosticFrameHeader
+			{
+				Schema = RuntimeDiagnosticProtocol.V3Schema,
+				FrameType = "response",
+				Category = "batch",
+				Operation = "execute",
+				RequestId = request.Header.RequestId,
+				CorrelationId = request.Header.RequestId ?? request.Header.CorrelationId,
+				Timestamp = DateTimeOffset.UtcNow,
+				Source = "runtime",
+				Destination = request.Header.Source
+			},
+			Status = new RuntimeDiagnosticFrameStatus
+			{
+				Ok = ok,
+				Code = ok ? "OK" : "BATCH_FAILED",
+				Message = ok ? "success" : "one or more batch steps failed"
+			},
+			BatchResult = result,
+			Meta = new RuntimeDiagnosticFrameMeta { DurationMs = result.DurationMs }
+		};
 
 	private void RefreshHostRegisteredTargets()
 	{
