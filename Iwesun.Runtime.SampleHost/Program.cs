@@ -5,6 +5,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 [assembly: DiagnosticPipePrefix("Iwesun.SampleHost")]
+[assembly: DiagnosticFileOutput(
+	"logs/sample-host-diag.jsonl",
+	FileWriteMode.CreateNew,
+	Format = DiagnosticFileFormat.PlainText)]
 [assembly: DiagnosticWatchPoint(
 	"sample.host.profile",
 	"sample-host",
@@ -29,6 +33,12 @@ using Microsoft.Extensions.Hosting;
 	"tick",
 	"Sample host loop heartbeat.",
 	"Iwesun.Runtime.SampleHost/Program.cs")]
+[assembly: DiagnosticWatchPoint(
+	"sample.host.random",
+	"sample-host",
+	"random",
+	"Periodic random sample.",
+	"Iwesun.Runtime.SampleHost/SampleHostRandomState.cs")]
 [assembly: DiagnosticBreakpoint(
 	"sample.host.pause",
 	"sample-host",
@@ -39,17 +49,46 @@ using Microsoft.Extensions.Hosting;
 	"sample-host",
 	"Pause before a gated batch step.",
 	"Iwesun.Runtime.SampleHost/SampleHostWorker.cs")]
+[assembly: DiagnosticBreakpoint(
+	"sample.host.random.initial-enabled",
+	"sample-host",
+	"Compiled enabled random breakpoint.",
+	"Iwesun.Runtime.SampleHost/SampleHostWorker.cs",
+	Enabled = true)]
+[assembly: DiagnosticBreakpoint(
+	"sample.host.random.dynamic",
+	"sample-host",
+	"Runtime-controlled random breakpoint.",
+	"Iwesun.Runtime.SampleHost/SampleHostWorker.cs",
+	Enabled = false)]
+[assembly: DiagnosticBreakpoint(
+	"sample.host.random.numeric",
+	"sample-host",
+	"Runtime-controlled numeric breakpoint.",
+	"Iwesun.Runtime.SampleHost/SampleHostWorker.cs",
+	Enabled = false)]
+[assembly: DiagnosticNumericBreakpoint("sample.host.random.numeric", "gt", 90)]
 [assembly: DiagnosticHookableEvent(
 	"sample.host.state-changed",
 	typeof(SampleHostState),
 	nameof(SampleHostState.StateChanged))]
+[assembly: DiagnosticHookableEvent(
+	"sample.host.random-updated",
+	typeof(SampleHostRandomState),
+	nameof(SampleHostRandomState.Updated))]
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Logging.AddRuntimeDiagnostics();
 var runtimeDirectory = Path.Combine(AppContext.BaseDirectory, "runtime");
+const string pipeArgument = "--runtime-diagnostics-pipe=";
+var startupPipeName = args
+	.FirstOrDefault(x => x.StartsWith(pipeArgument, StringComparison.OrdinalIgnoreCase))?
+	[pipeArgument.Length..];
 
-builder.Services.Start(runtimeDirectory);
+builder.Services.Start(runtimeDirectory, startupRuntimeDiagnosticsPipeName: startupPipeName);
 builder.Services.AddSingleton(SampleHostProfile.CreateDefault());
 builder.Services.AddSingleton<SampleHostState>();
+builder.Services.AddSingleton<SampleHostRandomState>();
 builder.Services.AddHostedService<SampleHostWorker>();
 
 using var host = builder.Build();
@@ -60,6 +99,7 @@ var hub = host.Services.GetRequiredService<RuntimeDiagnosticHub>();
 var execution = host.Services.GetRequiredService<RuntimeExecutionManager>();
 var profile = host.Services.GetRequiredService<SampleHostProfile>();
 var state = host.Services.GetRequiredService<SampleHostState>();
+var randomState = host.Services.GetRequiredService<SampleHostRandomState>();
 
 RuntimeInjector.Thread(
 	execution,
@@ -138,6 +178,13 @@ RuntimeInjector.Data(hub, "sample.host.session", state, new RuntimeDiagnosticObj
 	ReadableMembers = ["CurrentPhase", "Iteration", "IsPaused", "FaultRequested", "UpdatedAt", "Snapshot"],
 	WritableMembers = ["IsPaused", "FaultRequested"],
 	InvokableMembers = ["Advance", "Pause", "Resume", "Reset", "RequestFault", "ClearFault", "Snapshot"]
+});
+
+RuntimeInjector.Data(hub, "sample.host.random", randomState, new RuntimeDiagnosticObjectAccess
+{
+	AllowReadAllPublic = false,
+	ReadableMembers = ["CurrentValue", "PreviousValue", "MinimumValue", "MaximumValue", "SampleCount", "UpdatedAt"],
+	InvokableMembers = ["Snapshot", "RecordValidationSample"]
 });
 
 await host.RunAsync();

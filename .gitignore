@@ -8,3 +8,7 @@ TestResults/
 *.sln.docstates
 *.cache
 *.log
+*.jsonl
+artifacts/
+logs/
+Iwesun.Runtime.Cli/Iwesun.Runtime.Cli.user.v2.json

@@ -58,9 +58,15 @@ public static class RuntimeOutput
 
 	// ── Breakpoints (new) ─────────────────────────────────────────────
 
+	// ── Breakpoints ───────────────────────────────────────────────────────────────────────────
+	// All breakpoint methods are compiled only in DEBUG builds.
+	// In Release builds they compile away to Task.CompletedTask with zero overhead.
+
+#if DEBUG
 	/// <summary>
-	/// Unconditional logical breakpoint. If the breakpoint is not enabled, returns immediately.
-	/// If enabled, pauses the current call chain until CLI sends a resume signal.
+	/// Unconditional logical breakpoint. Only active in DEBUG builds.
+	/// If the breakpoint is not enabled, returns immediately.
+	/// If enabled, pauses the current call chain until CLI sends a resume signal (cross-process).
 	/// </summary>
 	public static Task BreakIf(string breakpointId)
 	{
@@ -68,7 +74,8 @@ public static class RuntimeOutput
 	}
 
 	/// <summary>
-	/// Conditional logical breakpoint. The condition is only evaluated when the breakpoint is enabled.
+	/// Conditional logical breakpoint. Only active in DEBUG builds.
+	/// The condition is only evaluated when the breakpoint is enabled.
 	/// </summary>
 	public static Task BreakIf(string breakpointId, Func<bool> condition)
 	{
@@ -77,6 +84,7 @@ public static class RuntimeOutput
 
 	/// <summary>
 	/// Conditional logical breakpoint with context snapshot sent to CLI on hit.
+	/// Only active in DEBUG builds.
 	/// </summary>
 	public static Task BreakIf(string breakpointId, Func<bool> condition, object context)
 	{
@@ -92,6 +100,13 @@ public static class RuntimeOutput
 	{
 		return BreakpointHelper.BreakIfNumericAsync(breakpointId, value1, value2, value3, context);
 	}
+#else
+	public static Task BreakIf(string breakpointId) => Task.CompletedTask;
+	public static Task BreakIf(string breakpointId, Func<bool> condition) => Task.CompletedTask;
+	public static Task BreakIf(string breakpointId, Func<bool> condition, object context) => Task.CompletedTask;
+	public static Task BreakIfNumbers(string breakpointId, double value1, double value2, object? context = null) => Task.CompletedTask;
+	public static Task BreakIfNumbers(string breakpointId, double value1, double value2, double value3, object? context = null) => Task.CompletedTask;
+#endif
 
 	/// <summary>
 	/// Object watch point — captures the current object state and routes it
@@ -137,7 +152,9 @@ public static class RuntimeOutput
 /// Internal helper that bridges the static RuntimeOutput.BreakIf to the
 /// singleton RuntimeDiagnosticBreakpoints instance.  This indirection keeps
 /// the static API testable.
+/// Only compiled in DEBUG builds.
 /// </summary>
+#if DEBUG
 internal static class BreakpointHelper
 {
 	private static RuntimeDiagnosticBreakpoints? _breakpoints;
@@ -161,3 +178,4 @@ internal static class BreakpointHelper
 		return _breakpoints.WaitNumericAsync(breakpointId, value1, value2, value3, context);
 	}
 }
+#endif

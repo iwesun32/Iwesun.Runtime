@@ -174,14 +174,6 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 		{
 			_activePipes.TryRemove(pipeId, out _);
 
-			// Auto-cleanup when a client disconnects: resume all breakpoints
-			// so the host process is never permanently blocked.
-			try
-			{
-				_hub.ResumeAllBreakpoints();
-			}
-			catch { }
-
 			try { pipe.Disconnect(); } catch { }
 			await pipe.DisposeAsync();
 		}

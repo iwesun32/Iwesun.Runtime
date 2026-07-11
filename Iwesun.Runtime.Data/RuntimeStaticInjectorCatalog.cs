@@ -69,45 +69,6 @@ public readonly struct RuntimeSharedFifoSlotHeader(
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-public readonly struct RuntimeCommandFrame(
-	int processId,
-	int managedThreadId,
-	long sequence,
-	int targetIdHash,
-	int commandKind,
-	long timestampUtcTicks,
-	long arg0,
-	long arg1)
-{
-	public int ProcessId { get; } = processId;
-	public int ManagedThreadId { get; } = managedThreadId;
-	public long Sequence { get; } = sequence;
-	public int TargetIdHash { get; } = targetIdHash;
-	public int CommandKind { get; } = commandKind;
-	public long TimestampUtcTicks { get; } = timestampUtcTicks;
-	public long Arg0 { get; } = arg0;
-	public long Arg1 { get; } = arg1;
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
-public readonly struct RuntimeStateFrame(
-	int processId,
-	int managedThreadId,
-	long sequence,
-	int entityKind,
-	int entityIdHash,
-	int stateKind,
-	long timestampUtcTicks)
-{
-	public int ProcessId { get; } = processId;
-	public int ManagedThreadId { get; } = managedThreadId;
-	public long Sequence { get; } = sequence;
-	public int EntityKind { get; } = entityKind;
-	public int EntityIdHash { get; } = entityIdHash;
-	public int StateKind { get; } = stateKind;
-	public long TimestampUtcTicks { get; } = timestampUtcTicks;
-}
-
 public readonly record struct RuntimeInjectorDescriptor(
 	string IdPattern,
 	RuntimeInjectorChannelKind Channel,

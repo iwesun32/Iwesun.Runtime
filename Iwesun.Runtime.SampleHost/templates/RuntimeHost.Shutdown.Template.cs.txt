@@ -1,0 +1,49 @@
+using Iwesun.Runtime.Diagnostics;
+using Microsoft.Extensions.Hosting;
+
+public sealed class YourHostedWorker : BackgroundService
+{
+	private readonly RuntimeManagedRegistry _managedRegistry;
+	private readonly RManagedState _state = new("your-app.worker");
+
+	public YourHostedWorker(
+		RuntimeManagedRegistry managedRegistry)
+	{
+		_managedRegistry = managedRegistry;
+	}
+
+	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+	{
+		_managedRegistry.Register("your-app.worker", "thread", "YourApp", _state.Snapshot());
+		try
+		{
+			while (!stoppingToken.IsCancellationRequested && !ShouldStop())
+			{
+				await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+			}
+		}
+		catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+		{
+		}
+		finally
+		{
+			_state.TryTransitionTo("Stop");
+			_managedRegistry.UpdateState("your-app.worker", _state.Snapshot());
+			_managedRegistry.Unregister("your-app.worker");
+		}
+	}
+
+	private bool ShouldStop()
+	{
+		if (_managedRegistry.IsGlobalStopOrExitRequested)
+			return true;
+
+		while (_managedRegistry.TryDequeueCommand("your-app.worker", out var command))
+		{
+			if (command.Kind == RuntimeManagedCommandKind.Stop)
+				return true;
+		}
+
+		return false;
+	}
+}

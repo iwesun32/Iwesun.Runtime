@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
@@ -9,22 +10,35 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 	public static IServiceCollection AddRuntimeDiagnostics(
 		this IServiceCollection services,
 		string? runtimeDirectory = null,
-		RuntimeHostScanOptions? hostScanOptions = null)
+		RuntimeHostScanOptions? hostScanOptions = null,
+		string? startupRuntimeDiagnosticsPipeName = null,
+		string? startupRuntimeDiagnosticsFilePath = null)
 	{
+		startupRuntimeDiagnosticsPipeName ??= Environment.GetEnvironmentVariable("IWESUN_RUNTIME_DIAGNOSTICS_PIPE");
 		services.AddSingleton(new RuntimeDiagnosticHub(hostScanOptions));
-		services.AddSingleton(new DiagnosticSwitchboardConfigStore(runtimeDirectory));
+		services.AddSingleton(new DiagnosticSwitchboardConfigStore(
+			runtimeDirectory,
+			startupRuntimeDiagnosticsPipeName,
+			startupRuntimeDiagnosticsFilePath));
 		services.AddSingleton(RuntimeStateCatalog.CreateOnlineDefaults());
 		services.AddSingleton<RuntimeStateManager>();
 		services.AddSingleton<RuntimeExecutionManager>();
 		services.AddSingleton<RuntimeManagedRegistry>();
+		services.AddSingleton<RuntimeShutdownCoordinator>();
 		services.AddSingleton<RuntimeManagedCommandTarget>();
 		services.AddSingleton<RuntimePipeRegistryTarget>();
-		services.AddSingleton<DiagnosticSwitchboardTarget>();
+		services.AddSingleton<RuntimeFileRegistryTarget>();
+		services.AddSingleton<RuntimeProxyCommandTarget>();
+		services.AddSingleton(provider => new DiagnosticSwitchboardTarget(
+			provider.GetRequiredService<RuntimeShutdownCoordinator>(),
+			provider.GetService<IHostApplicationLifetime>()));
 		services.AddSingleton<RuntimeRootContainer>();
 		services.AddSingleton<RuntimeRootContainerTarget>();
 		services.AddSingleton<RuntimeDiagnosticsSelfTestState>();
 		services.AddSingleton<RuntimeDiagnosticsMonitor>();
+		#if DEBUG
 		services.AddSingleton<RuntimeDiagnosticBreakpoints>();
+		#endif
 		services.AddSingleton<RuntimeDiagnosticHooks>();
 		services.AddHostedService(provider => provider.GetRequiredService<RuntimeDiagnosticsMonitor>());
 		return services;
@@ -39,21 +53,27 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 		var configStore = provider.GetRequiredService<DiagnosticSwitchboardConfigStore>();
 		var stateManager = provider.GetRequiredService<RuntimeStateManager>();
 		var target = provider.GetRequiredService<DiagnosticSwitchboardTarget>();
+		#if DEBUG
 		var breakpoints = provider.GetRequiredService<RuntimeDiagnosticBreakpoints>();
+		#endif
 		var hooks = provider.GetRequiredService<RuntimeDiagnosticHooks>();
 		var executionManager = provider.GetRequiredService<RuntimeExecutionManager>();
 		var managedTarget = provider.GetRequiredService<RuntimeManagedCommandTarget>();
 		var pipeRegistryTarget = provider.GetRequiredService<RuntimePipeRegistryTarget>();
+		var fileRegistryTarget = provider.GetRequiredService<RuntimeFileRegistryTarget>();
+		var proxyTarget = provider.GetRequiredService<RuntimeProxyCommandTarget>();
 		var runtimeRootTarget = provider.GetRequiredService<RuntimeRootContainerTarget>();
 
 		// Initialize static state
 		DiagnosticSwitchboard.Initialize(configStore);
 		DiagnosticSwitchboard.Attach(hub);
 
-		// Wire breakpoints and hooks into Hub
+		// Wire debug-only breakpoints and production-safe hooks into Hub.
+		#if DEBUG
 		hub.SetBreakpoints(breakpoints);
-		hub.SetHooks(hooks);
 		BreakpointHelper.SetInstance(breakpoints);
+		#endif
+		hub.SetHooks(hooks);
 
 		hub.Register(target);
 		hub.RegisterObject("diagnostics.selftest", provider.GetRequiredService<RuntimeDiagnosticsSelfTestState>(), new RuntimeDiagnosticObjectAccess
@@ -81,13 +101,17 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 		});
 		hub.Register(managedTarget);
 		hub.Register(pipeRegistryTarget);
+		hub.Register(fileRegistryTarget);
+		hub.Register(proxyTarget);
 		hub.Register(runtimeRootTarget);
+		#if DEBUG
 		hub.RegisterObject("diagnostics.breakpoints", breakpoints, new RuntimeDiagnosticObjectAccess
 		{
 			AllowReadAllPublic = false,
 			ReadableMembers = ["Snapshot"],
 			InvokableMembers = ["Enable", "Disable", "Resume", "ResumeAll", "Snapshot"]
 		});
+		#endif
 	}
 
 	/// <summary>
@@ -96,15 +120,29 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 	/// </summary>
 	public static void BuildDiagnosticRegistries(this IServiceProvider provider, System.Reflection.Assembly hostAssembly)
 	{
+		#if DEBUG
 		var breakpoints = provider.GetRequiredService<RuntimeDiagnosticBreakpoints>();
+		#endif
 		var hooks = provider.GetRequiredService<RuntimeDiagnosticHooks>();
 		var hub = provider.GetRequiredService<RuntimeDiagnosticHub>();
 
 		// Initialize pipe prefix from host assembly
 		DiagnosticPipePrefix.InitializeFromAssembly(hostAssembly);
 
+		// Apply file output defaults from host assembly attribute, if not already configured via JSON
+		var fileAttr = hostAssembly
+			.GetCustomAttributes(typeof(DiagnosticFileOutputAttribute), inherit: false)
+			.OfType<DiagnosticFileOutputAttribute>()
+			.FirstOrDefault();
+		if (fileAttr != null)
+			DiagnosticSwitchboard.TryApplyAssemblyFileDefaults(fileAttr.FilePath, fileAttr.WriteMode, fileAttr.Format);
+
 		// Build registries from assembly attributes
-		var snapshot = RegistryBuilder.Build(hostAssembly, breakpoints, hooks);
+		var snapshot = RegistryBuilder.Build(hostAssembly,
+			#if DEBUG
+			breakpoints,
+			#endif
+			hooks);
 
 		// Store snapshot in Hub for CLI queries
 		hub.SetRegistrySnapshot(snapshot);

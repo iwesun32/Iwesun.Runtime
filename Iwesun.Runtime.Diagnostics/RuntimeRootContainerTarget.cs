@@ -9,7 +9,9 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 	{
 		OutputMonitor,
 		Registry,
+		#if DEBUG
 		Breakpoints,
+		#endif
 		Hooks,
 		RuntimeState,
 		Execution,
@@ -22,7 +24,9 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 	[
 		RefreshGroup.OutputMonitor,
 		RefreshGroup.Registry,
+		#if DEBUG
 		RefreshGroup.Breakpoints,
+		#endif
 		RefreshGroup.Hooks,
 		RefreshGroup.RuntimeState,
 		RefreshGroup.Execution,
@@ -35,7 +39,9 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 	{
 		[RefreshGroup.OutputMonitor] = TimeSpan.FromMilliseconds(500),
 		[RefreshGroup.Registry] = TimeSpan.FromMilliseconds(500),
+		#if DEBUG
 		[RefreshGroup.Breakpoints] = TimeSpan.FromMilliseconds(500),
+		#endif
 		[RefreshGroup.Hooks] = TimeSpan.FromMilliseconds(500),
 		[RefreshGroup.RuntimeState] = TimeSpan.FromMilliseconds(500),
 		[RefreshGroup.Execution] = TimeSpan.FromMilliseconds(300),
@@ -53,7 +59,9 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 	private readonly RuntimeManagedRegistry _managed;
 	private readonly RuntimeStateManager _state;
 	private readonly RuntimeDiagnosticHub _hub;
+	#if DEBUG
 	private readonly RuntimeDiagnosticBreakpoints _breakpoints;
+	#endif
 	private readonly RuntimeDiagnosticHooks _hooks;
 	private readonly Dictionary<RefreshGroup, DateTimeOffset> _groupRefreshAt = new();
 	private DateTimeOffset _lastRefreshAt = DateTimeOffset.MinValue;
@@ -64,7 +72,9 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 		RuntimeManagedRegistry managed,
 		RuntimeStateManager state,
 		RuntimeDiagnosticHub hub,
+		#if DEBUG
 		RuntimeDiagnosticBreakpoints breakpoints,
+		#endif
 		RuntimeDiagnosticHooks hooks) : base("runtime.root")
 	{
 		_root = root ?? throw new ArgumentNullException(nameof(root));
@@ -72,7 +82,9 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 		_managed = managed ?? throw new ArgumentNullException(nameof(managed));
 		_state = state ?? throw new ArgumentNullException(nameof(state));
 		_hub = hub ?? throw new ArgumentNullException(nameof(hub));
+		#if DEBUG
 		_breakpoints = breakpoints ?? throw new ArgumentNullException(nameof(breakpoints));
+		#endif
 		_hooks = hooks ?? throw new ArgumentNullException(nameof(hooks));
 	}
 
@@ -89,6 +101,10 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 			case "snapshot":
 				EnsureRootFresh();
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, _root.Snapshot()));
+				case "paths":
+				case "filepaths":
+					EnsureRootFresh();
+					return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, _root.GetFilePathDescriptorsSnapshot()));
 			case "refresh":
 				RefreshGroups(force: true, requestedGroups: null);
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, _root.Snapshot()));
@@ -211,9 +227,11 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 			case RefreshGroup.Registry:
 				RefreshRegistryTables();
 				break;
+			#if DEBUG
 			case RefreshGroup.Breakpoints:
 				RefreshBreakpointTables();
 				break;
+			#endif
 			case RefreshGroup.Hooks:
 				RefreshHookTables();
 				break;
@@ -238,6 +256,25 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 	private void RefreshOutputMonitorTables()
 	{
 		var output = DiagnosticSwitchboard.Snapshot();
+		var filePathDescriptors = new List<RuntimeFilePathDescriptor>();
+		if (!string.IsNullOrWhiteSpace(output.FilePath))
+		{
+			filePathDescriptors.Add(new RuntimeFilePathDescriptor(
+				output.FilePath,
+				description: "Resolved diagnostics file output path.",
+				purpose: "diagnostic-file-output",
+				source: "resolved(startup-args > persisted-json > startup-default)",
+				isPrimaryRecord: true,
+				annotations: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+				{
+					["channel"] = "file",
+					["fileOutputEnabled"] = output.FileOutputEnabled.ToString(),
+					["globalEnabled"] = output.GlobalEnabled.ToString(),
+					["pipeName"] = output.RuntimeDiagnosticsPipeName
+				}));
+		}
+
+		_root.SetFilePathDescriptors(filePathDescriptors);
 		_root.SetTableEntries("T01.OutputMonitor.Meta",
 		[
 			Entry("t01.output.meta", "output.meta", output, Secondary(
@@ -282,12 +319,14 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 				point.Id,
 				point,
 				Secondary(("table", "T02"), ("section", point.Section), ("kind", point.Kind)))));
+		#if DEBUG
 		_root.SetTableEntries("T02.Registry.Breakpoints",
 			registry.Breakpoints.Select(point => Entry(
 				$"breakpoint.registry.{point.Id}",
 				point.Id,
 				point,
 				Secondary(("table", "T02"), ("section", point.Section)))));
+		#endif
 		_root.SetTableEntries("T02.Registry.Hooks",
 			registry.Hooks.Select(hook => Entry(
 				$"hook.registry.{hook.HookId}",
@@ -296,6 +335,7 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 				Secondary(("table", "T02"), ("targetType", hook.TargetTypeName)))));
 	}
 
+	#if DEBUG
 	private void RefreshBreakpointTables()
 	{
 		var breakpointSnapshot = _breakpoints.Snapshot();
@@ -310,6 +350,7 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 					("enabled", point.Enabled.ToString()),
 					("isWaiting", point.IsWaiting.ToString())))));
 	}
+	#endif
 
 	private void RefreshHookTables()
 	{
@@ -515,12 +556,14 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 				point.Id,
 				point,
 				Secondary(("table", "T09"), ("kind", "watchpoint"), ("section", point.Section)))));
+		#if DEBUG
 		_root.SetTableEntries("T09.DiagnosticHubTable.Registry.Breakpoints",
 			hubRegistrySnapshot.Breakpoints.Select(point => Entry(
 				$"hub.registry.breakpoint.{point.Id}",
 				point.Id,
 				point,
 				Secondary(("table", "T09"), ("kind", "breakpoint"), ("section", point.Section)))));
+		#endif
 		_root.SetTableEntries("T09.DiagnosticHubTable.Registry.Hooks",
 			hubRegistrySnapshot.Hooks.Select(hook => Entry(
 				$"hub.registry.hook.{hook.HookId}",
@@ -537,7 +580,9 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 					targetCount = _hub.TargetIds.Count,
 					eventCount = hubEvents.Count,
 					watchPointCount = hubRegistrySnapshot.WatchPoints.Count,
+					#if DEBUG
 					breakpointCount = hubRegistrySnapshot.Breakpoints.Count,
+					#endif
 					hookCount = hubRegistrySnapshot.Hooks.Count
 				},
 				Secondary(("table", "T09")))
@@ -669,11 +714,13 @@ public sealed class RuntimeRootContainerTarget : RuntimeDiagnosticTargetBase
 			return true;
 		}
 
+		#if DEBUG
 		if (tableName.StartsWith("T03.", StringComparison.OrdinalIgnoreCase))
 		{
 			group = RefreshGroup.Breakpoints;
 			return true;
 		}
+		#endif
 
 		if (tableName.StartsWith("T04.", StringComparison.OrdinalIgnoreCase))
 		{

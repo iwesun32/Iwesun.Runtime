@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "runtime": {
+    "host": {
+      "runtimeDirectory": "runtime",
+      "diagnosticsPipePrefix": "YourCompany.YourApp"
+    },
+    "startup": {
+      "registerAssemblies": [
+        "YourCompany.YourApp"
+      ],
+      "staticThreads": [
+        {
+          "id": "your-app.worker",
+          "name": "Your App Worker",
+          "kind": "Worker",
+          "lifetime": "Static"
+        }
+      ],
+      "staticTasks": [
+        {
+          "id": "your-app.worker.loop",
+          "name": "Your App Worker Loop",
+          "threadId": "your-app.worker",
+          "category": "worker",
+          "lifetime": "Static"
+        }
+      ]
+    },
+    "managedState": {
+      "globalLifecycleStates": [
+        "Initialize",
+        "Running",
+        "Pause",
+        "Stop",
+        "Exit"
+      ],
+      "unitStateMutationCommands": [
+        "unit.state.transition",
+        "unit.state.trytransition",
+        "unit.state.subtask.append",
+        "unit.state.subtask.tryappend"
+      ],
+      "shutdownPreparation": {
+        "countdownMs": 10000,
+        "broadcastCommand": "Stop",
+        "requirePendingUnitsEmpty": true
+      }
+    },
+    "injector": {
+      "output": {
+        "format": "RuntimeInjector.Output(outputPointId, section, kind, message, payload)"
+      },
+      "breakpoint": {
+        "format": "await RuntimeInjector.Break(breakpointId, condition, context)"
+      },
+      "reflectionTargets": [
+        {
+          "targetId": "your.app.state",
+          "allowReadAllPublic": false,
+          "readableMembers": ["Snapshot", "CurrentPhase"],
+          "writableMembers": ["IsPaused"],
+          "invokableMembers": ["Pause", "Resume", "Reset"]
+        }
+      ]
+    },
+    "creationApis": {
+      "process": "RuntimeInjector.CreateProcess(...)",
+      "thread": "RuntimeInjector.CreateThread(...)",
+      "task": "RuntimeInjector.CreateTask(...)"
+    }
+  },
+  "cliExtension": {
+    "canonicalPolicy": "dot-style",
+    "aliasesEnabledByUserConfig": true,
+    "compositeCommandsEnabledByUserConfig": true
+  }
+}

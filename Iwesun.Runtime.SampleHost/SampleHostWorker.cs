@@ -9,27 +9,42 @@ public sealed class SampleHostWorker : BackgroundService
 	private readonly ILogger<SampleHostWorker> _logger;
 	private readonly RuntimeStateManager _runtimeStateManager;
 	private readonly RuntimeExecutionManager _runtimeExecutionManager;
+	private readonly RuntimeManagedRegistry _managedRegistry;
 	private readonly SampleHostProfile _profile;
 	private readonly SampleHostState _state;
+	private readonly SampleHostRandomState _randomState;
+	private readonly RManagedState _coordinatorState;
+	private readonly RManagedState _workerState;
+	private readonly RManagedState _monitorState;
 
 	public SampleHostWorker(
 		ILogger<SampleHostWorker> logger,
 		RuntimeStateManager runtimeStateManager,
 		RuntimeExecutionManager runtimeExecutionManager,
+		RuntimeManagedRegistry managedRegistry,
 		SampleHostProfile profile,
-		SampleHostState state)
+		SampleHostState state,
+		SampleHostRandomState randomState)
 	{
 		_logger = logger;
 		_runtimeStateManager = runtimeStateManager;
 		_runtimeExecutionManager = runtimeExecutionManager;
+		_managedRegistry = managedRegistry;
 		_profile = profile;
 		_state = state;
+		_randomState = randomState;
+		_coordinatorState = new RManagedState("sample-host.coordinator");
+		_workerState = new RManagedState("sample-host.worker");
+		_monitorState = new RManagedState("sample-host.monitor");
 	}
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
 		_runtimeStateManager.SetStart();
 		_runtimeStateManager.SetWorking();
+		RegisterLoop("sample-host.coordinator", "thread", _coordinatorState);
+		RegisterLoop("sample-host.worker", "thread", _workerState);
+		RegisterLoop("sample-host.monitor", "thread", _monitorState);
 		_logger.LogInformation("Sample host started.");
 		var faulted = false;
 
@@ -52,7 +67,10 @@ public sealed class SampleHostWorker : BackgroundService
 		}
 		finally
 		{
-			RuntimeHostTemplate.Stop(_runtimeStateManager, _runtimeExecutionManager, "sample-host.worker", "sample-host.worker.loop", graceful: !faulted);
+			if (faulted)
+			{
+				_runtimeStateManager.SetStop();
+			}
 			_logger.LogInformation("Sample host stopped.");
 		}
 	}
@@ -65,7 +83,7 @@ public sealed class SampleHostWorker : BackgroundService
 
 		try
 		{
-			while (!stoppingToken.IsCancellationRequested)
+			while (!stoppingToken.IsCancellationRequested && !ShouldStop("sample-host.coordinator"))
 			{
 				_runtimeExecutionManager.SetTaskState(taskId, RuntimeTaskState.Running, step: "coordinating", threadId: threadId);
 				_runtimeExecutionManager.HeartbeatThread(threadId);
@@ -89,6 +107,7 @@ public sealed class SampleHostWorker : BackgroundService
 		}
 		finally
 		{
+			CompleteAndUnregister("sample-host.coordinator", _coordinatorState);
 			var terminalState = stoppingToken.IsCancellationRequested ? RuntimeThreadState.Cancelled : RuntimeThreadState.Completed;
 			var terminalTaskState = stoppingToken.IsCancellationRequested ? RuntimeTaskState.Cancelled : RuntimeTaskState.Completed;
 			_runtimeExecutionManager.SetTaskState(taskId, terminalTaskState, step: terminalTaskState.ToString().ToLowerInvariant(), threadId: threadId);
@@ -104,12 +123,15 @@ public sealed class SampleHostWorker : BackgroundService
 
 		try
 		{
-			while (!stoppingToken.IsCancellationRequested)
+			while (!stoppingToken.IsCancellationRequested && !ShouldStop("sample-host.worker"))
 			{
 				_runtimeExecutionManager.SetTaskState(taskId, RuntimeTaskState.Running, step: "looping", threadId: threadId);
 				_state.Advance();
 				var snapshot = _state.Snapshot();
 				var iteration = snapshot.Iteration;
+				var randomValue = Random.Shared.Next(0, 101);
+				_randomState.Record(randomValue);
+				var randomSnapshot = _randomState.Snapshot();
 
 				var batchTaskId = $"sample-host.batch.{iteration}";
 				_runtimeExecutionManager.RegisterTask(
@@ -139,8 +161,23 @@ public sealed class SampleHostWorker : BackgroundService
 					});
 
 				RuntimeInjector.Watch("sample.host.session", snapshot, nameof(SampleHostStateSnapshot));
+				RuntimeInjector.Output(
+					"sample.host.random",
+					"sample-host",
+					"random",
+					"Periodic random sample.",
+					randomSnapshot);
+				RuntimeInjector.Watch("sample.host.random", randomSnapshot, nameof(SampleHostRandomSnapshot));
 
 #if DEBUG
+				await RuntimeInjector.Break("sample.host.random.initial-enabled", () => randomSnapshot.SampleCount == 1, randomSnapshot);
+				await RuntimeInjector.Break("sample.host.random.dynamic", () => true, randomSnapshot);
+				await RuntimeOutput.BreakIfNumbers(
+					"sample.host.random.numeric",
+					randomSnapshot.CurrentValue,
+					randomSnapshot.PreviousValue,
+					0,
+					randomSnapshot);
 				await RuntimeInjector.Break("sample.host.pause", () => snapshot.IsPaused, snapshot);
 				await RuntimeInjector.Break("sample.host.batch-gate", () => snapshot.Iteration % _profile.BatchGate == 0, snapshot);
 #endif
@@ -166,6 +203,7 @@ public sealed class SampleHostWorker : BackgroundService
 		}
 		finally
 		{
+			CompleteAndUnregister("sample-host.worker", _workerState);
 			var terminalState = stoppingToken.IsCancellationRequested ? RuntimeThreadState.Cancelled : RuntimeThreadState.Completed;
 			var terminalTaskState = stoppingToken.IsCancellationRequested ? RuntimeTaskState.Cancelled : RuntimeTaskState.Completed;
 			_runtimeExecutionManager.SetTaskState(taskId, terminalTaskState, step: terminalTaskState.ToString().ToLowerInvariant(), threadId: threadId);
@@ -181,7 +219,7 @@ public sealed class SampleHostWorker : BackgroundService
 
 		try
 		{
-			while (!stoppingToken.IsCancellationRequested)
+			while (!stoppingToken.IsCancellationRequested && !ShouldStop("sample-host.monitor"))
 			{
 				_runtimeExecutionManager.SetTaskState(taskId, RuntimeTaskState.Running, step: "monitoring", threadId: threadId);
 				var snapshot = _runtimeExecutionManager.Snapshot();
@@ -204,10 +242,51 @@ public sealed class SampleHostWorker : BackgroundService
 		}
 		finally
 		{
+			CompleteAndUnregister("sample-host.monitor", _monitorState);
 			var terminalState = stoppingToken.IsCancellationRequested ? RuntimeThreadState.Cancelled : RuntimeThreadState.Completed;
 			var terminalTaskState = stoppingToken.IsCancellationRequested ? RuntimeTaskState.Cancelled : RuntimeTaskState.Completed;
 			_runtimeExecutionManager.SetTaskState(taskId, terminalTaskState, step: terminalTaskState.ToString().ToLowerInvariant(), threadId: threadId);
 			_runtimeExecutionManager.SetThreadState(threadId, terminalState, currentTaskId: taskId);
+		}
+	}
+
+	private void RegisterLoop(string unitId, string unitType, RManagedState state)
+	{
+		state.TransitionTo("Start");
+		state.TransitionTo("Working");
+		_managedRegistry.Register(unitId, unitType, "SampleHost", state.Snapshot());
+	}
+
+	private bool ShouldStop(string unitId)
+	{
+		if (_managedRegistry.IsGlobalStopOrExitRequested)
+		{
+			return true;
+		}
+
+		while (_managedRegistry.TryDequeueCommand(unitId, out var command) && command is not null)
+		{
+			if (command.Kind == RuntimeManagedCommandKind.Stop)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private void CompleteAndUnregister(string unitId, RManagedState state)
+	{
+		try
+		{
+			state.SetDetail("shutdownStage", "draining");
+			state.TryAppendSubTaskState("Draining");
+			state.TryTransitionTo("Stop");
+			state.SetDetail("shutdownStage", "completed");
+		}
+		finally
+		{
+			_managedRegistry.Unregister(unitId);
 		}
 	}
 }

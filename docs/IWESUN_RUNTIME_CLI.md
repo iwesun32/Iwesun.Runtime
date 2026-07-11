@@ -5,6 +5,8 @@
 
 `Iwesun.Runtime.Cli` 是连接正在运行的服务的统一命令行入口，用于实时诊断、快照查询、事件排空、登记表读取和 WebRuntime 控制命令。
 
+> 规范：系统内置命令统一使用 **dot-style 标准命令名**（如 `lifecycle.status`）。默认模板仅保留 canonical 名称（`aliases: []`）；解释器仍保持可配置，用户可在 `Iwesun.Runtime.Cli.commands.v2.json` 自行添加 aliases、compositeCommands 和新命令。
+
 ## 定位
 
 CLI 不直接拥有浏览器，也不直接实现业务 HTTP。它负责把类 PowerShell 命令语法解析为语义命令，再统一包装为 JSON Frame，通过命名管道调用运行中的服务。
@@ -25,6 +27,7 @@ CLI 的职责是"发令"，不是"解释业务"。
 - `lifecycle.*`：全局生命周期状态（Initialize/Running/Pause/Stop/Exit）与停机广播
 - `unit.state.*`：进程/线程/任务共享状态与状态历史（DList 语义）
 - `pipe.*`：分支管道申请、列表、解析、释放
+- `web.runtime.*`：通过主监控代理访问 WebRuntime（模块/管道保护）
 - `hook.*`：钩子列表、挂接、卸载
 - `sw.*`：开关板状态、输出点、FIFO、pipe 配置
 
@@ -92,37 +95,42 @@ iwrt points --section=agent-sync
 iwrt point agent.worker-cycle
 
 # 查看登记表
-iwrt reg list
+iwrt reg.list
 
 # 查看断点
-iwrt bp list
+iwrt bp.list
 
 # 查看数值断点绑定与支持的操作符
-iwrt bp listNumeric
+iwrt bp.listNumeric
 
 # 绑定默认数值断点（只改比较符与常量）
-iwrt bp setNumericThreshold numeric.default.threshold gt 7
-iwrt bp setNumericThreshold numeric.default.range between 3 9
+iwrt bp.setNumericThreshold numeric.default.threshold gt 7
+iwrt bp.setNumericThreshold numeric.default.range between 3 9
 
-# 进程/线程列表
+# 进程/线程/任务列表
 iwrt process.list
 iwrt thread.list
+iwrt task.list
 
-# 进程反射读取内存变量（按 unitId）
+# 进程反射读写内存变量（按 unitId）
 iwrt process.mem.get process.abc123 UnitId
 iwrt process.mem.nav process.abc123 StartInfo.FileName
+iwrt process.mem.set process.abc123 StateName Running
 
 # 全局生命周期状态
 iwrt lifecycle.get
 iwrt lifecycle.set Running
 iwrt lifecycle.shutdown 10000
 iwrt lifecycle.status
+iwrt lifecycle.broadcast Stop
 
 # 单个单元状态与历史（DList 语义）
 iwrt unit.state.get process.abc123
 iwrt unit.state.history process.abc123 50
 iwrt unit.state.transition process.abc123 Stop
+iwrt unit.state.trytransition process.abc123 Pause
 iwrt unit.state.subtask.append task.abc123 Working
+iwrt unit.state.subtask.tryappend task.abc123 Running
 
 # 反射登记表刷新与目标列表
 iwrt reflection.refresh
@@ -134,8 +142,24 @@ iwrt pipe.list
 iwrt pipe.resolve 1
 iwrt pipe.release 1
 
+# WebRuntime 模块管道 + 主监控代理调用
+iwrt web.runtime.pipe.acquire web.runtime
+iwrt web.runtime.capabilities web.runtime web.runtime doubao-web
+iwrt web.runtime.snapshot web.runtime web.runtime doubao-web
+iwrt web.runtime.events web.runtime web.runtime doubao-web 20 false
+iwrt web.runtime.invoke web.runtime web.runtime doubao-web navigate url=https://example.com
+iwrt web.runtime.navigate web.runtime web.runtime doubao-web https://example.com
+iwrt web.runtime.cookie.get web.runtime web.runtime doubao-web www.example.com
+iwrt web.runtime.cookie.set web.runtime web.runtime doubao-web www.example.com session abc123 /
+iwrt web.runtime.cookie.clear web.runtime web.runtime doubao-web
+
+# 代理模块白名单（配置层）
+# 位置：diagnostic-switchboard.json
+# 字段：proxyModuleWhitelistEnabled / proxyAllowedModules
+# 默认：只允许 web.runtime
+
 # 查看钩子
-iwrt hook list
+iwrt hook.list
 ```
 
 ### 快速聚焦
@@ -159,24 +183,36 @@ iwrt quiet
 
 ### 开关控制
 
+说明：
+- `sw.enable` / `sw.disable` 的可选参数是 `section` 名称，不是 `true/false`。
+- `sw.pipe` / `sw.file` 必须传布尔参数（`true|false`）。
+
+误用示例（错误 vs 正确）：
+- 错误：`iwrt sw.enable true`；正确：`iwrt sw.enable` 或 `iwrt sw.enable runtime.diagnostics`
+- 错误：`iwrt sw.file`；正确：`iwrt sw.file true`（或 `iwrt sw.file false`）
+
+最短排障指令（确认 file 开关是否生效）：
+- `iwrt sw.file true`
+- `iwrt sw.list`（检查返回中的 `fileOutputEnabled` 是否为 `true`）
+
 ```powershell
 iwrt pipe on
-iwrt enable agent-sync
-iwrt enable-point agent.worker-cycle
-iwrt enable
-iwrt events-clean 100
-iwrt disable-point agent.worker-cycle
-iwrt disable agent-sync
-iwrt disable
-iwrt pipe off
+iwrt sw.enable runtime.diagnostics
+iwrt sw.point.enable agent.worker-cycle
+iwrt sw.enable
+iwrt host.events 100
+iwrt sw.point.disable agent.worker-cycle
+iwrt sw.disable runtime.diagnostics
+iwrt sw.disable
+iwrt sw.pipe false
 
 # 控制断点
-iwrt bp enable tree.fill
-iwrt bp resume tree.fill
+iwrt bp.enable tree.fill
+iwrt bp.resume tree.fill
 
 # 控制钩子
-iwrt hook attach tree.updated
-iwrt hook detach tree.updated
+iwrt hook.enable tree.updated
+iwrt hook.disable tree.updated
 ```
 
 ### Service UI 管理
@@ -271,7 +307,7 @@ iwrt mem clear xpath
 
 CLI 打包了 `Iwesun.Runtime.WebView2`，可与兼容主机的 WebRuntime 管道通信。DDNS Snap 当前不托管 WebView2 会话，但 CLI 可与运行中的 AIGateway WebRuntime 管道通信。
 
-保持诊断管道命令和 WebRuntime 命令分离：诊断命令使用 `RuntimeDiagnosticFrame`，WebView2 命令使用 `WebRuntimeControlRequest`。
+保持诊断管道命令和 WebRuntime 命令分离：诊断命令使用 `RuntimeDiagnosticFrame`，WebView2 命令使用 `WebRuntimeControlRequest`。当需要跨进程访问 WebRuntime 时，统一走 `web.runtime.*`，由主监控 `diagnostics.proxy` 目标转发到已登记分支管道。
 
 ## 相关文档
 

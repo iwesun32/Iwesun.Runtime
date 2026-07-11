@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <Platforms>AnyCPU;x64</Platforms>
+    <ReleaseRoot>$(MSBuildThisFileDirectory)..\artifacts\release\Iwesun.Runtime\</ReleaseRoot>
+    <ReleaseBinRoot>$(ReleaseRoot)bin\</ReleaseBinRoot>
+    <ReleaseLibRoot>$(ReleaseRoot)lib\</ReleaseLibRoot>
+    <ReleaseDocsRoot>$(ReleaseRoot)docs\</ReleaseDocsRoot>
+    <ReleaseConfigRoot>$(ReleaseRoot)config\</ReleaseConfigRoot>
+    <ReleaseSamplesRoot>$(ReleaseRoot)samples\</ReleaseSamplesRoot>
+    <ReleaseScriptsRoot>$(ReleaseRoot)scripts\</ReleaseScriptsRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.csproj" />
+    <ProjectReference Include="..\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" />
+    <ProjectReference Include="..\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" />
+    <ProjectReference Include="..\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" />
+    <ProjectReference Include="..\Iwesun.Runtime.SampleHost\Iwesun.Runtime.SampleHost.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_CLI.md" />
+    <ReleaseDocs Include="..\docs\05-runtime-tooling\RUNTIME_INTEGRATION_GUIDE.md" />
+    <ReleaseDocs Include="..\docs\05-runtime-tooling\INJECTOR_STANDARDIZATION.md" />
+    <ReleaseDocs Include="..\docs\05-runtime-tooling\SAMPLE_HOST.md" />
+    <ReleaseDocs Include="..\docs\05-runtime-tooling\WEB_RUNTIME_CONTROL.md" />
+    <ReleaseDocs Include="..\docs\05-runtime-tooling\RUNTIME_RELEASE_PACKAGING.md" />
+    <ReleaseConfig Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.commands.v2.json" />
+    <ReleaseSamples Include="..\Iwesun.Runtime.SampleHost\templates\**\*.*" />
+    <ReleaseScripts Include="..\scripts\release\verify-runtime-install.ps1" />
+  </ItemGroup>
+
+  <Target Name="PublishRuntimeRelease">
+    <RemoveDir Directories="$(ReleaseRoot)" />
+    <MakeDir Directories="$(ReleaseRoot)" />
+    <MakeDir Directories="$(ReleaseBinRoot)Iwesun.Runtime.Cli" />
+    <MakeDir Directories="$(ReleaseLibRoot)Iwesun.Runtime.Diagnostics" />
+    <MakeDir Directories="$(ReleaseLibRoot)Iwesun.Runtime.Data" />
+    <MakeDir Directories="$(ReleaseLibRoot)Iwesun.Runtime.WebView2" />
+    <MakeDir Directories="$(ReleaseBinRoot)Iwesun.Runtime.SampleHost" />
+    <MakeDir Directories="$(ReleaseDocsRoot)" />
+    <MakeDir Directories="$(ReleaseConfigRoot)" />
+    <MakeDir Directories="$(ReleaseSamplesRoot)templates" />
+    <MakeDir Directories="$(ReleaseScriptsRoot)" />
+
+    <MSBuild Projects="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.Cli\;SelfContained=false;UseAppHost=true" />
+    <MSBuild Projects="..\Iwesun.Runtime.SampleHost\Iwesun.Runtime.SampleHost.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.SampleHost\;SelfContained=false;UseAppHost=true" />
+    <MSBuild Projects="..\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Diagnostics\;SelfContained=false" />
+    <MSBuild Projects="..\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Data\;SelfContained=false" />
+    <MSBuild Projects="..\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.WebView2\;SelfContained=false" />
+
+    <Copy SourceFiles="@(ReleaseDocs)"
+          DestinationFiles="@(ReleaseDocs->'$(ReleaseDocsRoot)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ReleaseConfig)"
+          DestinationFiles="@(ReleaseConfig->'$(ReleaseConfigRoot)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ReleaseSamples)"
+          DestinationFiles="@(ReleaseSamples->'$(ReleaseSamplesRoot)templates\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ReleaseScripts)"
+          DestinationFiles="@(ReleaseScripts->'$(ReleaseScriptsRoot)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

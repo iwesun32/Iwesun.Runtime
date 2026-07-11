@@ -53,6 +53,10 @@ public sealed class CliSemanticCommand
 			return "hooks";
 		if (targetId.StartsWith("diagnostics.registry", StringComparison.OrdinalIgnoreCase))
 			return "registry";
+		if (targetId.StartsWith("diagnostics.pipes", StringComparison.OrdinalIgnoreCase))
+			return "pipes";
+		if (targetId.StartsWith("diagnostics.proxy", StringComparison.OrdinalIgnoreCase))
+			return "proxy";
 		if (targetId.StartsWith("diagnostics.monitor", StringComparison.OrdinalIgnoreCase))
 			return "host";
 		return "runtime";

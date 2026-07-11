@@ -97,7 +97,7 @@ InputEnabled = PipeOutputEnabled || FileOutputEnabled
 - `Id, Section, Kind, Description, SourceLocation, Enabled`
 
 `BreakpointEntry`:
-- `Id, Section, Description, SourceLocation, TimeoutMs, HitCountTarget, Enabled`
+- `Id, Section, Description, SourceLocation, HitCountTarget, Enabled`
 
 `HookEntry`:
 - `HookId, EventName, TargetTypeName, IsAttached`
@@ -108,11 +108,11 @@ InputEnabled = PipeOutputEnabled || FileOutputEnabled
 
 - `BreakpointState`
   - `Id, Section, Description, SourceLocation`
-  - `Enabled, HitCountTarget, TimeoutMs, AutoResume`
+  - `Enabled, HitCountTarget`
   - `HitCount, IsWaiting, LastHitAt, LastContext`
 
 - 快照结构：`BreakpointSnapshot`
-  - `Id, Section, Description, SourceLocation, Enabled, HitCountTarget, TimeoutMs, AutoResume, HitCount, IsWaiting, LastHitAt`
+  - `Id, Section, Description, SourceLocation, Enabled, HitCountTarget, HitCount, IsWaiting, LastHitAt`
 
 ---
 

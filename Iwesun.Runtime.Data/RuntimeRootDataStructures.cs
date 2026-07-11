@@ -66,7 +66,82 @@ public sealed record RuntimeRootTableSnapshot(
 
 public sealed record RuntimeRootSnapshot(
 	DateTimeOffset GeneratedAt,
-	IReadOnlyList<RuntimeRootTableSnapshot> Tables);
+	IReadOnlyList<RuntimeRootTableSnapshot> Tables,
+	IReadOnlyList<RuntimeFilePathDescriptor> FilePathDescriptors);
+
+public readonly struct RuntimeFilePathDescriptor :
+	IEquatable<RuntimeFilePathDescriptor>,
+	IComparable<RuntimeFilePathDescriptor>
+{
+	public RuntimeFilePathDescriptor(
+		string filePathName,
+		string? description = null,
+		string? purpose = null,
+		string? source = null,
+		bool isPrimaryRecord = false,
+		IReadOnlyDictionary<string, string>? annotations = null,
+		DateTimeOffset? registeredAt = null,
+		DateTimeOffset? updatedAt = null)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(filePathName);
+
+		FilePathName = filePathName.Trim();
+		Description = description?.Trim() ?? string.Empty;
+		Purpose = purpose?.Trim() ?? string.Empty;
+		Source = source?.Trim() ?? string.Empty;
+		IsPrimaryRecord = isPrimaryRecord;
+		Annotations = annotations ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		RegisteredAt = registeredAt ?? DateTimeOffset.UtcNow;
+		UpdatedAt = updatedAt ?? RegisteredAt;
+	}
+
+	public string FilePathName { get; }
+	public string Description { get; }
+	public string Purpose { get; }
+	public string Source { get; }
+	public bool IsPrimaryRecord { get; }
+	public IReadOnlyDictionary<string, string> Annotations { get; }
+	public DateTimeOffset RegisteredAt { get; }
+	public DateTimeOffset UpdatedAt { get; }
+
+	public RuntimeFilePathDescriptor NormalizeAs(bool isPrimaryRecord) =>
+		new(
+			FilePathName,
+			Description,
+			Purpose,
+			Source,
+			isPrimaryRecord,
+			Annotations,
+			RegisteredAt,
+			DateTimeOffset.UtcNow);
+
+	public bool Equals(RuntimeFilePathDescriptor other) =>
+		FilePathName.Equals(other.FilePathName, StringComparison.OrdinalIgnoreCase);
+
+	public override bool Equals(object? obj) =>
+		obj is RuntimeFilePathDescriptor other && Equals(other);
+
+	public override int GetHashCode() =>
+		StringComparer.OrdinalIgnoreCase.GetHashCode(FilePathName);
+
+	public int CompareTo(RuntimeFilePathDescriptor other)
+	{
+		if (IsPrimaryRecord && !other.IsPrimaryRecord)
+		{
+			return -1;
+		}
+
+		if (!IsPrimaryRecord && other.IsPrimaryRecord)
+		{
+			return 1;
+		}
+
+		return string.Compare(FilePathName, other.FilePathName, StringComparison.OrdinalIgnoreCase);
+	}
+
+	public static bool operator ==(RuntimeFilePathDescriptor left, RuntimeFilePathDescriptor right) => left.Equals(right);
+	public static bool operator !=(RuntimeFilePathDescriptor left, RuntimeFilePathDescriptor right) => !left.Equals(right);
+}
 
 public interface IRuntimeRootAuxIndex
 {

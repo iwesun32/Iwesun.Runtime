@@ -1,21 +1,22 @@
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Iwesun.Runtime.Diagnostics;
 using Iwesun.Runtime.Cli;
 
 var bootstrapOptions = CliOptions.Parse(args);
-var catalog = UnifiedCommandCatalog.Load(bootstrapOptions.ConfigPath);
-var options = bootstrapOptions.ResolveDiagnosticsPipeName(catalog.DiagnosticsPipeName);
-
-if (options.ShowHelp || options.CommandArgs.Count == 0)
-{
-	PrintHelp(catalog);
-	return 0;
-}
-
 try
 {
+	var catalog = UnifiedCommandCatalog.Load(bootstrapOptions.ConfigPath, bootstrapOptions.UserConfigPath);
+	var options = bootstrapOptions.ResolveDiagnosticsPipeName(catalog.DiagnosticsPipeName);
+
+	if (options.ShowHelp || options.CommandArgs.Count == 0)
+	{
+		PrintHelp(catalog);
+		return 0;
+	}
+
 	var inputLine = string.Join(' ', options.CommandArgs);
 	var parsed = CommandParser.Parse(inputLine);
 
@@ -32,7 +33,7 @@ try
 	}
 
 	if (!catalog.BaseLookup.TryGetValue(parsed.FullName, out var commandDef))
-		throw new ArgumentException($"Unknown unified command: {parsed.FullName}");
+		throw new ArgumentException($"Unknown unified command: {parsed.FullName}. Use v2 dot-style commands (for example host.stop). You can add custom aliases/composite commands in a user config JSON via --user-config=... .");
 
 	if (!IsDiagnosticsTransport(commandDef.Transport))
 		throw new NotSupportedException($"Transport '{commandDef.Transport}' is not enabled in unified mode.");
@@ -172,6 +173,7 @@ internal sealed class CliOptions
 	public string DiagnosticsPipeName { get; private init; } = "DdnsSnap.RuntimeDiagnostics";
 	public bool DiagnosticsPipeOverridden { get; private init; }
 	public string ConfigPath { get; private init; } = "";
+	public string UserConfigPath { get; private init; } = "";
 	public TimeSpan ConnectTimeout { get; private init; } = TimeSpan.FromSeconds(5);
 	public TimeSpan RequestTimeout { get; private init; } = TimeSpan.FromSeconds(15);
 	public int MaxResponseBytes { get; private init; } = 16 * 1024 * 1024;
@@ -183,6 +185,7 @@ internal sealed class CliOptions
 		var pipeName = "DdnsSnap.RuntimeDiagnostics";
 		var pipeOverridden = false;
 		var configPath = ResolveDefaultConfigPath();
+		var userConfigPath = ResolveDefaultUserConfigPath();
 		var connectTimeout = TimeSpan.FromSeconds(5);
 		var requestTimeout = TimeSpan.FromSeconds(15);
 		var maxResponseBytes = 16 * 1024 * 1024;
@@ -207,6 +210,18 @@ internal sealed class CliOptions
 			if (arg.StartsWith("--config=", StringComparison.OrdinalIgnoreCase))
 			{
 				configPath = arg["--config=".Length..].Trim('"');
+				continue;
+			}
+
+			if (arg.StartsWith("--user-config=", StringComparison.OrdinalIgnoreCase))
+			{
+				userConfigPath = arg["--user-config=".Length..].Trim('"');
+				continue;
+			}
+
+			if (arg.Equals("--no-user-config", StringComparison.OrdinalIgnoreCase))
+			{
+				userConfigPath = string.Empty;
 				continue;
 			}
 
@@ -242,6 +257,7 @@ internal sealed class CliOptions
 			DiagnosticsPipeName = pipeName,
 			DiagnosticsPipeOverridden = pipeOverridden,
 			ConfigPath = configPath,
+			UserConfigPath = userConfigPath,
 			ConnectTimeout = connectTimeout,
 			RequestTimeout = requestTimeout,
 			MaxResponseBytes = maxResponseBytes,
@@ -283,6 +299,15 @@ internal sealed class CliOptions
 
 		return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Iwesun.Runtime.Cli.commands.v2.json"));
 	}
+
+	private static string ResolveDefaultUserConfigPath()
+	{
+		var env = Environment.GetEnvironmentVariable("IWRT_USER_CONFIG");
+		if (!string.IsNullOrWhiteSpace(env))
+			return env.Trim();
+
+		return Path.Combine(AppContext.BaseDirectory, "Iwesun.Runtime.Cli.user.v2.json");
+	}
 }
 
 internal sealed class UnifiedCommandCatalog
@@ -295,23 +320,24 @@ internal sealed class UnifiedCommandCatalog
 	public required Dictionary<string, CompositeCommandDef> CompositeLookup { get; init; }
 	public required Dictionary<string, string> Memory { get; init; }
 
-	public static UnifiedCommandCatalog Load(string configPath)
+	public static UnifiedCommandCatalog Load(string configPath, string? userConfigPath)
 	{
 		if (!File.Exists(configPath))
 			throw new FileNotFoundException($"Unified command config not found: {configPath}");
 
-		var config = CommandConfigStore.Load(configPath);
+		var config = CommandConfigStore.LoadV2(configPath, isBaseConfig: true);
+		var merged = CommandConfigStore.MergeWithUserOverrides(config, userConfigPath);
 		return new UnifiedCommandCatalog
 		{
-			Meta = config.Meta,
-			DiagnosticsPipeName = config.Pipes.TryGetValue("diagnostics", out var diagnosticsPipeName)
+			Meta = merged.Meta,
+			DiagnosticsPipeName = merged.Pipes.TryGetValue("diagnostics", out var diagnosticsPipeName)
 				? diagnosticsPipeName
 				: "DdnsSnap.RuntimeDiagnostics",
-			BaseCommands = config.BaseCommands,
-			CompositeCommands = config.CompositeCommands,
-			BaseLookup = CommandParser.BuildLookup(config.BaseCommands),
-			CompositeLookup = CommandParser.BuildCompositeLookup(config.CompositeCommands),
-			Memory = config.Memory
+			BaseCommands = merged.BaseCommands,
+			CompositeCommands = merged.CompositeCommands,
+			BaseLookup = CommandParser.BuildLookup(merged.BaseCommands),
+			CompositeLookup = CommandParser.BuildCompositeLookup(merged.CompositeCommands),
+			Memory = merged.Memory
 		};
 	}
 }

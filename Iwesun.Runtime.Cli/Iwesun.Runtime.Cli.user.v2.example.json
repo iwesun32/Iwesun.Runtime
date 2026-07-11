@@ -1,0 +1,49 @@
+{
+  "version": 2,
+  "meta": {
+    "name": "Iwesun Runtime CLI User Overrides",
+    "description": "User-defined aliases and composite commands that extend v2 command spec"
+  },
+  "pipes": {
+    "diagnostics": "DdnsSnap.RuntimeDiagnostics"
+  },
+  "memory": {
+    "count": "50"
+  },
+  "baseCommands": [
+    {
+      "name": "host-stop",
+      "aliases": [
+        "shutdown-host"
+      ],
+      "help": "Compatibility alias mapped to v2 host.stop",
+      "usage": "host-stop",
+      "examples": [
+        "host-stop"
+      ],
+      "transport": "diagnostics",
+      "category": "system",
+      "operation": "shutdown",
+      "targetId": "diagnostics.switchboard",
+      "action": "shutdown"
+    }
+  ],
+  "compositeCommands": [
+    {
+      "name": "quick-check",
+      "aliases": [
+        "qc"
+      ],
+      "help": "Run basic host diagnostics checks",
+      "mode": "sequential",
+      "steps": [
+        {
+          "command": "host.info"
+        },
+        {
+          "command": "sw.list"
+        }
+      ]
+    }
+  ]
+}

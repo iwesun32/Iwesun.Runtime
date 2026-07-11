@@ -3,15 +3,29 @@ using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
 
+public enum FileWriteMode
+{
+	/// <summary>Always append to the file (default).</summary>
+	Append,
+	/// <summary>Truncate the file at startup, then append.</summary>
+	Overwrite,
+	/// <summary>Create a new time-stamped file at startup; the template path is used as the base name.</summary>
+	CreateNew
+}
+
 public sealed class DiagnosticSwitchboardConfig
 {
 	public int SchemaVersion { get; set; } = 1;
 	public string GeneratedFrom { get; set; } = DiagnosticSwitchboardCompiledConfig.GeneratedFrom;
 	public string RuntimeDiagnosticsPipeName { get; set; } = DiagnosticSwitchboardCompiledConfig.DefaultRuntimeDiagnosticsPipeName;
+	public bool ProxyModuleWhitelistEnabled { get; set; } = true;
+	public List<string> ProxyAllowedModules { get; set; } = [];
 	public bool GlobalEnabled { get; set; }
 	public bool PipeOutputEnabled { get; set; }
 	public bool FileOutputEnabled { get; set; }
 	public string? FilePath { get; set; }
+	public FileWriteMode FileWriteMode { get; set; } = FileWriteMode.Append;
+	public DiagnosticFileFormat FileFormat { get; set; } = DiagnosticFileFormat.CompactJson;
 	public int FifoDepth { get; set; } = 1024;
 	public Dictionary<string, bool> Sections { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 	public List<DiagnosticOutputPointConfig> OutputPoints { get; set; } = [];
@@ -34,14 +48,27 @@ public sealed class DiagnosticOutputPointConfig
 
 public sealed class DiagnosticSwitchboardConfigStore
 {
+	private const string RuntimeDiagnosticsPipeArg = "--runtime-diagnostics-pipe=";
+	private const string RuntimeDiagnosticsFileArg = "--runtime-diagnostics-file=";
+	private const string RuntimeDiagnosticsPipeArgShort = "--diag-pipe=";
+	private const string RuntimeDiagnosticsFileArgShort = "--diag-file=";
+
 	private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
 	{
 		WriteIndented = true
 	};
 
-	public DiagnosticSwitchboardConfigStore(string? runtimeDirectory = null)
+	private readonly string? _startupRuntimeDiagnosticsPipeName;
+	private readonly string? _startupRuntimeDiagnosticsFilePath;
+
+	public DiagnosticSwitchboardConfigStore(
+		string? runtimeDirectory = null,
+		string? startupRuntimeDiagnosticsPipeName = null,
+		string? startupRuntimeDiagnosticsFilePath = null)
 	{
 		RuntimeDirectory = ResolveRuntimeDirectory(runtimeDirectory);
+		_startupRuntimeDiagnosticsPipeName = NormalizeOrNull(startupRuntimeDiagnosticsPipeName);
+		_startupRuntimeDiagnosticsFilePath = NormalizeOrNull(startupRuntimeDiagnosticsFilePath);
 	}
 
 	public string RuntimeDirectory { get; }
@@ -50,9 +77,9 @@ public sealed class DiagnosticSwitchboardConfigStore
 	public DiagnosticSwitchboardConfig Load()
 	{
 		Directory.CreateDirectory(RuntimeDirectory);
+		var defaults = BuildStartupDefaults();
 		if (!File.Exists(ConfigPath))
 		{
-			var defaults = DiagnosticSwitchboardCompiledConfig.CreateDefaults();
 			Save(defaults);
 			return defaults;
 		}
@@ -62,12 +89,15 @@ public sealed class DiagnosticSwitchboardConfigStore
 			var json = File.ReadAllText(ConfigPath);
 			var config = JsonSerializer.Deserialize<DiagnosticSwitchboardConfig>(json, JsonOptions);
 			config = DiagnosticSwitchboardCompiledConfig.MergeWithCompiledDefaults(config);
+			ApplyStartupFallback(config);
+			ApplyDefaultRecordingCompatibility(config, defaults);
+			ApplyCommandLineOverrides(config);
 			Save(config);
 			return config;
 		}
 		catch
 		{
-			var defaults = DiagnosticSwitchboardCompiledConfig.CreateDefaults();
+			ApplyCommandLineOverrides(defaults);
 			Save(defaults);
 			return defaults;
 		}
@@ -90,6 +120,102 @@ public sealed class DiagnosticSwitchboardConfigStore
 			Environment.SpecialFolderOption.Create);
 		return Path.Combine(localApplicationData, "Iwesun", "RuntimeDiagnostics");
 	}
+
+	private DiagnosticSwitchboardConfig BuildStartupDefaults()
+	{
+		var defaults = DiagnosticSwitchboardCompiledConfig.CreateDefaults();
+		if (!string.IsNullOrWhiteSpace(_startupRuntimeDiagnosticsPipeName))
+			defaults.RuntimeDiagnosticsPipeName = _startupRuntimeDiagnosticsPipeName;
+		if (!string.IsNullOrWhiteSpace(_startupRuntimeDiagnosticsFilePath))
+			defaults.FilePath = _startupRuntimeDiagnosticsFilePath;
+		return defaults;
+	}
+
+	private void ApplyStartupFallback(DiagnosticSwitchboardConfig config)
+	{
+		if (string.IsNullOrWhiteSpace(config.RuntimeDiagnosticsPipeName)
+			&& !string.IsNullOrWhiteSpace(_startupRuntimeDiagnosticsPipeName))
+		{
+			config.RuntimeDiagnosticsPipeName = _startupRuntimeDiagnosticsPipeName;
+		}
+
+		if (string.IsNullOrWhiteSpace(config.FilePath)
+			&& !string.IsNullOrWhiteSpace(_startupRuntimeDiagnosticsFilePath))
+		{
+			config.FilePath = _startupRuntimeDiagnosticsFilePath;
+		}
+	}
+
+	private static void ApplyDefaultRecordingCompatibility(
+		DiagnosticSwitchboardConfig config,
+		DiagnosticSwitchboardConfig defaults)
+	{
+		if (config.GlobalEnabled || config.PipeOutputEnabled || config.FileOutputEnabled)
+			return;
+
+		var hasEnabledSection = config.Sections.Any(x => x.Value);
+		var hasEnabledPoint = config.OutputPoints.Any(x => x.Enabled);
+		if (hasEnabledSection || hasEnabledPoint)
+			return;
+
+		config.GlobalEnabled = defaults.GlobalEnabled;
+		config.PipeOutputEnabled = defaults.PipeOutputEnabled;
+		config.FileOutputEnabled = defaults.FileOutputEnabled;
+
+		foreach (var (key, enabled) in defaults.Sections)
+		{
+			if (enabled)
+				config.Sections[key] = true;
+		}
+
+		var enabledPointIds = defaults.OutputPoints
+			.Where(x => x.Enabled)
+			.Select(x => x.Id)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+		foreach (var point in config.OutputPoints)
+		{
+			if (enabledPointIds.Contains(point.Id))
+				point.Enabled = true;
+		}
+	}
+
+	private static void ApplyCommandLineOverrides(DiagnosticSwitchboardConfig config)
+	{
+		foreach (var arg in Environment.GetCommandLineArgs())
+		{
+			if (TryGetArgValue(arg, RuntimeDiagnosticsPipeArg, out var pipe)
+				|| TryGetArgValue(arg, RuntimeDiagnosticsPipeArgShort, out pipe))
+			{
+				config.RuntimeDiagnosticsPipeName = pipe;
+				continue;
+			}
+
+			if (TryGetArgValue(arg, RuntimeDiagnosticsFileArg, out var filePath)
+				|| TryGetArgValue(arg, RuntimeDiagnosticsFileArgShort, out filePath))
+			{
+				config.FilePath = filePath;
+			}
+		}
+	}
+
+	private static bool TryGetArgValue(string arg, string prefix, out string value)
+	{
+		value = string.Empty;
+		if (!arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+			return false;
+
+		var raw = arg[prefix.Length..].Trim('"');
+		var normalized = NormalizeOrNull(raw);
+		if (string.IsNullOrWhiteSpace(normalized))
+			return false;
+
+		value = normalized;
+		return true;
+	}
+
+	private static string? NormalizeOrNull(string? value) =>
+		string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
 public static class DiagnosticSwitchboardCompiledConfig
@@ -115,10 +241,15 @@ public static class DiagnosticSwitchboardCompiledConfig
 			RuntimeDiagnosticsPipeName = string.IsNullOrWhiteSpace(configured.RuntimeDiagnosticsPipeName)
 				? DefaultRuntimeDiagnosticsPipeName
 				: configured.RuntimeDiagnosticsPipeName,
-			GlobalEnabled = isCurrentCompiledConfig && configured.GlobalEnabled,
-			PipeOutputEnabled = isCurrentCompiledConfig && configured.PipeOutputEnabled,
-			FileOutputEnabled = isCurrentCompiledConfig && configured.FileOutputEnabled,
+			ProxyModuleWhitelistEnabled = configured.ProxyModuleWhitelistEnabled,
+			ProxyAllowedModules = defaults.ProxyAllowedModules,
+			// These three switches should be default-false only when missing, not forced by schema gating.
+			GlobalEnabled = configured.GlobalEnabled,
+			PipeOutputEnabled = configured.PipeOutputEnabled,
+			FileOutputEnabled = configured.FileOutputEnabled,
 			FilePath = configured.FilePath,
+			FileWriteMode = configured.FileWriteMode,
+			FileFormat = configured.FileFormat,
 			FifoDepth = configured.FifoDepth,
 			Sections = defaults.Sections,
 			OutputPoints = defaults.OutputPoints
@@ -128,6 +259,15 @@ public static class DiagnosticSwitchboardCompiledConfig
 		{
 			foreach (var item in configured.Sections)
 				config.Sections[item.Key] = item.Value;
+		}
+
+		if (configured.ProxyAllowedModules != null && configured.ProxyAllowedModules.Count > 0)
+		{
+			config.ProxyAllowedModules = configured.ProxyAllowedModules
+				.Where(x => !string.IsNullOrWhiteSpace(x))
+				.Select(x => x.Trim())
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
 		}
 
 		if (configured.OutputPoints != null && configured.OutputPoints.Count > 0)
@@ -160,10 +300,14 @@ public static class DiagnosticSwitchboardCompiledConfig
 			SchemaVersion = SchemaVersion,
 			GeneratedFrom = GeneratedFrom,
 			RuntimeDiagnosticsPipeName = DefaultRuntimeDiagnosticsPipeName,
-			GlobalEnabled = false,
-			PipeOutputEnabled = false,
-			FileOutputEnabled = false,
+			ProxyModuleWhitelistEnabled = true,
+			ProxyAllowedModules = ["web.runtime"],
+			GlobalEnabled = true,
+			PipeOutputEnabled = true,
+			FileOutputEnabled = true,
 			FilePath = null,
+			FileWriteMode = FileWriteMode.Append,
+			FileFormat = DiagnosticFileFormat.CompactJson,
 			FifoDepth = 1024,
 			Sections = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
 			{
@@ -176,12 +320,12 @@ public static class DiagnosticSwitchboardCompiledConfig
 				["configuration"] = false,
 				["security"] = false,
 				["dns"] = false,
-				["pipeline"] = false,
+				["pipeline"] = true,
 				["network"] = false,
 				["peer-sync"] = false,
 				["agent-sync"] = false,
 				["address-probing"] = false,
-				["runtime.diagnostics"] = false
+				["runtime.diagnostics"] = true
 			},
 			OutputPoints = CreateDefaultOutputPoints()
 		};
@@ -400,6 +544,15 @@ public static class DiagnosticSwitchboardCompiledConfig
 			LogPoint("log.address-probing", "address-probing", "Server address probing ILogger events."),
 			LogPoint("log.console", "console", "Unclassified Microsoft.Extensions.Logging output.")
 		});
+
+		foreach (var point in points)
+		{
+			if (point.Id.Equals("log.pipeline", StringComparison.OrdinalIgnoreCase)
+				|| point.Id.Equals("switchboard.control", StringComparison.OrdinalIgnoreCase))
+			{
+				point.Enabled = true;
+			}
+		}
 
 		return points;
 	}

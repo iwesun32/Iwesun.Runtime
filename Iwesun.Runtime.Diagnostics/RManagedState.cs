@@ -27,13 +27,18 @@ public sealed class RManagedState : IRManagedState
     private readonly RuntimeDList<RuntimeState> _subTaskStates = new();
     private readonly object _subTaskGate = new();
     private readonly RuntimeManagedRegistry? _managed;
+	private readonly RuntimeInstructionEntityKind _entityKind;
 
-    public RManagedState(string unitId, RuntimeStateCatalog? catalog = null)
+    public RManagedState(
+		string unitId,
+		RuntimeStateCatalog? catalog = null,
+		RuntimeInstructionEntityKind entityKind = RuntimeInstructionEntityKind.Business)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
         UnitId = unitId;
         StateManager = new RuntimeStateManager(catalog);
         _managed = RuntimeInjectionContext.Managed;
+		_entityKind = entityKind;
     }
 
     public string UnitId { get; }
@@ -57,6 +62,7 @@ public sealed class RManagedState : IRManagedState
         if (ok)
         {
             Sync();
+			_managed?.TryPublishStateCode(UnitId, _entityKind, CurrentState.Code);
         }
 
         return ok;
@@ -66,6 +72,7 @@ public sealed class RManagedState : IRManagedState
     {
         var state = StateManager.TransitionToByName(stateName);
         Sync();
+		_managed?.TryPublishStateCode(UnitId, _entityKind, state.Code);
         return state;
     }
 

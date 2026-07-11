@@ -20,7 +20,7 @@
 
 - 启动模板：`RuntimeHostTemplate.Start(...)`
 - 激活模板：`RuntimeHostTemplate.Activate(...)`
-- 退出模板：`RuntimeHostTemplate.Stop(...)`
+- 退出协调：`RuntimeShutdownCoordinator.ShutdownAsync(...)`
 - 输出注入：`RuntimeInjector.Output(...)`
 - 观察点注入：`RuntimeInjector.Watch(...)`
 - 断点注入：`RuntimeInjector.Break(...)`
@@ -97,9 +97,9 @@
 
 当前主要通过编译和样板宿主行为验证，尚未补齐完整自动化测试（尤其是退出路径、异常路径、断点行为路径）。
 
-### 3. 退出模板仍是基础版
+### 3. 协调退出已替换旧模板
 
-`RuntimeHostTemplate.Stop(...)` 已可用，但超时兜底、分阶段收尾策略、统一异常映射仍有细化空间。
+旧的 `RuntimeHostTemplate.Stop(...)` 已删除。统一流程为全局 Stop 告示、逐单元 FIFO Stop/Wakeup、业务清理反登记、登记表清空返回 `0`，倒计时超时返回 `124`。
 
 ### 4. 标注化规范缺少“操作手册”
 

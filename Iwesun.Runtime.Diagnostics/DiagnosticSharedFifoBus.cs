@@ -9,8 +9,6 @@ internal enum DiagnosticSharedFifoChannelKind
 {
 	Monitor = 1,
 	Breakpoint = 2,
-	Command = 3,
-	State = 4
 }
 
 [SupportedOSPlatform("windows")]
@@ -18,15 +16,11 @@ internal sealed class DiagnosticSharedFifoBus : IDisposable
 {
 	private readonly DiagnosticSharedFifoChannel _monitor;
 	private readonly DiagnosticSharedFifoChannel _breakpoint;
-	private readonly DiagnosticSharedFifoChannel _command;
-	private readonly DiagnosticSharedFifoChannel _state;
 
-	private DiagnosticSharedFifoBus(DiagnosticSharedFifoChannel monitor, DiagnosticSharedFifoChannel breakpoint, DiagnosticSharedFifoChannel command, DiagnosticSharedFifoChannel state)
+	private DiagnosticSharedFifoBus(DiagnosticSharedFifoChannel monitor, DiagnosticSharedFifoChannel breakpoint)
 	{
 		_monitor = monitor;
 		_breakpoint = breakpoint;
-		_command = command;
-		_state = state;
 	}
 
 	public static DiagnosticSharedFifoBus? TryCreate(string scope)
@@ -36,9 +30,7 @@ internal sealed class DiagnosticSharedFifoBus : IDisposable
 		{
 			var monitor = new DiagnosticSharedFifoChannel(BuildName(scope, "monitor"), capacityBytes: 1024 * 1024, maxItemBytes: 16 * 1024);
 			var breakpoint = new DiagnosticSharedFifoChannel(BuildName(scope, "breakpoint"), capacityBytes: 512 * 1024, maxItemBytes: 16 * 1024);
-			var command = new DiagnosticSharedFifoChannel(BuildName(scope, "command"), capacityBytes: 256 * 1024, maxItemBytes: 4 * 1024);
-			var state = new DiagnosticSharedFifoChannel(BuildName(scope, "state"), capacityBytes: 256 * 1024, maxItemBytes: 4 * 1024);
-			return new DiagnosticSharedFifoBus(monitor, breakpoint, command, state);
+			return new DiagnosticSharedFifoBus(monitor, breakpoint);
 		}
 		catch (IOException)
 		{
@@ -69,48 +61,16 @@ internal sealed class DiagnosticSharedFifoBus : IDisposable
 		return _monitor.TryDequeue(out payload);
 	}
 
-	public bool TryEnqueueCommand(RuntimeCommandFrame frame) =>
-		_command.TryEnqueue(RuntimeInjectorFrameCodec.EncodeCommandFrame(frame));
-
-	public bool TryEnqueueState(RuntimeStateFrame frame) =>
-		_state.TryEnqueue(RuntimeInjectorFrameCodec.EncodeStateFrame(frame));
-
-	public bool TryDequeueCommand(out RuntimeCommandFrame frame)
-	{
-		frame = default;
-		if (!_command.TryDequeue(out var payload))
-		{
-			return false;
-		}
-
-		return RuntimeInjectorFrameCodec.TryDecodeCommandFrame(payload, out frame);
-	}
-
-	public bool TryDequeueState(out RuntimeStateFrame frame)
-	{
-		frame = default;
-		if (!_state.TryDequeue(out var payload))
-		{
-			return false;
-		}
-
-		return RuntimeInjectorFrameCodec.TryDecodeStateFrame(payload, out frame);
-	}
-
 	public void Dispose()
 	{
 		_monitor.Dispose();
 		_breakpoint.Dispose();
-		_command.Dispose();
-		_state.Dispose();
 	}
 
 	private DiagnosticSharedFifoChannel Select(DiagnosticSharedFifoChannelKind kind) =>
 		kind switch
 		{
 			DiagnosticSharedFifoChannelKind.Breakpoint => _breakpoint,
-			DiagnosticSharedFifoChannelKind.Command => _command,
-			DiagnosticSharedFifoChannelKind.State => _state,
 			_ => _monitor
 		};
 

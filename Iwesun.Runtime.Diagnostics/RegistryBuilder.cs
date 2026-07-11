@@ -13,12 +13,15 @@ public static class RegistryBuilder
 	/// </summary>
 	public static RegistrySnapshot Build(
 		Assembly hostAssembly,
+		#if DEBUG
 		RuntimeDiagnosticBreakpoints? breakpoints = null,
+		#endif
 		RuntimeDiagnosticHooks? hooks = null)
 	{
 		var watchPoints = new List<DiagnosticWatchPointAttribute>();
+		#if DEBUG
 		var bpAttrs = new List<DiagnosticBreakpointAttribute>();
-		var numericBpAttrs = new List<DiagnosticNumericBreakpointAttribute>();
+		#endif
 		var hookAttrs = new List<DiagnosticHookableEventAttribute>();
 
 		foreach (var attr in hostAssembly.GetCustomAttributes())
@@ -28,21 +31,24 @@ public static class RegistryBuilder
 				case DiagnosticWatchPointAttribute wp:
 					watchPoints.Add(wp);
 					break;
+				#if DEBUG
 				case DiagnosticBreakpointAttribute bp:
 					bpAttrs.Add(bp);
 					if (breakpoints != null)
 					{
-						breakpoints.Register(new BreakpointState(bp.Id)
+						var bpState = new BreakpointState(bp.Id)
 						{
 							Section = bp.Section,
 							Description = bp.Description,
 							SourceLocation = bp.SourceLocation,
-							TimeoutMs = bp.TimeoutMs,
 							HitCountTarget = bp.HitCountTarget,
-							Enabled = false
-						});
+						};
+						// Always reset shared state to a clean baseline on each new process registration.
+						bpState.SharedState.Enabled   = bp.Enabled ? 1 : 0;
+						breakpoints.Register(bpState);
 					}
 					break;
+				#endif
 				case DiagnosticHookableEventAttribute he:
 					hookAttrs.Add(he);
 					if (hooks != null)
@@ -51,22 +57,30 @@ public static class RegistryBuilder
 							he.Id, he.TargetType!, he.EventName);
 					}
 					break;
+				#if DEBUG
 				case DiagnosticNumericBreakpointAttribute nbp:
-					numericBpAttrs.Add(nbp);
 					if (breakpoints != null)
 					{
-						breakpoints.SetNumericThresholdBinding(nbp.BreakpointId, nbp.Operator, nbp.Threshold1, nbp.Threshold2);
+						if (!breakpoints.SetNumericThresholdBinding(nbp.BreakpointId, nbp.Operator, nbp.Threshold1, nbp.Threshold2))
+						{
+							breakpoints.SetNumericBinding(nbp.BreakpointId, nbp.Operator);
+						}
 					}
 					break;
+				#endif
 			}
 		}
 
 		return new RegistrySnapshot(
 			watchPoints.Select(wp => new WatchPointEntry(
 				wp.Id, wp.Section, wp.Kind, wp.Description, wp.SourceLocation, false)).ToArray(),
+			#if DEBUG
 			bpAttrs.Select(bp => new BreakpointEntry(
 				bp.Id, bp.Section, bp.Description, bp.SourceLocation,
-				bp.TimeoutMs, bp.HitCountTarget, false)).ToArray(),
+				bp.HitCountTarget, false)).ToArray(),
+			#else
+			Array.Empty<BreakpointEntry>(),
+			#endif
 			hookAttrs.Select(he => new HookEntry(
 				he.Id, he.EventName, he.TargetType?.FullName ?? "", false)).ToArray()
 		);
@@ -76,11 +90,17 @@ public static class RegistryBuilder
 	/// Build registries and also initialize the DiagnosticPipePrefix from the host assembly.
 	/// </summary>
 	public static RegistrySnapshot BuildAndInitialize(Assembly hostAssembly,
+		#if DEBUG
 		RuntimeDiagnosticBreakpoints? breakpoints = null,
+		#endif
 		RuntimeDiagnosticHooks? hooks = null)
 	{
 		DiagnosticPipePrefix.InitializeFromAssembly(hostAssembly);
-		return Build(hostAssembly, breakpoints, hooks);
+		return Build(hostAssembly,
+			#if DEBUG
+			breakpoints,
+			#endif
+			hooks);
 	}
 }
 
@@ -97,7 +117,7 @@ public sealed record WatchPointEntry(
 
 public sealed record BreakpointEntry(
 	string Id, string Section, string Description, string SourceLocation,
-	int TimeoutMs, int HitCountTarget, bool Enabled);
+	int HitCountTarget, bool Enabled);
 
 public sealed record HookEntry(
 	string HookId, string EventName, string TargetTypeName, bool IsAttached);

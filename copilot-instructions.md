@@ -26,6 +26,8 @@ This workflow is mandatory for future tasks.
 ## Project Overview
 Iwesun Runtime is a .NET 10 runtime diagnostics and tooling repository. It provides a diagnostics library, a standalone CLI, and shared WebRuntime models used by the CLI.
 
+DDNS Snap is an active consumer of this repository. Keep Runtime guidance reusable from the active docs and avoid duplicating design changes into host repositories.
+
 ## Available Instruction Files
 
 When relevant, consult these repository-local files:
@@ -62,7 +64,7 @@ Host integration goes through `RuntimeHostTemplate` extension methods — prefer
 
 - `services.Start(runtimeDirectory)` (registers diagnostics DI)
 - `provider.Activate(hostAssembly)` (starts pipe + builds registries)
-- `RuntimeHostTemplate.Stop(stateManager, execution, threadId, taskId, graceful)` (shutdown)
+- `RuntimeShutdownCoordinator.ShutdownAsync(timeout, payload)` (coordinated shutdown)
 
 Business code injects through the `RuntimeInjector` static facade (`Output` / `Watch` / `Break` / `Data` / `Thread` / `Task`), and may wrap primitives with `RProcess` / `RThread` / `RTask` for auto-registration with `RuntimeExecutionManager`. See `Iwesun.Runtime.SampleHost/Program.cs`.
 
@@ -76,6 +78,9 @@ Business code injects through the `RuntimeInjector` static facade (`Output` / `W
 6. **Do not hardcode pipe names.** Use `DiagnosticPipePrefix.Resolve(channel)` or repository defaults.
 7. **Use `#if DEBUG` for breakpoint and hook injection.** `BreakIf` and watch-style instrumentation are not default production behavior.
 8. **Defensive execution is required.** Validate prerequisites and skip invalid inputs locally instead of crashing the process.
+9. **Do not keep legacy debug outputs alive.** File-output and console-output debug paths should be removed from active workflows and only reintroduced through the new diagnostics flow when explicitly needed.
+10. **Prefer the new startup and execution model.** Use the updated host startup pattern and the managed process/thread approach instead of ad-hoc inheritance or direct primitive calls.
+11. **Use the new CLI for debugging.** Follow the current command grammar and route debugging through `Iwesun.Runtime.Cli` rather than older entry points.
 
 ## Coding And Documentation Rules
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Iwesun.Runtime.Diagnostics;
 
@@ -79,6 +80,9 @@ public sealed class CommandConfig
 	public Dictionary<string, string> Memory { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 	public List<BaseCommandDef> BaseCommands { get; init; } = [];
 	public List<CompositeCommandDef> CompositeCommands { get; init; } = [];
+
+	[JsonExtensionData]
+	public Dictionary<string, JsonElement>? ExtensionData { get; init; }
 }
 
 public sealed class CommandMeta
@@ -99,7 +103,7 @@ public static class CommandParser
 	//   "ref.get agent.state Counter"
 	//   "host-events 10"
 	private static readonly Regex ParseRegex = new(
-		@"^(?:(?<ns>[\w-]+)\.)?(?<verb>[\w-]+)(?:\s+(?<target>\S+))?(?<tail>.*)$",
+		@"^(?<cmd>[\w.-]+)(?:\s+(?<target>\S+))?(?<tail>.*)$",
 		RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
 	private static readonly Regex ArgsRegex = new(
@@ -116,10 +120,22 @@ public static class CommandParser
 		if (!match.Success)
 			return new ParsedCommand { Verb = input.Trim() };
 
-		var ns = match.Groups["ns"].Success ? match.Groups["ns"].Value : "";
-		var verb = match.Groups["verb"].Value;
+		var cmd = match.Groups["cmd"].Value;
+		var firstDot = cmd.IndexOf('.');
+		var ns = firstDot > 0 ? cmd[..firstDot] : "";
+		var verb = firstDot > 0 && firstDot + 1 < cmd.Length ? cmd[(firstDot + 1)..] : cmd;
 		var target = match.Groups["target"].Success ? match.Groups["target"].Value : null;
 		var tail = match.Groups["tail"].Success ? match.Groups["tail"].Value.Trim() : "";
+
+		// If the first token after command starts with '-', treat it as part of tail
+		// so PowerShell-style named parameters are parsed correctly.
+		if (!string.IsNullOrWhiteSpace(target) && target.StartsWith("-", StringComparison.Ordinal))
+		{
+			tail = string.IsNullOrWhiteSpace(tail)
+				? target
+				: $"{target} {tail}";
+			target = null;
+		}
 
 		var args = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 		var flags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -128,6 +144,44 @@ public static class CommandParser
 		foreach (Match m in ArgsRegex.Matches(tail))
 		{
 			args[m.Groups[1].Value] = m.Groups[2].Value;
+		}
+
+		// Parse PowerShell-style args: -name value, -name:value, -switch
+		var parts = string.IsNullOrWhiteSpace(tail)
+			? Array.Empty<string>()
+			: tail.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+		for (var i = 0; i < parts.Length; i++)
+		{
+			var part = parts[i];
+			if (!part.StartsWith("-", StringComparison.Ordinal) || part.StartsWith("--", StringComparison.Ordinal))
+				continue;
+
+			var token = part.TrimStart('-');
+			if (string.IsNullOrWhiteSpace(token))
+				continue;
+
+			var colonIndex = token.IndexOf(':');
+			if (colonIndex > 0)
+			{
+				var key = token[..colonIndex];
+				var value = token[(colonIndex + 1)..];
+				args[key] = value;
+				continue;
+			}
+
+			if (i + 1 < parts.Length)
+			{
+				var next = parts[i + 1];
+				if (!next.StartsWith("-", StringComparison.Ordinal))
+				{
+					args[token] = next;
+					i++;
+					continue;
+				}
+			}
+
+			// Switch-style parameter defaults to true.
+			args[token] = "true";
 		}
 
 		// Parse --flags
@@ -159,12 +213,25 @@ public static class CommandParser
 		// Parse remaining positional args from tail
 		if (!string.IsNullOrEmpty(tail))
 		{
-			var parts = tail.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+			parts = tail.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 			var posIndex = target == null ? 0 : 1;
-			foreach (var part in parts)
+			for (var i = 0; i < parts.Length; i++)
 			{
+				var part = parts[i];
 				if (part.Contains('=') || part.StartsWith("--"))
 					continue;
+
+				if (part.StartsWith("-", StringComparison.Ordinal) && !part.StartsWith("--", StringComparison.Ordinal))
+				{
+					var token = part.TrimStart('-');
+					if (token.Contains(':'))
+						continue;
+
+					if (i + 1 < parts.Length && !parts[i + 1].StartsWith("-", StringComparison.Ordinal))
+						i++;
+					continue;
+				}
+
 				args[$"_p{posIndex++}"] = part;
 			}
 		}
@@ -193,18 +260,27 @@ public static class CommandParser
 
 		// Build args from parsed params
 		Dictionary<string, JsonElement>? args = null;
+		var consumed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		if (def.Params.Count > 0)
 		{
-			args = new Dictionary<string, JsonElement>();
+			args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
 			foreach (var (name, param) in def.Params)
 			{
 				string? value = null;
 				if (param.Position >= 0 && param.Position == 0 && parsed.Target != null)
+				{
 					value = parsed.Target;
+				}
 				else if (parsed.Args.TryGetValue(name, out var v))
+				{
 					value = v;
+					consumed.Add(name);
+				}
 				else if (parsed.Args.TryGetValue($"_p{param.Position}", out var pv))
+				{
 					value = pv;
+					consumed.Add($"_p{param.Position}");
+				}
 				else if (param.Default != null)
 					value = param.Default;
 
@@ -218,10 +294,25 @@ public static class CommandParser
 						"bool" => JsonSerializer.SerializeToElement(bool.Parse(value)),
 						"int" => JsonSerializer.SerializeToElement(int.Parse(value)),
 						"double" or "float" => JsonSerializer.SerializeToElement(double.Parse(value, CultureInfo.InvariantCulture)),
+						"json" => JsonDocument.Parse(value).RootElement.Clone(),
 						_ => JsonSerializer.SerializeToElement(value)
 					};
 				}
 			}
+		}
+		else
+		{
+			args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+		}
+
+		// Preserve extra named arguments for extensibility (for example web.runtime.invoke url=... count=...).
+		foreach (var (key, value) in parsed.Args)
+		{
+			if (consumed.Contains(key) || key.StartsWith("_p", StringComparison.OrdinalIgnoreCase))
+				continue;
+			if (args.ContainsKey(key))
+				continue;
+			args[key] = ParseUnknownValue(value);
 		}
 
 		var targetId = def.TargetId ?? "";
@@ -262,6 +353,31 @@ public static class CommandParser
 		};
 	}
 
+	private static JsonElement ParseUnknownValue(string value)
+	{
+		if (bool.TryParse(value, out var boolValue))
+			return JsonSerializer.SerializeToElement(boolValue);
+		if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
+			return JsonSerializer.SerializeToElement(intValue);
+		if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
+			return JsonSerializer.SerializeToElement(doubleValue);
+
+		var trimmed = value.Trim();
+		if ((trimmed.StartsWith("{") && trimmed.EndsWith("}")) || (trimmed.StartsWith("[") && trimmed.EndsWith("]")))
+		{
+			try
+			{
+				return JsonDocument.Parse(trimmed).RootElement.Clone();
+			}
+			catch (JsonException)
+			{
+				// Keep raw string when payload is not valid JSON.
+			}
+		}
+
+		return JsonSerializer.SerializeToElement(value);
+	}
+
 	/// <summary>
 	/// Build a lookup dictionary from flat command name to definition.
 	/// </summary>
@@ -297,14 +413,93 @@ public static class CommandParser
 
 public static class CommandConfigStore
 {
-	public static CommandConfig Load(string configPath)
+	public static CommandConfig LoadV2(string configPath, bool isBaseConfig)
 	{
 		if (!File.Exists(configPath))
+		{
+			if (isBaseConfig)
+				throw new FileNotFoundException($"Unified command config not found: {configPath}");
+
 			return new CommandConfig();
+		}
 
 		var json = File.ReadAllText(configPath);
-		return JsonSerializer.Deserialize<CommandConfig>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+		var config = JsonSerializer.Deserialize<CommandConfig>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))
 			?? new CommandConfig();
+
+		if (config.ExtensionData != null && config.ExtensionData.ContainsKey("commands"))
+		{
+			throw new InvalidOperationException(
+				$"Legacy CLI command schema detected in '{configPath}'. The runtime CLI now uses v2 schema only (baseCommands/compositeCommands).");
+		}
+
+		if (config.Version != 2 && config.Version != 0)
+		{
+			throw new InvalidOperationException(
+				$"Unsupported CLI config version '{config.Version}' in '{configPath}'. Expected version 2.");
+		}
+
+		return config;
+	}
+
+	public static CommandConfig MergeWithUserOverrides(CommandConfig baseConfig, string? userConfigPath)
+	{
+		if (string.IsNullOrWhiteSpace(userConfigPath))
+			return baseConfig;
+
+		if (!File.Exists(userConfigPath))
+			return baseConfig;
+
+		var userConfig = LoadV2(userConfigPath, isBaseConfig: false);
+
+		var mergedPipes = new Dictionary<string, string>(baseConfig.Pipes, StringComparer.OrdinalIgnoreCase);
+		foreach (var (key, value) in userConfig.Pipes)
+			mergedPipes[key] = value;
+
+		var mergedMemory = new Dictionary<string, string>(baseConfig.Memory, StringComparer.OrdinalIgnoreCase);
+		foreach (var (key, value) in userConfig.Memory)
+			mergedMemory[key] = value;
+
+		var mergedBaseCommands = MergeCommandsByName(baseConfig.BaseCommands, userConfig.BaseCommands);
+		var mergedCompositeCommands = MergeCompositeCommandsByName(baseConfig.CompositeCommands, userConfig.CompositeCommands);
+
+		return new CommandConfig
+		{
+			Version = 2,
+			Meta = IsEmptyMeta(userConfig.Meta) ? baseConfig.Meta : userConfig.Meta,
+			Pipes = mergedPipes,
+			Memory = mergedMemory,
+			BaseCommands = mergedBaseCommands,
+			CompositeCommands = mergedCompositeCommands
+		};
+	}
+
+	private static List<BaseCommandDef> MergeCommandsByName(
+		IReadOnlyCollection<BaseCommandDef> source,
+		IReadOnlyCollection<BaseCommandDef> overrides)
+	{
+		var merged = source.ToDictionary(cmd => cmd.Name, cmd => cmd, StringComparer.OrdinalIgnoreCase);
+		foreach (var item in overrides)
+			merged[item.Name] = item;
+
+		return merged.Values.OrderBy(cmd => cmd.Name, StringComparer.OrdinalIgnoreCase).ToList();
+	}
+
+	private static List<CompositeCommandDef> MergeCompositeCommandsByName(
+		IReadOnlyCollection<CompositeCommandDef> source,
+		IReadOnlyCollection<CompositeCommandDef> overrides)
+	{
+		var merged = source.ToDictionary(cmd => cmd.Name, cmd => cmd, StringComparer.OrdinalIgnoreCase);
+		foreach (var item in overrides)
+			merged[item.Name] = item;
+
+		return merged.Values.OrderBy(cmd => cmd.Name, StringComparer.OrdinalIgnoreCase).ToList();
+	}
+
+	private static bool IsEmptyMeta(CommandMeta meta)
+	{
+		return string.IsNullOrWhiteSpace(meta.Name)
+			&& string.IsNullOrWhiteSpace(meta.Description);
 	}
 
 	public static void Save(string configPath, CommandConfig config)

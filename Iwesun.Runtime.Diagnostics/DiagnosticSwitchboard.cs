@@ -27,6 +27,12 @@ public sealed record DiagnosticStatementSnapshot(
 public sealed record DiagnosticSwitchboardSnapshot(
 	string Compiled,
 	string RuntimeDiagnosticsPipeName,
+	string? FilePath,
+	string? ResolvedFilePath,
+	string FileWriteMode,
+	string FileFormat,
+	bool ProxyModuleWhitelistEnabled,
+	IReadOnlyList<string> ProxyAllowedModules,
 	bool GlobalEnabled,
 	bool InputEnabled,
 	bool PipeOutputEnabled,
@@ -58,7 +64,22 @@ public static class DiagnosticSwitchboard
 	private static int _fifoCount;
 	private static long _fifoDropped;
 	private static string? _filePath;
+	private static FileWriteMode _fileWriteMode = FileWriteMode.Append;
+	private static DiagnosticFileFormat _fileFormat = DiagnosticFileFormat.CompactJson;
+	private static string? _resolvedFilePath;
+
+	// ── File-write thread ──────────────────────────────────────────────────────
+	private static readonly ConcurrentQueue<string> FileQueue = new();
+	private static readonly SemaphoreSlim FileSignal = new(0);
+	private static int _fileQueueCount;
+	private static long _fileQueueDropped;
+	private static int _fileQueueDepth = 512;
+	private static Thread? _fileWriteThread;
+	private static CancellationTokenSource? _fileWriteCts;
+	private static RuntimeExecutionManager? _fileWriteExecution;
 	private static string _runtimeDiagnosticsPipeName = DiagnosticSwitchboardCompiledConfig.DefaultRuntimeDiagnosticsPipeName;
+	private static bool _proxyModuleWhitelistEnabled = true;
+	private static List<string> _proxyAllowedModules = ["web.runtime"];
 
 	public static bool InputEnabled
 	{
@@ -74,6 +95,11 @@ public static class DiagnosticSwitchboard
 	public static void Attach(RuntimeDiagnosticHub hub)
 	{
 		_hub = hub;
+	}
+
+	public static void AttachExecutionManager(RuntimeExecutionManager execution)
+	{
+		_fileWriteExecution = execution;
 	}
 
 	public static void Initialize(DiagnosticSwitchboardConfigStore configStore)
@@ -122,6 +148,12 @@ public static class DiagnosticSwitchboard
 			"RELEASE",
 #endif
 			_runtimeDiagnosticsPipeName,
+			_filePath,
+			_resolvedFilePath,
+			_fileWriteMode.ToString(),
+			_fileFormat.ToString(),
+			_proxyModuleWhitelistEnabled,
+			_proxyAllowedModules.ToArray(),
 			GlobalEnabled,
 			InputEnabled,
 			PipeOutputEnabled,
@@ -154,6 +186,19 @@ public static class DiagnosticSwitchboard
 					x.LastSeenAt))
 				.ToArray(),
 			_outputPoints.ToArray());
+	}
+
+	public static bool IsProxyModuleAllowed(string module)
+	{
+		if (!_proxyModuleWhitelistEnabled)
+			return true;
+		if (string.IsNullOrWhiteSpace(module))
+			return false;
+
+		var normalized = module.Trim();
+		return _proxyAllowedModules.Any(allowed =>
+			normalized.Equals(allowed, StringComparison.OrdinalIgnoreCase)
+			|| normalized.StartsWith($"{allowed}.", StringComparison.OrdinalIgnoreCase));
 	}
 
 	public static void ReportConsole(string message)
@@ -205,10 +250,10 @@ public static class DiagnosticSwitchboard
 			return true;
 		}
 
-		while (Volatile.Read(ref _fifoCount) >= _fifoDepth && Fifo.TryDequeue(out _))
+		if (Volatile.Read(ref _fifoCount) >= _fifoDepth)
 		{
-			Interlocked.Decrement(ref _fifoCount);
 			Interlocked.Increment(ref _fifoDropped);
+			return false;
 		}
 
 		Fifo.Enqueue(value);
@@ -223,52 +268,6 @@ public static class DiagnosticSwitchboard
 		if (ok)
 			Interlocked.Decrement(ref _fifoCount);
 		return ok;
-	}
-
-	public static bool TryPutCommandFrame(RuntimeCommandFrame frame)
-	{
-		if (!OperatingSystem.IsWindows())
-		{
-			return false;
-		}
-
-		var shared = EnsureSharedFifo();
-		return shared?.TryEnqueueCommand(frame) == true;
-	}
-
-	public static bool TryGetCommandFrame(out RuntimeCommandFrame frame)
-	{
-		frame = default;
-		if (!OperatingSystem.IsWindows())
-		{
-			return false;
-		}
-
-		var shared = EnsureSharedFifo();
-		return shared?.TryDequeueCommand(out frame) == true;
-	}
-
-	public static bool TryPutStateFrame(RuntimeStateFrame frame)
-	{
-		if (!OperatingSystem.IsWindows())
-		{
-			return false;
-		}
-
-		var shared = EnsureSharedFifo();
-		return shared?.TryEnqueueState(frame) == true;
-	}
-
-	public static bool TryGetStateFrame(out RuntimeStateFrame frame)
-	{
-		frame = default;
-		if (!OperatingSystem.IsWindows())
-		{
-			return false;
-		}
-
-		var shared = EnsureSharedFifo();
-		return shared?.TryDequeueState(out frame) == true;
 	}
 
 	public static void SetPipeOutput(bool enabled, bool persist = false)
@@ -299,12 +298,6 @@ public static class DiagnosticSwitchboard
 	public static void SetFifoDepth(int depth, bool persist = false)
 	{
 		_fifoDepth = Math.Max(1024, depth);
-		while (Volatile.Read(ref _fifoCount) > _fifoDepth && Fifo.TryDequeue(out _))
-		{
-			Interlocked.Decrement(ref _fifoCount);
-			Interlocked.Increment(ref _fifoDropped);
-		}
-
 		if (persist)
 			SaveConfig();
 	}
@@ -441,7 +434,21 @@ public static class DiagnosticSwitchboard
 		};
 		if (PipeOutputEnabled)
 			_hub?.Publish(diagnosticEvent);
-		WriteFileLineIfEnabled(envelope.Raw ?? JsonSerializer.Serialize(diagnosticEvent, JsonOptions));
+		if (FileOutputEnabled)
+		{
+			var fileRecord = new DiagnosticFileRecord(
+				outputPointId,
+				section,
+				kind,
+				message,
+				envelope.Payload,
+				envelope.Timestamp,
+				envelope.ProcessId,
+				envelope.ManagedThreadId,
+				id);
+			var line = envelope.Raw ?? DiagnosticFileOutputFilter.Format(fileRecord, _fileFormat);
+			EnqueueFileWrite(line);
+		}
 	}
 
 	private static void PublishControlEvent(string section, string message, object payload)
@@ -491,9 +498,19 @@ public static class DiagnosticSwitchboard
 		PipeOutputEnabled = config.PipeOutputEnabled;
 		FileOutputEnabled = config.FileOutputEnabled;
 		_filePath = config.FilePath;
+		_fileFormat = config.FileFormat;
+		InitializeFileOutput(config.FileWriteMode, config.FilePath);
 		_runtimeDiagnosticsPipeName = string.IsNullOrWhiteSpace(config.RuntimeDiagnosticsPipeName)
 			? DiagnosticSwitchboardCompiledConfig.DefaultRuntimeDiagnosticsPipeName
 			: config.RuntimeDiagnosticsPipeName;
+		_proxyModuleWhitelistEnabled = config.ProxyModuleWhitelistEnabled;
+		_proxyAllowedModules = (config.ProxyAllowedModules ?? [])
+			.Where(x => !string.IsNullOrWhiteSpace(x))
+			.Select(x => x.Trim())
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (_proxyAllowedModules.Count == 0)
+			_proxyAllowedModules = ["web.runtime"];
 		_fifoDepth = Math.Max(1024, config.FifoDepth);
 		_outputPoints = config.OutputPoints ?? [];
 		foreach (var item in config.Sections)
@@ -514,10 +531,14 @@ public static class DiagnosticSwitchboard
 		return new DiagnosticSwitchboardConfig
 		{
 			RuntimeDiagnosticsPipeName = _runtimeDiagnosticsPipeName,
+			ProxyModuleWhitelistEnabled = _proxyModuleWhitelistEnabled,
+			ProxyAllowedModules = _proxyAllowedModules.ToList(),
 			GlobalEnabled = GlobalEnabled,
 			PipeOutputEnabled = PipeOutputEnabled,
 			FileOutputEnabled = FileOutputEnabled,
 			FilePath = _filePath,
+			FileWriteMode = _fileWriteMode,
+			FileFormat = _fileFormat,
 			FifoDepth = _fifoDepth,
 			Sections = Sections.Values
 				.OrderBy(x => x.Section, StringComparer.OrdinalIgnoreCase)
@@ -546,6 +567,39 @@ public static class DiagnosticSwitchboard
 		}
 	}
 
+	private static readonly object FileWriteGate = new();
+
+	private static void EnsureFileWriteThread()
+	{
+		lock (FileWriteGate)
+		{
+			if (_fileWriteThread is { IsAlive: true })
+				return;
+
+			var cts = new CancellationTokenSource();
+			_fileWriteCts = cts;
+
+			var thread = new Thread(() => FileWriteLoop(cts.Token))
+			{
+				Name = "diagnostics.file-write",
+				IsBackground = true
+			};
+			_fileWriteThread = thread;
+
+			// Register with the framework execution manager if available.
+			_fileWriteExecution?.RegisterThread(
+				"diagnostics.file-write",
+				"Diagnostics File Write",
+				RuntimeExecutionLifetime.Static,
+				RuntimeThreadKind.Worker,
+				owner: "Iwesun.Runtime.Diagnostics",
+				sourceLocation: "DiagnosticSwitchboard.EnsureFileWriteThread",
+				managedThreadId: 0);
+
+			thread.Start();
+		}
+	}
+
 	public static async Task ShutdownAsync()
 	{
 		Task? pumpTask;
@@ -559,8 +613,23 @@ public static class DiagnosticSwitchboard
 			_pumpCts = null;
 		}
 
+		// Stop file-write thread first so the pump can still enqueue final lines while draining.
+		Thread? fileWriteThread;
+		CancellationTokenSource? fileWriteCts;
+		lock (FileWriteGate)
+		{
+			fileWriteThread = _fileWriteThread;
+			fileWriteCts = _fileWriteCts;
+			_fileWriteThread = null;
+			_fileWriteCts = null;
+		}
+
+		try { fileWriteCts?.Cancel(); FileSignal.Release(); } catch { }
+
 		if (pumpCts == null)
 		{
+			fileWriteThread?.Join(500);
+			fileWriteCts?.Dispose();
 			DisposeSharedFifo();
 			return;
 		}
@@ -587,6 +656,10 @@ public static class DiagnosticSwitchboard
 			pumpCts.Dispose();
 			DisposeSharedFifo();
 		}
+
+		// Wait for file thread to drain its queue (up to 2 s).
+		fileWriteThread?.Join(2000);
+		fileWriteCts?.Dispose();
 	}
 
 	private static async Task PumpAsync(CancellationToken ct)
@@ -717,21 +790,186 @@ public static class DiagnosticSwitchboard
 		}
 	}
 
+	private static readonly object FileWriteLock = new();
+
+	// ── File queue helpers ─────────────────────────────────────────────────────
+
+	// Special sentinel prefix written into the file when the queue was full.
+	private const string FileDroppedPrefix = "[DROPPED]";
+
+	/// <summary>Enqueue a formatted line for the file-write thread. Satisfies the
+	/// "満了直接跳过，但留标记" contract: when the queue is full, a single DROPPED
+	/// marker line is pushed (overwriting the previous marker if already pending)
+	/// so the file reader always knows records are missing here.</summary>
+	private static void EnqueueFileWrite(string line)
+	{
+		if (!FileOutputEnabled)
+			return;
+		if (string.IsNullOrWhiteSpace(_resolvedFilePath))
+			return;
+
+		if (Volatile.Read(ref _fileQueueCount) >= _fileQueueDepth)
+		{
+			// Queue is full – record the drop count, inject/update a DROPPED marker.
+			var dropped = Interlocked.Increment(ref _fileQueueDropped);
+			// Replace the tail marker if it already is a DROPPED line, otherwise enqueue a fresh one
+			// (best-effort; we never block the caller).
+			var marker = $"{FileDroppedPrefix} +{dropped} messages dropped (file-queue full)";
+			FileQueue.Enqueue(marker);
+			Interlocked.Increment(ref _fileQueueCount);
+			FileSignal.Release();
+			return;
+		}
+
+		FileQueue.Enqueue(line);
+		Interlocked.Increment(ref _fileQueueCount);
+		FileSignal.Release();
+		EnsureFileWriteThread();
+	}
+
+	/// <summary>File-write background thread main loop.</summary>
+	private static void FileWriteLoop(CancellationToken ct)
+	{
+		while (!ct.IsCancellationRequested)
+		{
+			try
+			{
+				FileSignal.Wait(100, ct);
+			}
+			catch (OperationCanceledException)
+			{
+				break;
+			}
+
+			while (FileQueue.TryDequeue(out var line))
+			{
+				Interlocked.Decrement(ref _fileQueueCount);
+				WriteFileLine(line);
+			}
+		}
+
+		// Drain on exit.
+		while (FileQueue.TryDequeue(out var line))
+		{
+			Interlocked.Decrement(ref _fileQueueCount);
+			WriteFileLine(line);
+		}
+	}
+
+	/// <summary>Performs the actual file append. Retries up to 3 times on transient
+	/// IOException (antivirus, content indexing). Only called from the file-write thread.</summary>
+	private static void WriteFileLine(string line)
+	{
+		var filePath = _resolvedFilePath;
+		if (string.IsNullOrWhiteSpace(filePath))
+			return;
+
+		var text = line + Environment.NewLine;
+		for (var attempt = 0; attempt < 3; attempt++)
+		{
+			try
+			{
+				var dir = Path.GetDirectoryName(filePath);
+				if (!string.IsNullOrWhiteSpace(dir))
+					Directory.CreateDirectory(dir);
+				lock (FileWriteLock)
+				{
+					File.AppendAllText(filePath, text, Encoding.UTF8);
+				}
+				return;
+			}
+			catch (IOException) when (attempt < 2)
+			{
+				Thread.Sleep(20 * (attempt + 1));
+			}
+			catch
+			{
+				// Diagnostic output must never affect the source runtime.
+				return;
+			}
+		}
+	}
+
+	/// <summary>Direct synchronous write used only for startup markers and control messages
+	/// that must land in the file before the file-write thread is warmed up.</summary>
 	private static void WriteFileLineIfEnabled(string line)
 	{
 		if (!FileOutputEnabled)
 			return;
+		WriteFileLine(line);
+	}
 
-		var filePath = _filePath;
-		if (string.IsNullOrWhiteSpace(filePath))
+	/// <summary>
+	/// Apply file-output defaults from an assembly-level <see cref="DiagnosticFileOutputAttribute"/>.
+	/// Only takes effect when the current JSON config has no file path set (FilePath is null/empty),
+	/// so persisted user config always wins.
+	/// </summary>
+	public static void TryApplyAssemblyFileDefaults(string filePath, FileWriteMode writeMode, DiagnosticFileFormat format)
+	{
+		if (!string.IsNullOrWhiteSpace(_filePath))
+			return; // JSON config already has a path – do not override
+
+		_filePath = filePath;
+		_fileFormat = format;
+		FileOutputEnabled = true;
+		InitializeFileOutput(writeMode, filePath);
+		UpdateInputEnabled();
+		// Write a startup marker so the file is created immediately and the path is confirmed.
+		WriteFileLineIfEnabled(DiagnosticFileOutputFilter.Format(
+			new DiagnosticFileRecord(null, "runtime.diagnostics", "startup",
+				$"File output initialized. format={format}, mode={writeMode}", null,
+				DateTimeOffset.UtcNow, Environment.ProcessId, Environment.CurrentManagedThreadId, "startup-marker"),
+			_fileFormat));
+	}
+
+	private static void InitializeFileOutput(FileWriteMode mode, string? templatePath)
+	{
+		_fileWriteMode = mode;
+		if (string.IsNullOrWhiteSpace(templatePath))
+		{
+			_resolvedFilePath = null;
 			return;
+		}
 
+		switch (mode)
+		{
+			case FileWriteMode.CreateNew:
+				_resolvedFilePath = BuildTimestampedFilePath(templatePath);
+				break;
+			case FileWriteMode.Overwrite:
+				_resolvedFilePath = templatePath;
+				TruncateFile(templatePath);
+				break;
+			default: // Append
+				_resolvedFilePath = templatePath;
+				break;
+		}
+
+		RuntimeFileRegistry.Register(
+			"runtime.diagnostics.output",
+			templatePath,
+			_resolvedFilePath,
+			mode);
+	}
+
+	private static string BuildTimestampedFilePath(string templatePath)
+	{
+		var dir = Path.GetDirectoryName(templatePath) ?? string.Empty;
+		var name = Path.GetFileNameWithoutExtension(templatePath);
+		var ext = Path.GetExtension(templatePath);
+		var stamp = DateTimeOffset.Now.ToString("yyyyMMddTHHmmss");
+		var fileName = $"{name}-{stamp}{ext}";
+		return string.IsNullOrWhiteSpace(dir) ? fileName : Path.Combine(dir, fileName);
+	}
+
+	private static void TruncateFile(string filePath)
+	{
 		try
 		{
 			var dir = Path.GetDirectoryName(filePath);
 			if (!string.IsNullOrWhiteSpace(dir))
 				Directory.CreateDirectory(dir);
-			File.AppendAllText(filePath, line + Environment.NewLine, Encoding.UTF8);
+			File.WriteAllText(filePath, string.Empty, Encoding.UTF8);
 		}
 		catch
 		{

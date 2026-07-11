@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
 
@@ -13,6 +14,7 @@ public class RTask : Task
 	private readonly string _threadId;
 	private readonly string _sourceLocation;
 	private int _registered;
+	private int _disposed;
 
 	public RTask(
 		Action action,
@@ -24,7 +26,7 @@ public class RTask : Task
 		: base(action)
 	{
 		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
-		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId, RuntimeInstructionEntityKind.Task);
 		UnitId = _unit.UnitId;
 		_execution = _unit.Execution;
 		_managed = _unit.Managed;
@@ -47,7 +49,7 @@ public class RTask : Task
 		: base(action, cancellationToken)
 	{
 		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
-		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId, RuntimeInstructionEntityKind.Task);
 		UnitId = _unit.UnitId;
 		_execution = _unit.Execution;
 		_managed = _unit.Managed;
@@ -70,7 +72,7 @@ public class RTask : Task
 		: base(action, state)
 	{
 		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
-		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId, RuntimeInstructionEntityKind.Task);
 		UnitId = _unit.UnitId;
 		_execution = _unit.Execution;
 		_managed = _unit.Managed;
@@ -94,7 +96,7 @@ public class RTask : Task
 		: base(action, state, cancellationToken)
 	{
 		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"task.{Guid.NewGuid():N}" : unitId;
-		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId, RuntimeInstructionEntityKind.Task);
 		UnitId = _unit.UnitId;
 		_execution = _unit.Execution;
 		_managed = _unit.Managed;
@@ -222,5 +224,19 @@ public class RTask : Task
 			_managed?.PublishEvent(UnitId, "task-completed", "Task completed.", State.Snapshot());
 			_managed?.Unregister(UnitId);
 		}, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+	}
+
+	public new void Dispose()
+	{
+		if (Interlocked.Exchange(ref _disposed, 1) == 1)
+		{
+			return;
+		}
+
+		_managed?.Unregister(UnitId);
+		if (IsCompleted)
+		{
+			base.Dispose();
+		}
 	}
 }

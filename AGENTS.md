@@ -16,6 +16,7 @@ The ignore boundary for Copilot is defined by:
 ## Quick Start
 
 - **Build**: `dotnet build Iwesun.Runtime.slnx -c Release`
+- **Host scope**: DDNS Snap is an active consumer of this repository; reference the active docs instead of duplicating design changes in host repos.
 - **Language**: C# (.NET 10), `LangVersion=latest`, `Nullable=enable`, `ImplicitUsings=enable`
 - **Private fields**: `_camelCase` with underscore prefix
 - **Logging**: `Microsoft.Extensions.Logging` structured templates (`_logger.LogInformation("...{PipeName}", _pipeName)`)
@@ -35,9 +36,12 @@ The ignore boundary for Copilot is defined by:
 5. **Pipe protocol**: 4-byte little-endian length-prefixed JSON. The CLI handles framing - do not hand-roll pipe clients.
 6. **Defensive execution** - skip invalid input gracefully; don't crash the whole process.
 7. **Do not hardcode pipe names** - use `DiagnosticPipePrefix.Resolve(channel)` or `DiagnosticSwitchboardCompiledConfig.DefaultRuntimeDiagnosticsPipeName`.
-8. **Breakpoints are collaborative** - `RuntimeOutput.BreakIf()` uses `await` (not thread suspension). Only the calling call-chain pauses; other threads run freely. CLI disconnect auto-resumes all breakpoints.
+8. **Breakpoints are collaborative** - `RuntimeOutput.BreakIf()` uses `await` (not thread suspension). Only the calling call-chain pauses; other threads run freely. CLI connection lifetime does not alter breakpoint state; only explicit resume commands resume breakpoints.
 9. **Event hooks use weak references** - instance event hooks use `WeakReference<T>` to avoid blocking GC. Static events must be explicitly detached.
 10. **Use `#if DEBUG` for breakpoint/watch injection** - `BreakIf` and `Watch` calls should be wrapped in `#if DEBUG` for production builds. `TracePoint`/`Log` are production-safe.
+11. **Do not keep legacy debug outputs alive** - file-output and console-output debugging paths should be removed from active workflows and only reintroduced through the new diagnostics flow when explicitly needed.
+12. **Prefer the new startup and execution model** - use the updated host startup pattern and the managed process/thread approach instead of ad-hoc inheritance or direct primitive calls.
+13. **Use the new CLI for debugging** - follow the current command grammar and route debugging through `Iwesun.Runtime.Cli` rather than older entry points.
 
 ## Five Diagnostic Modules
 
@@ -69,7 +73,7 @@ builder.Services.Start(runtimeDirectory);          // registers diagnostics DI
 using var host = builder.Build();
 host.Services.Activate(Assembly.GetExecutingAssembly()); // starts pipe + builds registries
 host.Run();
-// On shutdown: RuntimeHostTemplate.Stop(stateManager, execution, threadId, taskId, graceful: true);
+// On shutdown: guardians clean up and unregister; RuntimeShutdownCoordinator waits for the registry to drain.
 ```
 
 **Two-layer model**:

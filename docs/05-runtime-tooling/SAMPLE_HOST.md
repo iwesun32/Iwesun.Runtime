@@ -34,6 +34,8 @@
 
 这套入口用于验证宿主如何在代码层声明可观测点。
 
+这里需要区分两层：程序集特性是 SampleHost 为完整功能测试保留的“预编译目录与初始状态”样例；真正的业务注入应遵守单点注入，即一个功能的条件、上下文和输出/断点调用集中在业务现场的一个连续代码段。普通监视或临时跟踪不应因为需要输出一次数据，就被迫同时修改 `Program.cs`、启动注册和业务文件。只有测试编译初始断点、CLI 预发现、事件登记或反射白名单时，才使用这些额外声明。
+
 ### 2. 静态/动态数据
 
 样板宿主暴露两类数据：
@@ -64,6 +66,18 @@ dotnet run --project Iwesun.Runtime.SampleHost/Iwesun.Runtime.SampleHost.csproj 
 ```
 
 宿主启动后可通过 `Iwesun.Runtime.Cli` 连接运行时诊断管道，观察 `sample.host` 和 `runtime.state`。
+
+## 发布目录附带模板
+
+`Iwesun.Runtime.SampleHost` 发布目录会附带以下集成资产：
+
+- `templates/RuntimeHost.Startup.Template.cs.txt`
+- `templates/RuntimeHost.Shutdown.Template.cs.txt`
+- `templates/RuntimeIntegration.Interface.Template.json`
+- `templates/Iwesun.Runtime.Cli.commands.custom.sample.json`
+- `docs/RUNTIME_INTEGRATION_GUIDE.md`
+- `docs/IWESUN_RUNTIME_CLI.md`
+- `cli/Iwesun.Runtime.Cli.commands.v2.json`
 
 ## 当前完成情况
 

@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
 
@@ -14,16 +15,19 @@ public class RProcess : Process
     private readonly RuntimeManagedRegistry? _managed;
     private readonly RuntimeDiagnosticHub? _hub;
     private readonly DelegateRuntimeManagedCommandHandler _commandHandler;
+	private readonly IDisposable? _commandRegistration;
     private readonly CancellationTokenSource _pipeGuardianCts = new();
     private int _registered;
     private int _globalStopHandled;
+	private int _disposed;
     private Task? _pipeGuardianTask;
+	private Task? _instructionBootstrapTask;
     private string? _branchPipeName;
 
     public RProcess(string? unitId = null)
     {
         var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"process.{Guid.NewGuid():N}" : unitId;
-        _unit = new RuntimeManagedUnitBase(resolvedUnitId);
+        _unit = new RuntimeManagedUnitBase(resolvedUnitId, RuntimeInstructionEntityKind.Process);
         UnitId = _unit.UnitId;
         State = _unit.State;
         _execution = _unit.Execution;
@@ -35,6 +39,7 @@ public class RProcess : Process
             OnWakeupAction = command => _managed?.PublishEvent(UnitId, "process-guardian-wakeup", "Process guardian received wakeup command.", new { command.Sequence, command.Payload }),
             OnSnapshotAction = _ => _managed?.PublishEvent(UnitId, "process-guardian-snapshot", "Process guardian snapshot requested.", State.Snapshot())
         };
+		_commandRegistration = _managed?.RegisterCommandHandler(UnitId, command => _commandHandler.Handle(command));
         EnableRaisingEvents = true;
         Exited += OnExited;
     }
@@ -51,6 +56,8 @@ public class RProcess : Process
     public new bool Start()
     {
         EnsureRegistered();
+		if (!StartInfo.UseShellExecute && !string.IsNullOrWhiteSpace(_branchPipeName))
+			StartInfo.Environment["IWESUN_RUNTIME_DIAGNOSTICS_PIPE"] = _branchPipeName;
         var started = base.Start();
         if (started)
         {
@@ -58,6 +65,7 @@ public class RProcess : Process
             _execution?.SetTaskState(UnitId, RuntimeTaskState.Running, step: "running", payload: State.Snapshot());
             _managed?.PublishEvent(UnitId, "process-running", "Process started.", State.Snapshot());
             StartPipeGuardian();
+			_instructionBootstrapTask = Task.Run(() => BootstrapInstructionHandlesAsync(_pipeGuardianCts.Token));
         }
         else
         {
@@ -467,4 +475,84 @@ public class RProcess : Process
 
         return true;
     }
+
+	private async Task BootstrapInstructionHandlesAsync(CancellationToken cancellationToken)
+	{
+		if (_managed == null || string.IsNullOrWhiteSpace(_branchPipeName))
+			return;
+		RuntimeInstructionHandleDescriptor descriptor;
+		try
+		{
+			descriptor = _managed.DuplicateInstructionHandlesToProcess(UnitId, this);
+		}
+		catch (Exception ex)
+		{
+			_managed.PublishEvent(UnitId, "process-instruction-handles-failed", ex.Message, null);
+			return;
+		}
+
+		var frame = new RuntimeDiagnosticFrame
+		{
+			Header = new RuntimeDiagnosticFrameHeader
+			{
+				Schema = RuntimeDiagnosticProtocol.V2Schema,
+				FrameType = "request",
+				Category = "instruction",
+				Operation = "instruction.handles.attach",
+				RequestId = Guid.NewGuid().ToString("N")
+			},
+			Command = new RuntimeDiagnosticFrameCommand
+			{
+				Domain = "diagnostics",
+				Target = "runtime.managed",
+				Action = "instruction.handles.attach",
+				Args = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase)
+				{
+					["unitId"] = JsonSerializer.SerializeToElement(UnitId),
+					["version"] = JsonSerializer.SerializeToElement(descriptor.Version),
+					["controllerMappingHandle"] = JsonSerializer.SerializeToElement(descriptor.ControllerMappingHandle),
+					["controllerEventHandle"] = JsonSerializer.SerializeToElement(descriptor.ControllerEventHandle),
+					["controllerCapacity"] = JsonSerializer.SerializeToElement(descriptor.ControllerCapacity),
+					["unitMappingHandle"] = JsonSerializer.SerializeToElement(descriptor.UnitMappingHandle),
+					["unitEventHandle"] = JsonSerializer.SerializeToElement(descriptor.UnitEventHandle),
+					["unitCapacity"] = JsonSerializer.SerializeToElement(descriptor.UnitCapacity)
+				}
+			}
+		};
+
+		for (var attempt = 0; attempt < 40 && !cancellationToken.IsCancellationRequested; attempt++)
+		{
+			try
+			{
+				var response = await SendFrameAsync(_branchPipeName, frame, cancellationToken).ConfigureAwait(false);
+				if (response.Status?.Ok == true)
+				{
+					_managed.PublishEvent(UnitId, "process-instruction-handles-attached", "Child process attached anonymous instruction handles.", null);
+					return;
+				}
+			}
+			catch (Exception) when (attempt < 39)
+			{
+			}
+			await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+		}
+	}
+
+	protected override void Dispose(bool disposing)
+	{
+		if (Interlocked.Exchange(ref _disposed, 1) == 0)
+		{
+			StopPipeGuardian();
+			RuntimePipeRegistry.ReleasePipe(UnitId);
+			UnregisterReflectionTarget();
+			_managed?.Unregister(UnitId);
+			if (disposing)
+			{
+				_commandRegistration?.Dispose();
+				_pipeGuardianCts.Dispose();
+			}
+		}
+
+		base.Dispose(disposing);
+	}
 }

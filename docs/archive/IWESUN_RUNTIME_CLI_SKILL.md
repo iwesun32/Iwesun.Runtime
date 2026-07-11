@@ -28,6 +28,7 @@
 6. 调试输出用完后执行 `quiet`。
 7. DDNS Snap 的 CLI 命令模板放在 `config/Iwesun.Runtime.Cli.commands.json`；管道名由 CLI 命令 JSON、`--pipe=...`、`--web-pipe=...` 和 slots 管理。
 8. UI 只通过 Service 管道读写 Service 业务配置；不要把 CLI 调试管道写进 `config.json`。
+9. `sw.enable/sw.disable` 的参数语义是 section 名称（可省略表示全局），不要传 `true/false`；布尔开关请使用 `sw.pipe true|false`、`sw.file true|false`。
 
 ## 启动检查
 

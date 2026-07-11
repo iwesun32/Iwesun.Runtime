@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 
 namespace Iwesun.Runtime.Diagnostics;
 
@@ -6,11 +7,19 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
 {
     private readonly RuntimeManagedRegistry _registry;
     private readonly RuntimeDiagnosticHub _hub;
+	private readonly RuntimeShutdownCoordinator _shutdownCoordinator;
+	private readonly IHostApplicationLifetime? _applicationLifetime;
 
-    public RuntimeManagedCommandTarget(RuntimeManagedRegistry registry, RuntimeDiagnosticHub hub) : base("runtime.managed")
+    public RuntimeManagedCommandTarget(
+		RuntimeManagedRegistry registry,
+		RuntimeDiagnosticHub hub,
+		RuntimeShutdownCoordinator shutdownCoordinator,
+		IHostApplicationLifetime? applicationLifetime = null) : base("runtime.managed")
     {
         _registry = registry;
         _hub = hub;
+		_shutdownCoordinator = shutdownCoordinator;
+		_applicationLifetime = applicationLifetime;
     }
 
     public override object Snapshot()
@@ -69,7 +78,11 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
             case "shutdownstatus":
             case "shutdown.status":
             case "lifecycle.status":
-                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, _registry.EvaluateShutdownStatus()));
+				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, new
+				{
+					status = _shutdownCoordinator.Snapshot(),
+					result = _shutdownCoordinator.LastResult
+				}));
             case "reflectionrefresh":
             case "registryrefresh":
             case "reflection.refresh":
@@ -97,14 +110,17 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
             case "shutdownrequest":
             case "shutdown.request":
             case "lifecycle.shutdown":
-                {
-                    var countdownMs = ReadInt(command, "countdownMs") ?? 5000;
-                    var payload = ReadString(command, "payload");
-                    var status = _registry.RequestShutdown(countdownMs, payload);
-                    return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, new
-                    {
-                        status
-                    }));
+				{
+					var countdownMs = ReadInt(command, "countdownMs") ?? 5000;
+					var payload = ReadString(command, "payload");
+					var shutdownTask = _shutdownCoordinator.ShutdownAsync(TimeSpan.FromMilliseconds(Math.Max(100, countdownMs)), payload, CancellationToken.None);
+					_ = CompleteHostShutdownAsync(shutdownTask);
+					return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, new
+					{
+						accepted = true,
+						status = _shutdownCoordinator.Snapshot(),
+						completed = shutdownTask.IsCompleted
+					}));
                 }
             case "unitstateget":
             case "unitstate":
@@ -158,9 +174,28 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
                         return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "kind is required and must be a valid RuntimeManagedCommandKind."));
 
                     var payload = ReadString(command, "payload");
-                    var queued = _registry.EnqueueCommand(targetUnitId, kind, payload);
-                    return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, queued));
+                    var queued = _registry.TryEnqueueCommand(targetUnitId, kind, payload);
+					return queued.Sent
+						? Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, queued))
+						: Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, $"Instruction delivery failed: {queued.Status}."));
                 }
+			case "instructionhandlesattach":
+			case "instruction.handles.attach":
+				{
+					var unitId = ReadString(command, "unitId");
+					if (string.IsNullOrWhiteSpace(unitId))
+						return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, "unitId is required."));
+					var descriptor = new RuntimeInstructionHandleDescriptor(
+						ReadInt(command, "version") ?? 0,
+						ReadLong(command, "controllerMappingHandle") ?? 0,
+						ReadLong(command, "controllerEventHandle") ?? 0,
+						ReadInt(command, "controllerCapacity") ?? 0,
+						ReadLong(command, "unitMappingHandle") ?? 0,
+						ReadLong(command, "unitEventHandle") ?? 0,
+						ReadInt(command, "unitCapacity") ?? 0);
+					_registry.AttachExternalInstructionHandles(unitId, descriptor);
+					return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, new { attached = true, unitId }));
+				}
             case "dequeue":
                 {
                     var targetUnitId = ReadString(command, "targetUnitId") ?? ReadString(command, "unitId");
@@ -176,6 +211,13 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
                 return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, $"Unsupported action: {command.Action}"));
         }
     }
+
+	private async Task CompleteHostShutdownAsync(Task<RuntimeShutdownResult> shutdownTask)
+	{
+		var result = await shutdownTask.ConfigureAwait(false);
+		Environment.ExitCode = result.ExitCode;
+		_applicationLifetime?.StopApplication();
+	}
 
     private static bool TryReadCommandKind(RuntimeDiagnosticAction command, out RuntimeManagedCommandKind kind)
     {
@@ -216,6 +258,13 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
             return number;
         return null;
     }
+
+	private static long? ReadLong(RuntimeDiagnosticAction command, string key)
+	{
+		if (command.Args != null && command.Args.TryGetValue(key, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number))
+			return number;
+		return null;
+	}
 
     private IReadOnlyList<RuntimeManagedRegistration> SnapshotByUnitType(string unitType, int count)
     {

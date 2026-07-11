@@ -40,6 +40,21 @@ public sealed record RuntimeManagedCommandQueueSnapshot(
 	int PendingCount,
 	IReadOnlyList<RuntimeManagedCommand> Commands);
 
+public enum RuntimeInstructionSendStatus
+{
+	Sent,
+	TargetNotFound,
+	QueueFull,
+	TargetDisposed
+}
+
+public readonly record struct RuntimeInstructionSendResult(
+	RuntimeInstructionSendStatus Status,
+	RuntimeManagedCommand Command)
+{
+	public bool Sent => Status == RuntimeInstructionSendStatus.Sent;
+}
+
 public sealed record RuntimeShutdownPendingUnit(
 	string UnitId,
 	string UnitType,
@@ -53,19 +68,17 @@ public sealed record RuntimeShutdownStatus(
 	DateTimeOffset? ExitDeadlineUtc,
 	IReadOnlyList<RuntimeShutdownPendingUnit> PendingUnits);
 
-public sealed record RuntimeShutdownRequestedEventArgs(
-	DateTimeOffset RequestedAtUtc,
-	DateTimeOffset ExitDeadlineUtc,
-	int StopBroadcastCount,
-	int WakeupBroadcastCount,
-	string? Payload);
-
-public sealed class RuntimeManagedRegistry
+public sealed class RuntimeManagedRegistry : IDisposable
 {
 	private const int StateHistoryDepth = 128;
 	private const int CommandQueueDepth = 8;
 	private readonly ConcurrentDictionary<string, RuntimeManagedRegistration> _registrations = new(StringComparer.OrdinalIgnoreCase);
 	private readonly ConcurrentDictionary<string, ConcurrentQueue<RuntimeManagedCommand>> _commandFifos = new(StringComparer.OrdinalIgnoreCase);
+	private readonly ConcurrentDictionary<string, RuntimeUnitInbox> _unitInboxes = new(StringComparer.OrdinalIgnoreCase);
+	private readonly ConcurrentDictionary<string, Action<RuntimeManagedCommand>> _commandHandlers = new(StringComparer.OrdinalIgnoreCase);
+	private readonly ConcurrentDictionary<long, string> _commandPayloads = new();
+	private readonly RuntimeSharedAtomicFifo _controllerInbox;
+	private readonly RuntimeInstructionDispatcher _controllerDispatcher;
 	private readonly ConcurrentQueue<RuntimeManagedCommand> _controllerCommands = new();
 	private readonly ConcurrentDictionary<string, RuntimeStateSnapshot> _sharedUnitStates = new(StringComparer.OrdinalIgnoreCase);
 	private readonly ConcurrentDictionary<string, RuntimeDList<RuntimeState>> _sharedUnitStateHistory = new(StringComparer.OrdinalIgnoreCase);
@@ -77,13 +90,15 @@ public sealed class RuntimeManagedRegistry
 	private long _eventSequence;
 	private long _pendingCommandCount;
 	private long _droppedCommandCount;
-	private long _importedSharedCommandCount;
-	private long _publishedSharedStateCount;
-	public event EventHandler<RuntimeShutdownRequestedEventArgs>? ShutdownRequested;
+	private TaskCompletionSource _changed = NewChangeSource();
+	private int _disposed;
+	private RuntimeSharedAtomicFifo? _externalControllerInbox;
+	private RuntimeSharedAtomicFifo? _externalUnitInbox;
+	private RuntimeInstructionDispatcher? _externalUnitDispatcher;
+	public event EventHandler<RuntimeValueInstruction>? ControllerInstructionReceived;
+	public event EventHandler? Changed;
 	public long PendingCommandCount => Volatile.Read(ref _pendingCommandCount);
 	public long DroppedCommandCount => Volatile.Read(ref _droppedCommandCount);
-	public long ImportedSharedCommandCount => Volatile.Read(ref _importedSharedCommandCount);
-	public long PublishedSharedStateCount => Volatile.Read(ref _publishedSharedStateCount);
 	public int ControllerCommandCount => _controllerCommands.Count;
 
 	public RuntimeStateSnapshot GlobalLifecycleState => _globalLifecycle.Snapshot();
@@ -100,6 +115,8 @@ public sealed class RuntimeManagedRegistry
 
 	public RuntimeManagedRegistry()
 	{
+		_controllerInbox = new RuntimeSharedAtomicFifo(128);
+		_controllerDispatcher = new RuntimeInstructionDispatcher(_controllerInbox, DispatchControllerInstruction);
 		EnsureGlobalLifecycleStates();
 		var initial = _globalLifecycle.SetCurrentByName("Initialize");
 		_globalLifecycleHistory.AddLast(initial);
@@ -114,10 +131,14 @@ public sealed class RuntimeManagedRegistry
 		var now = DateTimeOffset.UtcNow;
 		var registration = new RuntimeManagedRegistration(unitId, unitType, ownership, now, now, state);
 		_registrations[unitId] = registration;
+		_unitInboxes.AddOrUpdate(
+			unitId,
+			_ => new RuntimeUnitInbox(instruction => DispatchUnitInstruction(unitId, instruction)),
+			(_, existing) => existing);
 		_sharedUnitStates[unitId] = state.State;
 		AppendUnitStateHistory(unitId, state.State.CurrentState);
 		PublishEvent(unitId, "registered", $"{unitType} registered.", state);
-		PublishSharedStateFrame(unitId, state);
+		SignalChanged();
 		return registration;
 	}
 
@@ -127,6 +148,9 @@ public sealed class RuntimeManagedRegistry
 		var removed = _registrations.TryRemove(unitId, out var registration);
 		if (removed)
 		{
+			_commandHandlers.TryRemove(unitId, out _);
+			if (_unitInboxes.TryRemove(unitId, out var inbox))
+				inbox.Dispose();
 			_sharedUnitStates.TryRemove(unitId, out _);
 			_sharedUnitStateHistory.TryRemove(unitId, out _);
 			if (_commandFifos.TryRemove(unitId, out var queue))
@@ -138,6 +162,7 @@ public sealed class RuntimeManagedRegistry
 			}
 
 			PublishEvent(unitId, "unregistered", $"{registration!.UnitType} unregistered.", null);
+			SignalChanged();
 		}
 
 		return removed;
@@ -156,7 +181,7 @@ public sealed class RuntimeManagedRegistry
 		_sharedUnitStates[unitId] = state.State;
 		AppendUnitStateHistory(unitId, state.State.CurrentState);
 		PublishEvent(unitId, "state-updated", "Managed state updated.", new { state.State.CurrentState.Name, state.State.CurrentPath });
-		PublishSharedStateFrame(unitId, state);
+		SignalChanged();
 		return true;
 	}
 
@@ -175,7 +200,6 @@ public sealed class RuntimeManagedRegistry
 			exitDeadlineUtc
 		});
 
-		PublishGlobalStateFrame(state);
 		return _globalLifecycle.Snapshot();
 	}
 
@@ -184,7 +208,6 @@ public sealed class RuntimeManagedRegistry
 		ImportSharedStates();
 		var now = nowUtc ?? DateTimeOffset.UtcNow;
 		var pending = SnapshotRegistrations()
-			.Where(x => !IsUnitReadyToExit(x))
 			.Select(x => new RuntimeShutdownPendingUnit(
 				x.UnitId,
 				x.UnitType,
@@ -218,14 +241,8 @@ public sealed class RuntimeManagedRegistry
 		});
 		EnqueueControllerCommand(RuntimeManagedCommandKind.Stop, controlPayload);
 		SetGlobalLifecycleState("Stop", deadline);
-		var stopCount = BroadcastCommand(RuntimeManagedCommandKind.Stop, controlPayload);
-		var wakeupCount = BroadcastCommand(RuntimeManagedCommandKind.Wakeup, controlPayload);
-		ShutdownRequested?.Invoke(this, new RuntimeShutdownRequestedEventArgs(
-			RequestedAtUtc: DateTimeOffset.UtcNow,
-			ExitDeadlineUtc: deadline,
-			StopBroadcastCount: stopCount,
-			WakeupBroadcastCount: wakeupCount,
-			Payload: payload));
+		BroadcastCommand(RuntimeManagedCommandKind.Stop, controlPayload);
+		BroadcastCommand(RuntimeManagedCommandKind.Wakeup, controlPayload);
 		return EvaluateShutdownStatus();
 	}
 
@@ -290,6 +307,22 @@ public sealed class RuntimeManagedRegistry
 		return _registrations.Values.OrderBy(x => x.UnitType, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.UnitId, StringComparer.OrdinalIgnoreCase).ToArray();
 	}
 
+	public async Task WaitForChangeAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+	{
+		var observed = Volatile.Read(ref _changed).Task;
+		await Task.WhenAny(observed, Task.Delay(timeout, cancellationToken)).ConfigureAwait(false);
+	}
+
+	private void SignalChanged()
+	{
+		var previous = Interlocked.Exchange(ref _changed, NewChangeSource());
+		previous.TrySetResult();
+		Changed?.Invoke(this, EventArgs.Empty);
+	}
+
+	private static TaskCompletionSource NewChangeSource() =>
+		new(TaskCreationOptions.RunContinuationsAsynchronously);
+
 	public IReadOnlyList<RuntimeManagedCommandQueueSnapshot> SnapshotCommandQueues(int perUnitCount = 100)
 	{
 		perUnitCount = Math.Clamp(perUnitCount, 1, 4096);
@@ -322,32 +355,153 @@ public sealed class RuntimeManagedRegistry
 	}
 
 	public RuntimeManagedCommand EnqueueCommand(string targetUnitId, RuntimeManagedCommandKind kind, string? payload = null)
+		=> TryEnqueueCommand(targetUnitId, kind, payload).Command;
+
+	public RuntimeInstructionSendResult TryEnqueueCommand(string targetUnitId, RuntimeManagedCommandKind kind, string? payload = null)
 	{
 		ArgumentException.ThrowIfNullOrWhiteSpace(targetUnitId);
 		var sequence = Interlocked.Increment(ref _commandSequence);
 		var command = new RuntimeManagedCommand(sequence, targetUnitId, kind, payload, DateTimeOffset.UtcNow);
-		var queue = _commandFifos.GetOrAdd(targetUnitId, static _ => new ConcurrentQueue<RuntimeManagedCommand>());
-		queue.Enqueue(command);
-		Interlocked.Increment(ref _pendingCommandCount);
-		while (queue.Count > CommandQueueDepth && queue.TryDequeue(out _))
+		if (!string.IsNullOrEmpty(payload))
 		{
-			Interlocked.Decrement(ref _pendingCommandCount);
-			Interlocked.Increment(ref _droppedCommandCount);
+			_commandPayloads[sequence] = payload;
+			PublishEvent(targetUnitId, "command-payload-pipe-required", "Complex command content must be transported through the diagnostics pipe.", new { command.Sequence, command.Kind });
 		}
 
-		var sharedFrame = new RuntimeCommandFrame(
-			processId: Environment.ProcessId,
-			managedThreadId: Environment.CurrentManagedThreadId,
-			sequence: command.Sequence,
-			targetIdHash: RuntimeInjectorTransportCodec.ComputeStableHash32(targetUnitId),
-			commandKind: (int)kind,
-			timestampUtcTicks: command.EnqueuedAt.UtcTicks,
-			arg0: payload?.Length ?? 0,
-			arg1: 0);
-		DiagnosticSwitchboard.TryPutCommandFrame(sharedFrame);
+		if (!_unitInboxes.TryGetValue(targetUnitId, out var inbox))
+		{
+			PublishEvent(targetUnitId, "command-target-gone", "Managed unit unregistered before command delivery.", new { command.Sequence, command.Kind });
+			_commandPayloads.TryRemove(sequence, out _);
+			return new RuntimeInstructionSendResult(RuntimeInstructionSendStatus.TargetNotFound, command);
+		}
+		var instruction = new RuntimeValueInstruction(
+			command.Sequence,
+			Environment.ProcessId,
+			Environment.CurrentManagedThreadId,
+			ResolveEntityKind(targetUnitId),
+			RuntimeInjectorTransportCodec.ComputeStableHash32(targetUnitId),
+			(int)kind,
+			0,
+			0,
+			0);
+		try
+		{
+			if (!inbox.TrySend(instruction))
+			{
+				Interlocked.Increment(ref _droppedCommandCount);
+				_commandPayloads.TryRemove(sequence, out _);
+				return new RuntimeInstructionSendResult(RuntimeInstructionSendStatus.QueueFull, command);
+			}
+		}
+		catch (ObjectDisposedException)
+		{
+			PublishEvent(targetUnitId, "command-target-disposed", "Managed unit inbox was disposed during command delivery.", new { command.Sequence, command.Kind });
+			_commandPayloads.TryRemove(sequence, out _);
+			return new RuntimeInstructionSendResult(RuntimeInstructionSendStatus.TargetDisposed, command);
+		}
 
 		PublishEvent(targetUnitId, "command-enqueued", kind.ToString(), new { command.Sequence, command.TargetUnitId, command.Kind, command.Payload });
-		return command;
+		return new RuntimeInstructionSendResult(RuntimeInstructionSendStatus.Sent, command);
+	}
+
+	public bool TryPublishStateCode(
+		string unitId,
+		RuntimeInstructionEntityKind entityKind,
+		int stateCode,
+		long arg0 = 0,
+		long arg1 = 0)
+	{
+		if (!_registrations.ContainsKey(unitId))
+			return false;
+		var instruction = new RuntimeValueInstruction(
+			Interlocked.Increment(ref _commandSequence),
+			Environment.ProcessId,
+			Environment.CurrentManagedThreadId,
+			(int)entityKind,
+			RuntimeInjectorTransportCodec.ComputeStableHash32(unitId),
+			stateCode,
+			0,
+			arg0,
+			arg1);
+		return (_externalControllerInbox ?? _controllerInbox).TryEnqueue(instruction);
+	}
+
+	internal void AttachExternalInstructionHandles(string unitId, RuntimeInstructionHandleDescriptor descriptor)
+	{
+		if (descriptor.Version != 1)
+			throw new InvalidOperationException($"Unsupported instruction descriptor version: {descriptor.Version}");
+		_externalUnitDispatcher?.Dispose();
+		_externalUnitInbox?.Dispose();
+		_externalControllerInbox?.Dispose();
+		_externalControllerInbox = RuntimeSharedAtomicFifo.Attach(
+			(nint)descriptor.ControllerMappingHandle,
+			(nint)descriptor.ControllerEventHandle,
+			descriptor.ControllerCapacity);
+		_externalUnitInbox = RuntimeSharedAtomicFifo.Attach(
+			(nint)descriptor.UnitMappingHandle,
+			(nint)descriptor.UnitEventHandle,
+			descriptor.UnitCapacity);
+		_externalUnitDispatcher = new RuntimeInstructionDispatcher(_externalUnitInbox, instruction =>
+		{
+			var kind = (RuntimeManagedCommandKind)instruction.Value;
+			if (kind == RuntimeManagedCommandKind.Stop)
+				SetGlobalLifecycleState("Stop");
+			DispatchUnitInstruction(unitId, instruction);
+		});
+	}
+
+	public IDisposable RegisterCommandHandler(string unitId, Action<RuntimeManagedCommand> handler)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
+		ArgumentNullException.ThrowIfNull(handler);
+		_commandHandlers[unitId] = handler;
+		return new RuntimeCommandHandlerRegistration(_commandHandlers, unitId, handler);
+	}
+
+	internal RuntimeInstructionHandleDescriptor DuplicateInstructionHandlesToProcess(string unitId, System.Diagnostics.Process process)
+	{
+		if (!_unitInboxes.TryGetValue(unitId, out var inbox))
+			throw new InvalidOperationException($"Managed unit inbox not found: {unitId}");
+		return RuntimeInstructionHandleBootstrap.DuplicateToProcess(process, _controllerInbox, inbox.Fifo);
+	}
+
+	private void DispatchControllerInstruction(RuntimeValueInstruction instruction)
+	{
+		ControllerInstructionReceived?.Invoke(this, instruction);
+		SignalChanged();
+	}
+
+	private void DispatchUnitInstruction(string unitId, RuntimeValueInstruction instruction)
+	{
+		_commandPayloads.TryRemove(instruction.Sequence, out var payload);
+		var command = new RuntimeManagedCommand(
+			instruction.Sequence,
+			unitId,
+			(RuntimeManagedCommandKind)instruction.Value,
+			payload,
+			DateTimeOffset.UtcNow);
+		if (_commandHandlers.TryGetValue(unitId, out var handler))
+			handler(command);
+		else
+		{
+			var queue = _commandFifos.GetOrAdd(unitId, static _ => new ConcurrentQueue<RuntimeManagedCommand>());
+			queue.Enqueue(command);
+			Interlocked.Increment(ref _pendingCommandCount);
+		}
+		SignalChanged();
+	}
+
+	private int ResolveEntityKind(string unitId)
+	{
+		if (!_registrations.TryGetValue(unitId, out var registration))
+			return (int)RuntimeInstructionEntityKind.Business;
+		return registration.UnitType.ToLowerInvariant() switch
+		{
+			"process" => (int)RuntimeInstructionEntityKind.Process,
+			"thread" => (int)RuntimeInstructionEntityKind.Thread,
+			"task" => (int)RuntimeInstructionEntityKind.Task,
+			_ => (int)RuntimeInstructionEntityKind.Business
+		};
 	}
 
 	public RuntimeManagedCommand EnqueueControllerCommand(RuntimeManagedCommandKind kind, string? payload = null)
@@ -448,106 +602,16 @@ public sealed class RuntimeManagedRegistry
 			controllerCommandCount = ControllerCommandCount,
 			pendingCommands = PendingCommandCount,
 			droppedCommands = DroppedCommandCount,
-			importedSharedCommands = ImportedSharedCommandCount,
-			publishedSharedStates = PublishedSharedStateCount,
 			commandQueueDepth = CommandQueueDepth
 		};
 	}
 
 	private void ImportSharedCommands()
 	{
-		while (DiagnosticSwitchboard.TryGetCommandFrame(out var frame))
-		{
-			if (frame.ProcessId == Environment.ProcessId)
-			{
-				continue;
-			}
-
-			var targetUnitId = ResolveUnitIdFromHash(frame.TargetIdHash);
-			if (targetUnitId == null)
-			{
-				continue;
-			}
-
-			if (!Enum.IsDefined(typeof(RuntimeManagedCommandKind), frame.CommandKind))
-			{
-				continue;
-			}
-
-			var queue = _commandFifos.GetOrAdd(targetUnitId, static _ => new ConcurrentQueue<RuntimeManagedCommand>());
-			var sequence = frame.Sequence > 0 ? frame.Sequence : Interlocked.Increment(ref _commandSequence);
-			var imported = new RuntimeManagedCommand(
-				sequence,
-				targetUnitId,
-				(RuntimeManagedCommandKind)frame.CommandKind,
-				Payload: null,
-				EnqueuedAt: new DateTimeOffset(frame.TimestampUtcTicks, TimeSpan.Zero));
-			queue.Enqueue(imported);
-			Interlocked.Increment(ref _pendingCommandCount);
-			Interlocked.Increment(ref _importedSharedCommandCount);
-			while (queue.Count > CommandQueueDepth && queue.TryDequeue(out _))
-			{
-				Interlocked.Decrement(ref _pendingCommandCount);
-				Interlocked.Increment(ref _droppedCommandCount);
-			}
-		}
 	}
 
 	public void ImportSharedStates()
 	{
-		EnsureGlobalLifecycleStates();
-		while (DiagnosticSwitchboard.TryGetStateFrame(out var frame))
-		{
-			if (frame.ProcessId == Environment.ProcessId)
-			{
-				continue;
-			}
-
-			var timestamp = new DateTimeOffset(frame.TimestampUtcTicks, TimeSpan.Zero);
-			if (frame.EntityKind == 0)
-			{
-				if (_globalLifecycle.Catalog.TryGetByCode(frame.StateKind, out var globalState))
-				{
-					_globalLifecycle.SetCurrentByCode(globalState.Code);
-					_globalLifecycleHistory.AddLast(globalState);
-					TrimHistory(_globalLifecycleHistory);
-					PublishEvent("runtime.global", "global-state-imported", $"Imported global state {globalState.Name}.", new
-					{
-						globalState.Code,
-						globalState.Name,
-						frame.ProcessId,
-						timestamp
-					});
-				}
-
-				continue;
-			}
-
-			var targetUnitId = ResolveUnitIdFromHash(frame.EntityIdHash);
-			if (targetUnitId == null)
-			{
-				continue;
-			}
-
-			if (!_registrations.TryGetValue(targetUnitId, out var registration))
-			{
-				continue;
-			}
-
-			if (!_globalLifecycle.Catalog.TryGetByCode(frame.StateKind, out var unitState))
-			{
-				continue;
-			}
-
-			var importedStateSnapshot = registration.State.State with
-			{
-				CurrentState = unitState,
-				CurrentPath = BuildPathFromCatalog(_globalLifecycle.Catalog, unitState),
-				UpdatedAt = timestamp
-			};
-			_sharedUnitStates[targetUnitId] = importedStateSnapshot;
-			AppendUnitStateHistory(targetUnitId, unitState);
-		}
 	}
 
 	private string? ResolveUnitIdFromHash(int targetIdHash)
@@ -561,38 +625,6 @@ public sealed class RuntimeManagedRegistry
 		}
 
 		return null;
-	}
-
-	private void PublishSharedStateFrame(string unitId, RManagedStateSnapshot state)
-	{
-		var frame = new RuntimeStateFrame(
-			processId: Environment.ProcessId,
-			managedThreadId: Environment.CurrentManagedThreadId,
-			sequence: Interlocked.Increment(ref _eventSequence),
-			entityKind: 1,
-			entityIdHash: RuntimeInjectorTransportCodec.ComputeStableHash32(unitId),
-			stateKind: state.State.CurrentState.Code,
-			timestampUtcTicks: DateTimeOffset.UtcNow.UtcTicks);
-		if (DiagnosticSwitchboard.TryPutStateFrame(frame))
-		{
-			Interlocked.Increment(ref _publishedSharedStateCount);
-		}
-	}
-
-	private void PublishGlobalStateFrame(RuntimeState state)
-	{
-		var frame = new RuntimeStateFrame(
-			processId: Environment.ProcessId,
-			managedThreadId: Environment.CurrentManagedThreadId,
-			sequence: Interlocked.Increment(ref _eventSequence),
-			entityKind: 0,
-			entityIdHash: 0,
-			stateKind: state.Code,
-			timestampUtcTicks: DateTimeOffset.UtcNow.UtcTicks);
-		if (DiagnosticSwitchboard.TryPutStateFrame(frame))
-		{
-			Interlocked.Increment(ref _publishedSharedStateCount);
-		}
 	}
 
 	private void AppendUnitStateHistory(string unitId, RuntimeState state)
@@ -654,17 +686,34 @@ public sealed class RuntimeManagedRegistry
 		return string.Join('.', segments);
 	}
 
-	private static bool IsUnitReadyToExit(RuntimeManagedRegistration registration)
+	public void Dispose()
 	{
-		var name = registration.State.State.CurrentState.Name;
-		if (name.Equals("Stop", StringComparison.OrdinalIgnoreCase)
-			|| name.Equals("Exit", StringComparison.OrdinalIgnoreCase)
-			|| name.Equals("Completed", StringComparison.OrdinalIgnoreCase)
-			|| name.Equals("Timeout", StringComparison.OrdinalIgnoreCase))
-		{
-			return true;
-		}
-
-		return false;
+		if (Interlocked.Exchange(ref _disposed, 1) == 1)
+			return;
+		foreach (var inbox in _unitInboxes.Values)
+			inbox.Dispose();
+		_unitInboxes.Clear();
+		_controllerDispatcher.Dispose();
+		_controllerInbox.Dispose();
+		_externalUnitDispatcher?.Dispose();
+		_externalUnitInbox?.Dispose();
+		_externalControllerInbox?.Dispose();
 	}
+
+	private sealed class RuntimeCommandHandlerRegistration(
+		ConcurrentDictionary<string, Action<RuntimeManagedCommand>> handlers,
+		string unitId,
+		Action<RuntimeManagedCommand> handler) : IDisposable
+	{
+		private int _disposed;
+
+		public void Dispose()
+		{
+			if (Interlocked.Exchange(ref _disposed, 1) == 1)
+				return;
+			if (handlers.TryGetValue(unitId, out var current) && ReferenceEquals(current, handler))
+				handlers.TryRemove(unitId, out _);
+		}
+	}
+
 }

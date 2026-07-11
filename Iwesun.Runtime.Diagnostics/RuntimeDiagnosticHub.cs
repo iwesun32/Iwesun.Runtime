@@ -10,7 +10,9 @@ public sealed class RuntimeDiagnosticHub
 	private readonly ConcurrentQueue<RuntimeDiagnosticEvent> _events = new();
 	private readonly RuntimeHostScanOptions _hostScanOptions;
 	private RuntimeHostSnapshot _hostSnapshot;
+	#if DEBUG
 	private RuntimeDiagnosticBreakpoints? _breakpoints;
+	#endif
 	private RuntimeDiagnosticHooks? _hooks;
 	private RegistrySnapshot? _registrySnapshot;
 
@@ -20,11 +22,13 @@ public sealed class RuntimeDiagnosticHub
 		_hostSnapshot = RuntimeHostScanner.Scan(TargetIds, _hostScanOptions);
 	}
 
-	/// <summary>Wire the breakpoints singleton for direct breakpoint command handling.</summary>
+	#if DEBUG
+	/// <summary>Wire the debug-only breakpoints singleton for direct breakpoint command handling.</summary>
 	public void SetBreakpoints(RuntimeDiagnosticBreakpoints breakpoints)
 	{
 		_breakpoints = breakpoints ?? throw new ArgumentNullException(nameof(breakpoints));
 	}
+	#endif
 
 	/// <summary>Wire the hooks singleton for direct hook command handling.</summary>
 	public void SetHooks(RuntimeDiagnosticHooks hooks)
@@ -38,15 +42,6 @@ public sealed class RuntimeDiagnosticHub
 		_registrySnapshot = snapshot;
 	}
 
-	/// <summary>
-	/// Resume all waiting breakpoints. Called when a CLI client disconnects
-	/// to ensure the host process is never permanently blocked.
-	/// </summary>
-	public void ResumeAllBreakpoints()
-	{
-		_breakpoints?.ResumeAll();
-	}
-
 	public bool Register(IRuntimeDiagnosticTarget target)
 	{
 		var added = _targets.TryAdd(target.TargetId, target);
@@ -55,8 +50,11 @@ public sealed class RuntimeDiagnosticHub
 		return added;
 	}
 
-	public bool RegisterObject(string targetId, object instance, RuntimeDiagnosticObjectAccess? access = null) =>
-		Register(new ReflectionRuntimeDiagnosticTarget(targetId, instance, access));
+	public bool RegisterObject(string targetId, object instance, RuntimeDiagnosticObjectAccess? access = null)
+	{
+		_hooks?.RegisterInstance(instance);
+		return Register(new ReflectionRuntimeDiagnosticTarget(targetId, instance, access));
+	}
 
 	public bool Unregister(string targetId)
 	{
@@ -110,11 +108,13 @@ public sealed class RuntimeDiagnosticHub
 
 	public async Task<RuntimeDiagnosticActionResult> ExecuteAsync(RuntimeDiagnosticAction command, CancellationToken ct = default)
 	{
-		// ── Breakpoint actions ────────────────────────────────────────
+		#if DEBUG
+		// ── Debug-only breakpoint actions ─────────────────────────────
 		if (command.TargetId.Equals("diagnostics.breakpoints", StringComparison.OrdinalIgnoreCase))
 		{
 			return await ExecuteBreakpointActionAsync(command);
 		}
+		#endif
 
 		// ── Hook actions ──────────────────────────────────────────────
 		if (command.TargetId.Equals("diagnostics.hooks", StringComparison.OrdinalIgnoreCase))
@@ -364,8 +364,8 @@ public sealed class RuntimeDiagnosticHub
 		return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 	}
 
-	// ── Breakpoint command handling ──────────────────────────────────
-
+	#if DEBUG
+	// ── Debug-only breakpoint command handling ───────────────────────
 	private async Task<RuntimeDiagnosticActionResult> ExecuteBreakpointActionAsync(RuntimeDiagnosticAction command)
 	{
 		if (_breakpoints == null)
@@ -455,6 +455,7 @@ public sealed class RuntimeDiagnosticHub
 					$"Unknown action: {action}. Supported: list, enable, disable, resume, resumeAll, setNumeric, setNumericThreshold, clearNumeric, listNumeric");
 		}
 	}
+	#endif
 
 	// ── Hook command handling ────────────────────────────────────────
 
@@ -471,7 +472,12 @@ public sealed class RuntimeDiagnosticHub
 			case "available":
 				return RuntimeDiagnosticActionResult.Ok("diagnostics.hooks", action, new
 				{
-					available = _hooks.AvailableHooks(),
+					available = _hooks.AvailableHooks().Select(hook => new
+					{
+						hook.Id,
+						hook.EventName,
+						TargetTypeName = hook.TargetType.FullName ?? hook.TargetType.Name
+					}),
 					active = _hooks.ActiveHooks()
 				});
 

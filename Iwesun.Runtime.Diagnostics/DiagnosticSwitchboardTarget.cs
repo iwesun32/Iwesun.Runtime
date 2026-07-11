@@ -1,11 +1,19 @@
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 
 namespace Iwesun.Runtime.Diagnostics;
 
 public sealed class DiagnosticSwitchboardTarget : RuntimeDiagnosticTargetBase
 {
-	public DiagnosticSwitchboardTarget() : base("diagnostics.switchboard")
+	private readonly IHostApplicationLifetime? _applicationLifetime;
+	private readonly RuntimeShutdownCoordinator _shutdownCoordinator;
+
+	public DiagnosticSwitchboardTarget(
+		RuntimeShutdownCoordinator shutdownCoordinator,
+		IHostApplicationLifetime? applicationLifetime = null) : base("diagnostics.switchboard")
 	{
+		_shutdownCoordinator = shutdownCoordinator ?? throw new ArgumentNullException(nameof(shutdownCoordinator));
+		_applicationLifetime = applicationLifetime;
 	}
 
 	public override object Snapshot() => DiagnosticSwitchboard.Snapshot();
@@ -25,10 +33,10 @@ public sealed class DiagnosticSwitchboardTarget : RuntimeDiagnosticTargetBase
 				DiagnosticSwitchboard.SaveConfig();
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, Snapshot()));
 			case "enable":
-				Apply(command, true, ReadBool(command, "persist") ?? false);
+				ApplyWithLegacyBooleanSectionCompatibility(command, true, ReadBool(command, "persist") ?? false);
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, Snapshot()));
 			case "disable":
-				Apply(command, false, ReadBool(command, "persist") ?? false);
+				ApplyWithLegacyBooleanSectionCompatibility(command, false, ReadBool(command, "persist") ?? false);
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, Snapshot()));
 			case "set":
 				var enabled = ReadBool(command, "enabled") ?? false;
@@ -50,8 +58,10 @@ public sealed class DiagnosticSwitchboardTarget : RuntimeDiagnosticTargetBase
 				DiagnosticSwitchboard.SetFileOutput(ReadBool(command, "enabled") ?? false, ReadBool(command, "persist") ?? false);
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, Snapshot()));
 			case "setfilepath":
-				DiagnosticSwitchboard.SetFilePath(ReadString(command, "path"), ReadBool(command, "persist") ?? false);
-				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, Snapshot()));
+				return Task.FromResult(RuntimeDiagnosticActionResult.Fail(
+					TargetId,
+					command.Action,
+					"Runtime file path is startup-static and cannot be changed at runtime. Use startup args/JSON/source defaults."));
 			case "setfifodepth":
 				DiagnosticSwitchboard.SetFifoDepth(ReadInt(command, "depth") ?? 1024, ReadBool(command, "persist") ?? false);
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, Snapshot()));
@@ -93,19 +103,26 @@ public sealed class DiagnosticSwitchboardTarget : RuntimeDiagnosticTargetBase
 				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, Snapshot()));
 			case "shutdown":
 				var graceful = ReadBool(command, "graceful") ?? true;
-				var exitCode = ReadInt(command, "exitCode") ?? 0;
-				ShutdownRequested?.Invoke(graceful, exitCode);
-				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, new { graceful, exitCode, message = "Shutdown requested." }));
+				var timeoutMs = Math.Max(100, ReadInt(command, "countdownMs") ?? 5000);
+				var shutdownTask = _shutdownCoordinator.ShutdownAsync(TimeSpan.FromMilliseconds(timeoutMs), ReadString(command, "payload"), CancellationToken.None);
+				_ = CompleteHostShutdownAsync(shutdownTask);
+				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, new
+				{
+					graceful,
+					timeoutMs,
+					message = "Coordinated shutdown requested."
+				}));
 			default:
 				return Task.FromResult(RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, $"Unsupported action: {command.Action}"));
 		}
 	}
 
-	/// <summary>
-	/// Raised when a shutdown command is received from CLI.
-	/// The host should subscribe to perform graceful or forced termination.
-	/// </summary>
-	public static event Action<bool, int>? ShutdownRequested;
+	private async Task CompleteHostShutdownAsync(Task<RuntimeShutdownResult> shutdownTask)
+	{
+		var result = await shutdownTask.ConfigureAwait(false);
+		Environment.ExitCode = result.ExitCode;
+		_applicationLifetime?.StopApplication();
+	}
 
 	private static void Apply(RuntimeDiagnosticAction command, bool enabled, bool persist)
 	{
@@ -114,6 +131,20 @@ public sealed class DiagnosticSwitchboardTarget : RuntimeDiagnosticTargetBase
 			DiagnosticSwitchboard.SetGlobal(enabled, persist);
 		else
 			DiagnosticSwitchboard.SetSection(section, enabled, persist);
+	}
+
+	private static void ApplyWithLegacyBooleanSectionCompatibility(RuntimeDiagnosticAction command, bool enabled, bool persist)
+	{
+		// Compatibility path: if caller sends "section=true/false" by mistake,
+		// interpret it as a global switch command instead of creating a literal section named "true" or "false".
+		var section = ReadString(command, "section");
+		if (!string.IsNullOrWhiteSpace(section) && bool.TryParse(section, out var explicitGlobalEnabled))
+		{
+			DiagnosticSwitchboard.SetGlobal(explicitGlobalEnabled, persist);
+			return;
+		}
+
+		Apply(command, enabled, persist);
 	}
 
 	private static string? ReadString(RuntimeDiagnosticAction command, string key)

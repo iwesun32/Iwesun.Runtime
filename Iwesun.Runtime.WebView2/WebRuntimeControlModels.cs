@@ -4,6 +4,8 @@ namespace Iwesun.Runtime.WebView2;
 
 public sealed class WebRuntimeControlRequest
 {
+	public string Schema { get; init; } = "iwesun.webruntime.control/1.0";
+	public string Module { get; init; } = "web.runtime";
 	public string BackendId { get; init; } = "";
 	public string Action { get; init; } = "";
 	public string? Url { get; init; }
@@ -25,6 +27,7 @@ public sealed class WebRuntimeControlRequest
 
 public sealed class WebRuntimeControlResult
 {
+	public string Schema { get; init; } = "iwesun.webruntime.control/1.0";
 	public bool Success { get; init; }
 	public string BackendId { get; init; } = "";
 	public string Action { get; init; } = "";

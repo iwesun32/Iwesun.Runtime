@@ -1,5 +1,7 @@
 # 运行时诊断
 
+> command/state 控制面使用固定宽度匿名共享 FIFO：主控 FIFO 深度 128，逐单元 FIFO 深度 64。状态发送 `RuntimeState.Code`，控制发送 `RuntimeManagedCommandKind`；复杂内容继续走诊断管道。旧的命名 command/state MMF 和字符串/Base64 帧已退出活动实现。
+
 > **状态**: CURRENT | **最后更新**: 2026-07-09
 > **源码参考**: `Iwesun.Runtime.Diagnostics/`, `Iwesun.Runtime.Cli/`
 

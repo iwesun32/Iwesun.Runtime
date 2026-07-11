@@ -1,0 +1,41 @@
+{
+  "version": 2,
+  "meta": {
+    "name": "Iwesun Runtime CLI (Custom)",
+    "description": "User customization sample with aliases and composite commands"
+  },
+  "pipes": {
+    "diagnostics": "YourCompany.YourApp.Diagnostics"
+  },
+  "memory": {
+    "section": "your.app",
+    "count": "100"
+  },
+  "baseCommands": [
+    {
+      "name": "your.health",
+      "aliases": ["yh", "your-health"],
+      "help": "Read application health snapshot",
+      "usage": "your.health",
+      "examples": ["your.health", "yh"],
+      "transport": "diagnostics",
+      "category": "query",
+      "operation": "inspect",
+      "targetId": "your.app.health",
+      "action": "snapshot"
+    }
+  ],
+  "compositeCommands": [
+    {
+      "name": "your.quick-check",
+      "aliases": ["yqc"],
+      "help": "Quick diagnostics sequence for your app",
+      "mode": "sequential",
+      "steps": [
+        { "command": "host.info" },
+        { "command": "your.health" },
+        { "command": "lifecycle.status" }
+      ]
+    }
+  ]
+}

@@ -252,6 +252,75 @@ public sealed class RuntimeRootContainer
 {
 	private readonly object _gate = new();
 	private readonly Dictionary<string, RuntimeRootTable> _tables = new(StringComparer.OrdinalIgnoreCase);
+	private readonly RuntimeDList<RuntimeFilePathDescriptor> _filePathDescriptors = new();
+	private readonly Dictionary<string, RuntimeDListNode<RuntimeFilePathDescriptor>> _filePathByName = new(StringComparer.OrdinalIgnoreCase);
+
+	public RuntimeRootContainer()
+	{
+		_filePathDescriptors.AllowDuplicates = false;
+		_filePathDescriptors.MergeOnDuplicate = true;
+		_filePathDescriptors.DuplicatePredicate = static (left, right) =>
+			left.FilePathName.Equals(right.FilePathName, StringComparison.OrdinalIgnoreCase);
+		_filePathDescriptors.MergeDelegate = static (existing, incoming) =>
+			MergeFilePathDescriptor(existing, incoming);
+		_filePathDescriptors.FilterPredicate = static descriptor =>
+			!string.IsNullOrWhiteSpace(descriptor.FilePathName);
+	}
+
+	public void SetFilePathDescriptors(IEnumerable<RuntimeFilePathDescriptor> descriptors)
+	{
+		ArgumentNullException.ThrowIfNull(descriptors);
+
+		lock (_gate)
+		{
+			_filePathDescriptors.Clear();
+			_filePathByName.Clear();
+
+			foreach (var descriptor in descriptors)
+			{
+				AddOrMergeFilePathDescriptorLocked(descriptor);
+			}
+
+			NormalizePrimaryFilePathDescriptorOrderLocked();
+		}
+	}
+
+	public void UpsertFilePathDescriptor(RuntimeFilePathDescriptor descriptor)
+	{
+		lock (_gate)
+		{
+			AddOrMergeFilePathDescriptorLocked(descriptor);
+			NormalizePrimaryFilePathDescriptorOrderLocked();
+		}
+	}
+
+	public IReadOnlyList<RuntimeFilePathDescriptor> GetFilePathDescriptorsSnapshot()
+	{
+		lock (_gate)
+		{
+			return _filePathDescriptors.ToArraySnapshot();
+		}
+	}
+
+	public bool TryGetPrimaryFilePathDescriptor(out RuntimeFilePathDescriptor descriptor)
+	{
+		lock (_gate)
+		{
+			foreach (var item in _filePathDescriptors)
+			{
+				if (!item.IsPrimaryRecord)
+				{
+					continue;
+				}
+
+				descriptor = item;
+				return true;
+			}
+		}
+
+		descriptor = default;
+		return false;
+	}
 
 	public void SetTableEntries(string tableName, IEnumerable<RuntimeRootEntryEnvelope> entries)
 	{
@@ -350,8 +419,9 @@ public sealed class RuntimeRootContainer
 				.OrderBy(x => x.TableName, StringComparer.OrdinalIgnoreCase)
 				.Select(x => x.Snapshot())
 				.ToArray();
+			var filePathDescriptors = _filePathDescriptors.ToArraySnapshot();
 
-			return new RuntimeRootSnapshot(DateTimeOffset.UtcNow, tables);
+			return new RuntimeRootSnapshot(DateTimeOffset.UtcNow, tables, filePathDescriptors);
 		}
 	}
 
@@ -365,5 +435,85 @@ public sealed class RuntimeRootContainer
 		table = new RuntimeRootTable(tableName);
 		_tables[tableName] = table;
 		return table;
+	}
+
+	private void AddOrMergeFilePathDescriptorLocked(RuntimeFilePathDescriptor descriptor)
+	{
+		if (_filePathByName.TryGetValue(descriptor.FilePathName, out var existingNode))
+		{
+			existingNode.Value = MergeFilePathDescriptor(existingNode.Value, descriptor);
+			return;
+		}
+
+		var result = _filePathDescriptors.TryAdd(descriptor);
+		if (result.Node == null)
+		{
+			throw new InvalidOperationException($"File path descriptor '{descriptor.FilePathName}' was rejected by RuntimeRootContainer DLIST policy.");
+		}
+
+		_filePathByName[descriptor.FilePathName] = result.Node;
+	}
+
+	private void NormalizePrimaryFilePathDescriptorOrderLocked()
+	{
+		var ordered = _filePathDescriptors
+			.ToArraySnapshot()
+			.OrderBy(static descriptor => descriptor.IsPrimaryRecord ? 0 : 1)
+			.ThenBy(static descriptor => descriptor.FilePathName, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+
+		if (ordered.Count == 0)
+		{
+			return;
+		}
+
+		var firstPrimaryIndex = ordered.FindIndex(static descriptor => descriptor.IsPrimaryRecord);
+		if (firstPrimaryIndex >= 0)
+		{
+			for (var i = 0; i < ordered.Count; i++)
+			{
+				ordered[i] = ordered[i].NormalizeAs(i == firstPrimaryIndex);
+			}
+		}
+
+		_filePathDescriptors.Clear();
+		_filePathByName.Clear();
+		foreach (var descriptor in ordered)
+		{
+			var addResult = _filePathDescriptors.TryAdd(descriptor);
+			if (addResult.Node != null)
+			{
+				_filePathByName[descriptor.FilePathName] = addResult.Node;
+			}
+		}
+	}
+
+	private static RuntimeFilePathDescriptor MergeFilePathDescriptor(RuntimeFilePathDescriptor existing, RuntimeFilePathDescriptor incoming)
+	{
+		var annotations = new Dictionary<string, string>(existing.Annotations, StringComparer.OrdinalIgnoreCase);
+		foreach (var pair in incoming.Annotations)
+		{
+			annotations[pair.Key] = pair.Value;
+		}
+
+		var description = string.IsNullOrWhiteSpace(incoming.Description)
+			? existing.Description
+			: incoming.Description;
+		var purpose = string.IsNullOrWhiteSpace(incoming.Purpose)
+			? existing.Purpose
+			: incoming.Purpose;
+		var source = string.IsNullOrWhiteSpace(incoming.Source)
+			? existing.Source
+			: incoming.Source;
+
+		return new RuntimeFilePathDescriptor(
+			existing.FilePathName,
+			description,
+			purpose,
+			source,
+			existing.IsPrimaryRecord || incoming.IsPrimaryRecord,
+			annotations,
+			existing.RegisteredAt,
+			DateTimeOffset.UtcNow);
 	}
 }

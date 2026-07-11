@@ -5,6 +5,5 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Iwesun.Runtime.WebView2</RootNamespace>
     <AssemblyName>Iwesun.Runtime.WebView2</AssemblyName>
-    <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
 </Project>

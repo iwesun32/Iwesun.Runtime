@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Diagnostics;
 using System.Threading;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -9,10 +10,16 @@ public static class RuntimeHostTemplate
 	public static IServiceCollection Start(
 		this IServiceCollection services,
 		string? runtimeDirectory = null,
-		RuntimeHostScanOptions? hostScanOptions = null)
+		RuntimeHostScanOptions? hostScanOptions = null,
+		string? startupRuntimeDiagnosticsPipeName = null,
+		string? startupRuntimeDiagnosticsFilePath = null)
 	{
 		ArgumentNullException.ThrowIfNull(services);
-		services.AddRuntimeDiagnostics(runtimeDirectory, hostScanOptions);
+		services.AddRuntimeDiagnostics(
+			runtimeDirectory,
+			hostScanOptions,
+			startupRuntimeDiagnosticsPipeName,
+			startupRuntimeDiagnosticsFilePath);
 		return services;
 	}
 
@@ -28,24 +35,6 @@ public static class RuntimeHostTemplate
 		return provider;
 	}
 
-	public static void Stop(
-		RuntimeStateManager stateManager,
-		RuntimeExecutionManager execution,
-		string threadId,
-		string taskId,
-		bool graceful = true,
-		string? step = null,
-		object? payload = null)
-	{
-		ArgumentNullException.ThrowIfNull(stateManager);
-		ArgumentNullException.ThrowIfNull(execution);
-
-		stateManager.SetStop();
-		var threadState = graceful ? RuntimeThreadState.Completed : RuntimeThreadState.Faulted;
-		var taskState = graceful ? RuntimeTaskState.Completed : RuntimeTaskState.Faulted;
-		execution.SetTaskState(taskId, taskState, step: step ?? (graceful ? "completed" : "faulted"), threadId: threadId, payload: payload);
-		execution.SetThreadState(threadId, threadState, currentTaskId: taskId, payload: payload);
-	}
 }
 
 internal static class RuntimeInjectionContext
@@ -132,5 +121,96 @@ public static class RuntimeInjector
 	{
 		ArgumentNullException.ThrowIfNull(execution);
 		return execution.RegisterTask(id, name, lifetime, category, threadId, sourceLocation, parentTaskId, step, tags, payload);
+	}
+
+	public static RProcess CreateProcess(
+		ProcessStartInfo startInfo,
+		string? unitId = null,
+		bool startImmediately = true)
+	{
+		ArgumentNullException.ThrowIfNull(startInfo);
+		var process = string.IsNullOrWhiteSpace(unitId)
+			? new RProcess()
+			: new RProcess(unitId);
+		process.StartInfo = startInfo;
+		if (startImmediately)
+		{
+			process.Start();
+		}
+
+		return process;
+	}
+
+	public static RProcess CreateProcess(
+		string fileName,
+		string? arguments = null,
+		string? unitId = null,
+		bool startImmediately = true)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+		return CreateProcess(new ProcessStartInfo(fileName, arguments ?? string.Empty), unitId, startImmediately);
+	}
+
+	public static RThread CreateThread(
+		ThreadStart start,
+		string? unitId = null,
+		string? name = null,
+		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
+		RuntimeThreadKind kind = RuntimeThreadKind.Worker,
+		string owner = "",
+		string sourceLocation = "",
+		int stopTimeoutMilliseconds = 5000,
+		bool startImmediately = true)
+	{
+		ArgumentNullException.ThrowIfNull(start);
+		var thread = new RThread(start, unitId, name, lifetime, kind, owner, sourceLocation, stopTimeoutMilliseconds);
+		if (startImmediately)
+		{
+			thread.Start();
+		}
+
+		return thread;
+	}
+
+	public static RThread CreateThread(
+		ParameterizedThreadStart start,
+		string? unitId = null,
+		string? name = null,
+		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
+		RuntimeThreadKind kind = RuntimeThreadKind.Worker,
+		string owner = "",
+		string sourceLocation = "",
+		int stopTimeoutMilliseconds = 5000,
+		object? parameter = null,
+		bool startImmediately = true)
+	{
+		ArgumentNullException.ThrowIfNull(start);
+		var thread = new RThread(start, unitId, name, lifetime, kind, owner, sourceLocation, stopTimeoutMilliseconds);
+		if (startImmediately)
+		{
+			thread.Start(parameter);
+		}
+
+		return thread;
+	}
+
+	public static RTask CreateTask(
+		Action action,
+		string? unitId = null,
+		string category = "task",
+		string threadId = "",
+		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
+		string sourceLocation = "",
+		CancellationToken cancellationToken = default,
+		bool startImmediately = true)
+	{
+		ArgumentNullException.ThrowIfNull(action);
+		var task = new RTask(action, cancellationToken, unitId, category, threadId, lifetime, sourceLocation);
+		if (startImmediately)
+		{
+			task.Start(TaskScheduler.Default);
+		}
+
+		return task;
 	}
 }

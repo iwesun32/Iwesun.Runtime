@@ -6,6 +6,7 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 
 | 文档 | 说明 |
 | --- | --- |
+| **[IWESUN_RUNTIME_DESIGN.md](IWESUN_RUNTIME_DESIGN.md)** | ⭐ **完整设计文档**：架构、功能分类、注入界面、JSON指令、CLI格式 |
 | [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | 项目总览：定位、结构、依赖关系、核心链路 |
 | [RUNTIME_DIAGNOSTICS.md](RUNTIME_DIAGNOSTICS.md) | 运行时诊断核心机制、协议与输出控制 |
 | [RUNTIME_ROOT_DATA_STRUCTURE.md](RUNTIME_ROOT_DATA_STRUCTURE.md) | RuntimeRoot 单根挂载的数据结构总览（T01~T10） |
@@ -17,6 +18,7 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 ## 文档分组
 
 ### 当前权威入口
+- `docs/IWESUN_RUNTIME_DESIGN.md`：**主设计文档**，完整覆盖所有设计主题。
 - `docs/README.md`：文档索引入口。
 - `docs/REQUIREMENTS_ACTIVE.md`：当前活跃需求与功能测试状态。
 - `docs/RUNTIME_DIAGNOSTICS.md`：诊断内核、开关板、Hub、输出点说明。
@@ -54,6 +56,10 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | [PROCESS_THREAD_INTERCEPTION_DECISION.md](05-runtime-tooling/PROCESS_THREAD_INTERCEPTION_DECISION.md) | 继承与包装讨论结论、放行方案与路线图 |
 | [THREAD_TASK_MANAGEMENT_PLAN.md](05-runtime-tooling/THREAD_TASK_MANAGEMENT_PLAN.md) | 线程与任务管理实施计划、阶段拆分、验收标准 |
 | [SAMPLE_HOST.md](05-runtime-tooling/SAMPLE_HOST.md) | 独立样板宿主、代码注入、诊断接入、发布模板 |
+| [RUNTIME_INTEGRATION_GUIDE.md](05-runtime-tooling/RUNTIME_INTEGRATION_GUIDE.md) | 发布版接入手册：启动/结束模板、创建API、状态接口、CLI扩展与发布清单 |
+| [RUNTIME_RELEASE_PACKAGING.md](05-runtime-tooling/RUNTIME_RELEASE_PACKAGING.md) | Runtime 发布总项目、发布清单、目录结构、MSI 安装与卸载 |
+| [WEB_RUNTIME_CONTROL.md](05-runtime-tooling/WEB_RUNTIME_CONTROL.md) | WebView2 运行时控制接口（AIGateway 最新版同步） |
+| [WEBVIEW2_RUNTIME_CAPABILITIES.md](05-runtime-tooling/WEBVIEW2_RUNTIME_CAPABILITIES.md) | WebView2 运行时能力规划与动作命名规范（AIGateway 最新版同步） |
 | [INJECTOR_STANDARDIZATION.md](05-runtime-tooling/INJECTOR_STANDARDIZATION.md) | 六大类注入器标准化、最简写法、宏式体验边界 |
 | [INJECTOR_STANDARDIZATION_PLAN.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_PLAN.md) | 注入器标准化技术方案、实现边界、分阶段实施 |
 | [INJECTOR_STANDARDIZATION_TASKS.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_TASKS.md) | 注入器标准化任务书、交付清单、验收标准 |

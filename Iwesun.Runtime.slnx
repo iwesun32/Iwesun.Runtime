@@ -1,8 +1,21 @@
 <Solution>
-  <Project Path="Iwesun.Runtime.Diagnostics/Iwesun.Runtime.Diagnostics.csproj">
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="Iwesun.Runtime.Cli/Iwesun.Runtime.Cli.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
   <Project Path="Iwesun.Runtime.Data/Iwesun.Runtime.Data.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="Iwesun.Runtime.Diagnostics/Iwesun.Runtime.Diagnostics.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="Iwesun.Runtime.FunctionalTests/Iwesun.Runtime.FunctionalTests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="Iwesun.Runtime.Release/Iwesun.Runtime.Release.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
   <Project Path="Iwesun.Runtime.SampleHost/Iwesun.Runtime.SampleHost.csproj">
@@ -11,11 +24,4 @@
   <Project Path="Iwesun.Runtime.WebView2/Iwesun.Runtime.WebView2.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
-  <Project Path="Iwesun.Runtime.Cli/Iwesun.Runtime.Cli.csproj">
-    <Platform Solution="*|x64" Project="x64" />
-  </Project>
-  <Configurations>
-    <Platform Name="Any CPU" />
-    <Platform Name="x64" />
-  </Configurations>
 </Solution>

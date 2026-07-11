@@ -1,9 +1,10 @@
 using System.Threading;
 using System.Threading.Tasks;
+using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
 
-public sealed class RThread
+public sealed class RThread : IDisposable
 {
 	private const int NormalExitCode = 0;
 	private const int TimeoutExitCode = 124;
@@ -16,6 +17,7 @@ public sealed class RThread
 	private readonly string _owner;
 	private readonly string _sourceLocation;
 	private readonly DelegateRuntimeManagedCommandHandler _commandHandler;
+	private readonly IDisposable? _commandRegistration;
 	private readonly int _stopTimeoutMilliseconds;
 	private readonly CancellationTokenSource _guardianCts = new();
 	private Task? _guardianLoop;
@@ -24,6 +26,7 @@ public sealed class RThread
 	private int _exitCode = NormalExitCode;
 	private int _exitCompletedRaised;
 	private int _globalStopHandled;
+	private int _disposed;
 
 	public RThread(
 		ThreadStart start,
@@ -37,7 +40,7 @@ public sealed class RThread
 	{
 		ArgumentNullException.ThrowIfNull(start);
 		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"thread.{Guid.NewGuid():N}" : unitId;
-		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId, RuntimeInstructionEntityKind.Thread);
 		UnitId = _unit.UnitId;
 		_lifetime = lifetime;
 		_kind = kind;
@@ -54,6 +57,7 @@ public sealed class RThread
 			OnWakeupAction = cmd => _managed?.PublishEvent(UnitId, "thread-wakeup-command", "Wakeup command received.", new { cmd.Sequence, cmd.Payload }),
 			OnSnapshotAction = _ => _managed?.PublishEvent(UnitId, "thread-snapshot-command", "Snapshot command received.", State.Snapshot())
 		};
+		_commandRegistration = _managed?.RegisterCommandHandler(UnitId, command => _commandHandler.Handle(command));
 		if (!string.IsNullOrWhiteSpace(name))
 		{
 			_inner.Name = name;
@@ -72,7 +76,7 @@ public sealed class RThread
 	{
 		ArgumentNullException.ThrowIfNull(start);
 		var resolvedUnitId = string.IsNullOrWhiteSpace(unitId) ? $"thread.{Guid.NewGuid():N}" : unitId;
-		_unit = new RuntimeManagedUnitBase(resolvedUnitId);
+		_unit = new RuntimeManagedUnitBase(resolvedUnitId, RuntimeInstructionEntityKind.Thread);
 		UnitId = _unit.UnitId;
 		_lifetime = lifetime;
 		_kind = kind;
@@ -89,6 +93,7 @@ public sealed class RThread
 			OnWakeupAction = cmd => _managed?.PublishEvent(UnitId, "thread-wakeup-command", "Wakeup command received.", new { cmd.Sequence, cmd.Payload }),
 			OnSnapshotAction = _ => _managed?.PublishEvent(UnitId, "thread-snapshot-command", "Snapshot command received.", State.Snapshot())
 		};
+		_commandRegistration = _managed?.RegisterCommandHandler(UnitId, command => _commandHandler.Handle(command));
 		if (!string.IsNullOrWhiteSpace(name))
 		{
 			_inner.Name = name;
@@ -153,7 +158,7 @@ public sealed class RThread
 	private RThread(Thread thread)
 	{
 		_inner = thread;
-		_unit = new RuntimeManagedUnitBase($"thread.current.{thread.ManagedThreadId}");
+		_unit = new RuntimeManagedUnitBase($"thread.current.{thread.ManagedThreadId}", RuntimeInstructionEntityKind.Thread);
 		UnitId = _unit.UnitId;
 		State = _unit.State;
 		_execution = _unit.Execution;
@@ -169,6 +174,7 @@ public sealed class RThread
 			OnWakeupAction = cmd => _managed?.PublishEvent(UnitId, "thread-wakeup-command", "Wakeup command received.", new { cmd.Sequence, cmd.Payload }),
 			OnSnapshotAction = _ => _managed?.PublishEvent(UnitId, "thread-snapshot-command", "Snapshot command received.", State.Snapshot())
 		};
+		_commandRegistration = _managed?.RegisterCommandHandler(UnitId, command => _commandHandler.Handle(command));
 	}
 
 	private void EnsureRegistered()
@@ -371,5 +377,23 @@ public sealed class RThread
 		}
 
 		ExitCompleted?.Invoke(this, args);
+	}
+
+	public void Dispose()
+	{
+		if (Interlocked.Exchange(ref _disposed, 1) == 1)
+		{
+			return;
+		}
+
+		if (_inner.IsAlive)
+		{
+			HandleStopCommand(new RuntimeManagedCommand(0, UnitId, RuntimeManagedCommandKind.Stop, "dispose", DateTimeOffset.UtcNow));
+		}
+
+		_guardianCts.Cancel();
+		_commandRegistration?.Dispose();
+		_managed?.Unregister(UnitId);
+		_guardianCts.Dispose();
 	}
 }

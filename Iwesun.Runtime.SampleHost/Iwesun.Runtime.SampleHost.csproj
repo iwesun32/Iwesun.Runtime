@@ -18,4 +18,26 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="templates\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\docs\05-runtime-tooling\RUNTIME_INTEGRATION_GUIDE.md">
+      <Link>docs\RUNTIME_INTEGRATION_GUIDE.md</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\docs\IWESUN_RUNTIME_CLI.md">
+      <Link>docs\IWESUN_RUNTIME_CLI.md</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.commands.v2.json">
+      <Link>cli\Iwesun.Runtime.Cli.commands.v2.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

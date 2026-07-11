@@ -15,6 +15,7 @@ public sealed class RuntimeDiagnosticHooks
 {
 	private readonly ConcurrentDictionary<string, ActiveHook> _active = new(StringComparer.OrdinalIgnoreCase);
 	private readonly ConcurrentDictionary<string, HookableEvent> _available = new(StringComparer.OrdinalIgnoreCase);
+	private readonly ConcurrentDictionary<Type, WeakReference<object>> _instances = new();
 	private readonly Timer _gcCleanupTimer;
 
 	public RuntimeDiagnosticHooks()
@@ -28,6 +29,12 @@ public sealed class RuntimeDiagnosticHooks
 	public void RegisterAvailable(string id, Type targetType, string eventName)
 	{
 		_available[id] = new HookableEvent(id, targetType, eventName);
+	}
+
+	public void RegisterInstance(object instance)
+	{
+		ArgumentNullException.ThrowIfNull(instance);
+		_instances[instance.GetType()] = new WeakReference<object>(instance);
 	}
 
 	/// <summary>Snapshot of available (not yet attached) hooks.</summary>
@@ -58,6 +65,13 @@ public sealed class RuntimeDiagnosticHooks
 		var eventInfo = hook.TargetType.GetEvent(hook.EventName, flags);
 		if (eventInfo == null)
 			return false;
+		if (eventInfo.AddMethod?.IsStatic != true && instance == null)
+		{
+			_instances.TryGetValue(hook.TargetType, out var weakInstance);
+			weakInstance?.TryGetTarget(out instance);
+			if (instance == null)
+				return false;
+		}
 
 		var handler = BuildHandler(hook.Id, hook.EventName, hook.TargetType.FullName!, eventInfo.EventHandlerType!);
 		eventInfo.AddMethod!.Invoke(instance, new[] { handler });
@@ -67,7 +81,7 @@ public sealed class RuntimeDiagnosticHooks
 			HookId = hook.Id,
 			EventName = hook.EventName,
 			TargetTypeName = hook.TargetType.FullName!,
-			IsStatic = instance == null,
+			IsStatic = eventInfo.AddMethod?.IsStatic == true,
 			WeakTarget = instance != null ? new WeakReference<object>(instance) : null,
 			Handler = handler,
 			AttachedAt = DateTimeOffset.UtcNow

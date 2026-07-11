@@ -1,24 +1,24 @@
 using System.Collections.Concurrent;
+using System.IO.MemoryMappedFiles;
+using System.Runtime.Versioning;
 using Iwesun.Runtime.Data;
 
+#if DEBUG
 namespace Iwesun.Runtime.Diagnostics;
 
 /// <summary>
 /// Collaborative logical breakpoint registry.
-/// Each breakpoint has its own SemaphoreSlim signal for one-to-one await/resume.
+/// DEBUG builds: each breakpoint uses a named OS Semaphore (cross-process) and a
+/// MemoryMappedFile for shared state (Enabled / IsWaiting / HitCount).
+/// Release builds: registration and Wait methods are no-ops.
 /// Not a debugger breakpoint — only the calling call-chain is paused (await), other threads run freely.
 /// </summary>
 public sealed class RuntimeDiagnosticBreakpoints
 {
 	private readonly ConcurrentDictionary<string, BreakpointState> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
 	private readonly ConcurrentDictionary<string, RuntimeNumericBindingState> _numericBindings = new(StringComparer.OrdinalIgnoreCase);
-	private readonly Timer _timeoutTimer;
-	private readonly TimeSpan _timeoutCheckInterval = TimeSpan.FromSeconds(5);
 
-	public RuntimeDiagnosticBreakpoints()
-	{
-		_timeoutTimer = new Timer(CheckTimeouts, null, _timeoutCheckInterval, _timeoutCheckInterval);
-	}
+	public RuntimeDiagnosticBreakpoints() { }
 
 	// ── Registration ──────────────────────────────────────
 
@@ -87,20 +87,25 @@ public sealed class RuntimeDiagnosticBreakpoints
 
 	// ── Business code entry point ─────────────────────────
 
+	// ── Business code entry point ─────────────────────────────────────────────────────────────
+
 	/// <summary>
-	/// Called by business code. If the breakpoint is disabled or condition is false, returns immediately (zero overhead).
-	/// If enabled and condition met, waits for CLI resume signal.
+	/// Called by business code (DEBUG only). If the breakpoint is disabled or condition is false,
+	/// returns immediately (zero overhead). If enabled and condition met, waits for CLI resume signal.
+	/// Uses a named OS Semaphore so the resume can come from any process.
 	/// </summary>
 	public async Task WaitAsync(string id, Func<bool>? condition = null, object? context = null, CancellationToken ct = default)
 	{
+#if DEBUG
 		if (!RuntimeOutputSwitch.Enabled)
 			return;
 
-		if (!_breakpoints.TryGetValue(id, out var bp) || !bp.Enabled)
+		if (!_breakpoints.TryGetValue(id, out var bp) || !bp.SharedState.EnabledBool)
 			return;
 
 		// Check hit count target
 		var hitCount = Interlocked.Increment(ref bp.HitCount);
+		bp.SharedState.HitCount = (int)bp.HitCount;   // sync to MMF
 		if (bp.HitCountTarget > 0 && hitCount < bp.HitCountTarget)
 			return;
 
@@ -109,7 +114,7 @@ public sealed class RuntimeDiagnosticBreakpoints
 			return;
 
 		// Mark as waiting and capture snapshot
-		bp.IsWaiting = true;
+		bp.SharedState.IsWaiting = 1;
 		bp.LastHitAt = DateTimeOffset.UtcNow;
 		bp.LastContext = context;
 
@@ -128,30 +133,17 @@ public sealed class RuntimeDiagnosticBreakpoints
 				context
 			});
 
-		// Wait for resume signal or timeout
+		// Wait indefinitely for manual resume signal (named OS Semaphore — cross-process capable)
 		try
 		{
-			using var linkedCts = ct != default
-				? CancellationTokenSource.CreateLinkedTokenSource(ct, bp.TimeoutToken)
-				: CancellationTokenSource.CreateLinkedTokenSource(bp.TimeoutToken);
+			await Task.Run(() => bp.Signal.WaitOne(), ct).ConfigureAwait(false);
+		}
+		catch (OperationCanceledException) { }
 
-			await bp.Signal.WaitAsync(linkedCts.Token);
-		}
-		catch (OperationCanceledException)
-		{
-			// Timeout or cancellation — auto-resume
-			DiagnosticSwitchboard.ReportPoint(
-				RuntimeStaticInjectorCatalog.ComposePrefixedId(RuntimeInjectorIdPatterns.BreakpointTimeoutPrefix, id),
-				"breakpoints",
-				"timeout",
-				$"Breakpoint timed out: {id}",
-				new { breakpointId = id, bp.TimeoutMs });
-		}
-		finally
-		{
-			bp.IsWaiting = false;
-			bp.ResetTimeoutToken();
-		}
+		bp.SharedState.IsWaiting = 0;
+#else
+		await Task.CompletedTask;
+#endif
 	}
 
 	public Task WaitNumericAsync(string id, double value1, double value2, double value3 = 0, object? context = null, CancellationToken ct = default)
@@ -186,7 +178,7 @@ public sealed class RuntimeDiagnosticBreakpoints
 	{
 		if (!_breakpoints.TryGetValue(id, out var bp))
 			return false;
-		bp.Enabled = true;
+		bp.SharedState.Enabled = 1;
 		return true;
 	}
 
@@ -194,28 +186,32 @@ public sealed class RuntimeDiagnosticBreakpoints
 	{
 		if (!_breakpoints.TryGetValue(id, out var bp))
 			return false;
-		bp.Enabled = false;
+		bp.SharedState.Enabled = 0;
 		// If currently waiting, release immediately
-		if (bp.IsWaiting)
+		if (bp.SharedState.IsWaiting == 1)
 			Resume(id);
 		return true;
 	}
 
 	public bool Resume(string id)
 	{
-		if (!_breakpoints.TryGetValue(id, out var bp) || !bp.IsWaiting)
+		if (!_breakpoints.TryGetValue(id, out var bp) || bp.SharedState.IsWaiting == 0)
 			return false;
+#if DEBUG
 		try { bp.Signal.Release(); } catch (SemaphoreFullException) { }
+#endif
 		return true;
 	}
 
 	public void ResumeAll()
 	{
-		foreach (var (id, bp) in _breakpoints)
+		foreach (var (_, bp) in _breakpoints)
 		{
-			if (bp.IsWaiting)
+			if (bp.SharedState.IsWaiting == 1)
 			{
+#if DEBUG
 				try { bp.Signal.Release(); } catch (SemaphoreFullException) { }
+#endif
 			}
 		}
 	}
@@ -228,81 +224,130 @@ public sealed class RuntimeDiagnosticBreakpoints
 			.OrderBy(b => b.Id, StringComparer.OrdinalIgnoreCase)
 			.Select(b => new BreakpointSnapshot(
 				b.Id, b.Section, b.Description, b.SourceLocation,
-				b.Enabled, b.HitCountTarget, b.TimeoutMs, b.AutoResume,
-				b.HitCount, b.IsWaiting, b.LastHitAt))
+				b.SharedState.EnabledBool, b.HitCountTarget,
+				b.HitCount, b.SharedState.IsWaiting == 1, b.LastHitAt))
 			.ToArray();
 	}
 
 	// ── Timeout management ────────────────────────────────
 
-	private void CheckTimeouts(object? _)
-	{
-		foreach (var (_, bp) in _breakpoints)
-		{
-			if (bp.IsWaiting && bp.TimeoutMs > 0 && bp.LastHitAt != null)
-			{
-				var elapsed = (DateTimeOffset.UtcNow - bp.LastHitAt.Value).TotalMilliseconds;
-				if (elapsed >= bp.TimeoutMs)
-				{
-					bp.CancelTimeout();
-				}
-			}
-		}
-	}
-
-	// ── Cleanup ───────────────────────────────────────────
+	// ── Cleanup
 
 	public void Dispose()
 	{
-		_timeoutTimer.Dispose();
 		ResumeAll();
 		foreach (var (_, bp) in _breakpoints)
 		{
-			bp.Signal.Dispose();
-			bp.CancelTimeout();
+			bp.Dispose();
 		}
 	}
 }
 
 // ── Breakpoint State ─────────────────────────────────────
 
-public sealed class BreakpointState
+// ── Shared-memory layout (one MMF per breakpoint, 16 bytes) ──────────────────────────────────
+//
+//  Offset  Size  Field
+//  0       4     Enabled   (int32, 0=disabled 1=enabled) — writable by any process
+//  4       4     IsWaiting (int32, 0=idle 1=waiting)
+//  8       4     HitCount  (int32)
+//  12      4     reserved
+//
+// Named Semaphore: "Local\iwrt.bp.<safe-id>"
+// Named MMF:       "Local\iwrt.bpstate.<safe-id>"
+
+/// <summary>
+/// Provides typed, safe access to the MemoryMappedFile shared state for a single breakpoint.
+/// Any process that opens the same MMF name gets a consistent view.
+/// </summary>
+[SupportedOSPlatform("windows")]
+public sealed class BreakpointSharedState : IDisposable
+{
+	private const int OffsetEnabled   = 0;
+	private const int OffsetIsWaiting = 4;
+	private const int OffsetHitCount  = 8;
+	private const long MmfSize        = 16;
+
+	private readonly MemoryMappedFile _mmf;
+	private readonly MemoryMappedViewAccessor _view;
+
+	internal BreakpointSharedState(string mmfName)
+	{
+		_mmf  = MemoryMappedFile.CreateNew(null, MmfSize);
+		_view = _mmf.CreateViewAccessor(0, MmfSize);
+	}
+
+	public int Enabled
+	{
+		get => _view.ReadInt32(OffsetEnabled);
+		set => _view.Write(OffsetEnabled, value);
+	}
+
+	public int IsWaiting
+	{
+		get => _view.ReadInt32(OffsetIsWaiting);
+		set => _view.Write(OffsetIsWaiting, value);
+	}
+
+	public int HitCount
+	{
+		get => _view.ReadInt32(OffsetHitCount);
+		set => _view.Write(OffsetHitCount, value);
+	}
+
+	/// <summary>Helper: Enabled != 0</summary>
+	public bool EnabledBool => Enabled != 0;
+
+	public void Dispose()
+	{
+		_view.Dispose();
+		_mmf.Dispose();
+	}
+}
+
+// ── Breakpoint State ─────────────────────────────────────────────────────────────────────────
+
+[SupportedOSPlatform("windows")]
+public sealed class BreakpointState : IDisposable
 {
 	public string Id { get; }
 	public string Section { get; init; } = "general";
 	public string Description { get; init; } = "";
 	public string SourceLocation { get; init; } = "";
-	public bool Enabled { get; set; }
 	public int HitCountTarget { get; init; }  // 0 = every hit
-	public int TimeoutMs { get; init; } = 30_000;
-	public bool AutoResume { get; init; } = true;
 	public long HitCount;
-	public bool IsWaiting;
 	public DateTimeOffset? LastHitAt;
 	public object? LastContext;
-	public SemaphoreSlim Signal { get; } = new(0, 1);
-	public CancellationToken TimeoutToken => _timeoutCts?.Token ?? CancellationToken.None;
 
-	private CancellationTokenSource? _timeoutCts;
+	/// <summary>
+	/// Shared memory state — readable/writable from any process that opens the same MMF.
+	/// Contains Enabled, IsWaiting, HitCount.
+	/// </summary>
+	public BreakpointSharedState SharedState { get; }
+
+#if DEBUG
+	/// <summary>Named OS Semaphore — cross-process resume signal.</summary>
+	public Semaphore Signal { get; }
+#endif
+
+	private static string SafeName(string id)
+		=> id.Replace('\\', '_').Replace('/', '_').Replace(' ', '_');
 
 	public BreakpointState(string id)
 	{
 		Id = id ?? throw new ArgumentNullException(nameof(id));
-		ResetTimeoutToken();
+		SharedState = new BreakpointSharedState(id);
+#if DEBUG
+		Signal = new Semaphore(0, 1);
+#endif
 	}
 
-	public void ResetTimeoutToken()
+	public void Dispose()
 	{
-		_timeoutCts?.Cancel();
-		_timeoutCts?.Dispose();
-		_timeoutCts = TimeoutMs > 0
-			? new CancellationTokenSource(TimeoutMs)
-			: new CancellationTokenSource();
-	}
-
-	public void CancelTimeout()
-	{
-		try { _timeoutCts?.Cancel(); } catch (ObjectDisposedException) { }
+		SharedState.Dispose();
+#if DEBUG
+		Signal.Dispose();
+#endif
 	}
 }
 
@@ -315,8 +360,6 @@ public sealed record BreakpointSnapshot(
 	string SourceLocation,
 	bool Enabled,
 	int HitCountTarget,
-	int TimeoutMs,
-	bool AutoResume,
 	long HitCount,
 	bool IsWaiting,
 	DateTimeOffset? LastHitAt);
@@ -407,3 +450,4 @@ internal static class RuntimeNumericThresholdOperators
 		}
 	}
 }
+#endif

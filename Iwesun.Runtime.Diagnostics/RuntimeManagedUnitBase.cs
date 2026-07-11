@@ -1,14 +1,16 @@
+using Iwesun.Runtime.Data;
+
 namespace Iwesun.Runtime.Diagnostics;
 
 internal sealed class RuntimeManagedUnitBase
 {
-	public RuntimeManagedUnitBase(string unitId, RuntimeStateCatalog? catalog = null)
+	public RuntimeManagedUnitBase(string unitId, RuntimeInstructionEntityKind entityKind, RuntimeStateCatalog? catalog = null)
 	{
 		ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
 		UnitId = unitId;
 		Execution = RuntimeInjectionContext.Execution;
 		Managed = RuntimeInjectionContext.Managed;
-		State = new RManagedState(unitId, catalog);
+		State = new RManagedState(unitId, catalog, entityKind);
 	}
 
 	public string UnitId { get; }

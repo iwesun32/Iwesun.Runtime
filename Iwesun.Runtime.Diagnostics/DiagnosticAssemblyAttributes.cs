@@ -35,8 +35,8 @@ public sealed class DiagnosticBreakpointAttribute : Attribute
 	public string Section { get; }
 	public string Description { get; }
 	public string SourceLocation { get; }
-	public int TimeoutMs { get; init; } = 30_000;
 	public int HitCountTarget { get; init; }
+	public bool Enabled { get; init; }
 
 	public DiagnosticBreakpointAttribute(string id, string section, string description, string sourceLocation)
 	{
@@ -90,4 +90,25 @@ public sealed class DiagnosticPipePrefixAttribute : Attribute
 {
 	public string Prefix { get; }
 	public DiagnosticPipePrefixAttribute(string prefix) => Prefix = prefix;
+}
+
+/// <summary>
+/// Declare the diagnostic file output path and format for this host process.
+/// Acts as the compile-time default; command-line args and JSON config take higher priority.
+/// </summary>
+[AttributeUsage(AttributeTargets.Assembly, AllowMultiple = false)]
+public sealed class DiagnosticFileOutputAttribute : Attribute
+{
+	/// <summary>Template file path (directory + base name + extension). Used as-is for Append/Overwrite; suffixed with timestamp for CreateNew.</summary>
+	public string FilePath { get; }
+	/// <summary>Write mode. Default is <see cref="FileWriteMode.CreateNew"/> (new time-stamped file each run).</summary>
+	public FileWriteMode WriteMode { get; }
+	/// <summary>Output format. Default is <see cref="DiagnosticFileFormat.CompactJson"/> (JSONL).</summary>
+	public DiagnosticFileFormat Format { get; init; } = DiagnosticFileFormat.CompactJson;
+
+	public DiagnosticFileOutputAttribute(string filePath, FileWriteMode writeMode = FileWriteMode.CreateNew)
+	{
+		FilePath = filePath;
+		WriteMode = writeMode;
+	}
 }
