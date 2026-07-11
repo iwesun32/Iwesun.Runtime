@@ -15,6 +15,9 @@
 8. 在完成 JSON 风格统一和管道所有权边界设计后，再统一重规划 CLI 命令、组合命令、批处理和 WebRuntime 转发。
 9. 管道登记模型仿照文件登记：`Name` 是登记键，`RequestedPipeName` 是原始申请名，`ResolvedPipeName` 是避让冲突后真正落地的管道名。
 10. `RequestedPipeName` 与 `ResolvedPipeName` 必须在 JSON 中作为两个独立字段返回，不再使用 `BranchId` / `PipeName` 承担多重含义。
+11. CLI 全面重构为 v3，彻底删除旧 schema、旧命令名、旧命令字符串组合步骤和 v2 配置。
+12. CLI v3 保留并规范化用户别名、自定义命令、结构化 workflow、endpoint 覆盖、扩展、替换和禁用能力。
+13. CLI v3 正式设计见 `docs/superpowers/specs/2026-07-12-cli-v3-redesign.md`。
 
 ### 当前阶段执行状态
 
