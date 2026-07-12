@@ -23,6 +23,11 @@
 16. 用户手册已落地为 `docs/IWESUN_RUNTIME_USER_GUIDE.md`，包含五个主章、Debug/Release 矩阵和完整接入/迁移检查表。
 17. Runtime 接入技能已安装到 `C:/Users/LYH/.codex/skills/iwesun-runtime-integration`，并保留字节级一致的仓库副本 `skills/iwesun-runtime-integration`。
 18. 技能主副本已分别通过 `skill-creator/quick_validate.py`，且目录对比无差异。
+19. 完整发布需包含 CLI、Data、Diagnostics、WebView2、SampleHost 的 Release x64 产物，以及 CLI v3 JSON、权威文档、技能和标准源码。
+20. 新增 WiX SDK `Iwesun.Runtime.Setup` 生成 framework-dependent Windows x64 MSI，安装到 `C:/Program Files/Iwesun/Runtime`，并使用 `C:/ProgramData/Iwesun/Runtime` 保存可写用户数据。
+21. Setup 必须检查 .NET 10 Runtime、注册 `iwrt.exe` 系统 PATH、保留 ProgramData 用户数据，并支持升级/修复/卸载。
+22. 发布和 Setup 正式完成以 CLI v3 先实施为前置；任何 v2 CLI JSON 都不得进入新发布包。
+23. Release/Setup 正式设计见 `docs/superpowers/specs/2026-07-12-runtime-release-setup-design.md`。
 
 ### 当前阶段执行状态
 
