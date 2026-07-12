@@ -57,7 +57,10 @@ CLI 诊断管道名优先级（固定第一管道位）：
 3. 默认值 `DdnsSnap.RuntimeDiagnostics`
 
 说明：
-- `pipes.diagnostics` 作为 CLI 诊断主通道固定保留，不与其他业务管道混用。
+- RuntimeDiagnostics 作为 CLI 控制入口固定保留，不与其他业务管道混发业务消息。
+- Runtime 仍统一管理 Management、WebRuntime 等专用业务管道的申请、登记、解析、代理转发和释放。
+- CLI 通过 RuntimeDiagnostics 提交统一 JSON frame；Proxy 根据 `RuntimePipeRegistry` 租约转发到目标专用管道。
+- “专用管道”表示物理通道隔离，不表示脱离 Runtime 管理。
 - 主程序起点页可写入初始值；用户可通过启动参数或 JSON 配置覆盖。
 
 基本用法：

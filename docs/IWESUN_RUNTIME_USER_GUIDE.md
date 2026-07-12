@@ -203,6 +203,18 @@ await task;
 - 明确依赖特定 `TaskScheduler` 的代码应手动传入 scheduler。
 - 依赖将对象转型为原生 `Task` 的旧代码不能直接使用 `RTask`。
 
+### 2.6 专用业务管道与统一代理
+
+Runtime 统一管理 RuntimeDiagnostics、Management、WebRuntime 及其他业务管道，但不让它们共用同一个物理通道。
+
+1. 业务宿主以登记键向 `RuntimePipeRegistry` 申请专用管道。
+2. Runtime 执行重名避让并保存 `Name / RequestedPipeName / ResolvedPipeName`。
+3. CLI 请求进入 RuntimeDiagnostics 控制管道，使用统一 `RuntimeDiagnosticFrame`。
+4. `RuntimeProxyCommandTarget` 按登记租约解析目标，把 frame 转发到 Management 或 WebRuntime 专用管道。
+5. 专用业务宿主执行命令；退出时释放服务端实例并注销租约。
+
+这套结构统一了 JSON、登记、寻址和生命周期，同时保持物理隔离。禁止把 Management、WebRuntime 业务消息直接混发到 RuntimeDiagnostics 管道，也不应由业务项目另建一套脱离 Runtime 的管道登记表。
+
 ## 3. 注入器、监视记录器与断点
 
 ### 3.1 单点注入定义

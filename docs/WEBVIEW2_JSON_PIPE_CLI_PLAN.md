@@ -4,6 +4,17 @@
 
 本阶段只统一协议设计与迁移边界，不改变 WebView2 现有业务动作、CLI 命令语义或已发布的管道线格式。
 
+### 1.1 统一管理不等于共用一条管道
+
+Runtime 负责所有受管管道，而不只负责 RuntimeDiagnostics。Management、WebRuntime 及后续业务模块都通过 `RuntimePipeRegistry` 申请并登记专用命名管道，获得独立的 `RequestedPipeName` 与 `ResolvedPipeName`。
+
+- RuntimeDiagnostics 是诊断控制入口，承接 CLI 和诊断命令。
+- Management、WebRuntime 是相互独立的业务管道，不把业务消息塞入 RuntimeDiagnostics。
+- Diagnostics Proxy 根据登记租约把统一 JSON frame 转发到目标专用管道。
+- 业务宿主持有专用服务端实例、执行命令并在退出时释放租约。
+
+因此，统一的是申请、重名避让、登记、寻址、生命周期、代理转发和 JSON frame；物理管道仍按功能隔离。禁止退回“所有模块共用一个 CLI/Diagnostics 管道并混发不同消息”的旧模式。
+
 ```text
 CLI 文本 / 业务 API
         ↓
@@ -118,6 +129,7 @@ CLI 分为四层：
 - CLI 配置 JSON 定义功能映射，不定义另一套管道协议。
 - 文本命令、用户别名与组合命令均是适配器，JSON frame 才是稳定接口。
 - 输出默认保留完整 frame；人类摘要是可选渲染。
+- CLI 始终先连接 RuntimeDiagnostics 控制入口；需要访问 Management 或 WebRuntime 时，由 Proxy 按登记键解析专用管道并转发，不要求 CLI 直接维护每条业务管道连接。
 
 ## 6. 兼容迁移顺序
 

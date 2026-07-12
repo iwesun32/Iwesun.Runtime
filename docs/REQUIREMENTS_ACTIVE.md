@@ -9,6 +9,13 @@
 - `C:\ProgramData\Iwesun\Runtime` 仅保留运行期可修改的 `config`。
 - MSI 版本升级到 1.0.2，必须从 1.0.1 正常迁移并移除旧 ProgramData 文档/样例布局。
 
+## 2026-07-12 Runtime 业务管道管理边界
+
+- Runtime 不只管理 RuntimeDiagnostics 管道；Management、WebRuntime 等业务专用管道也必须通过 `RuntimePipeRegistry` 统一申请、登记、解析、转发和释放。
+- 每类业务使用自己的专用命名管道实例，不与 RuntimeDiagnostics/CLI 控制通道混发业务消息。
+- Runtime 统一的是管道治理、代理路由和 `RuntimeDiagnosticFrame` JSON 命令格式，不是把所有流量合并到一个物理管道。
+- 业务宿主持有实际服务端实例并执行具体业务命令；Runtime 保存 `Name / RequestedPipeName / ResolvedPipeName` 租约和路由关系。
+
 ## 当前任务（WebView2 JSON 协议与 CLI 重规划）
 
 1. `Iwesun.Runtime.WebView2` 需借用 Runtime 的命名管道与 JSON 转发能力。
