@@ -16,6 +16,7 @@
     <ReleaseSamplesRoot>$(ReleaseAppRoot)samples\</ReleaseSamplesRoot>
     <ReleaseScriptsRoot>$(ReleaseAppRoot)scripts\</ReleaseScriptsRoot>
     <ReleaseSkillsRoot>$(ReleaseAppRoot)skills\iwesun-runtime-integration\</ReleaseSkillsRoot>
+    <DiagnosticsVariantRoot>$(ReleaseLibRoot)Iwesun.Runtime.Diagnostics\</DiagnosticsVariantRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -53,6 +54,8 @@
     <MakeDir Directories="$(ReleaseSamplesRoot)templates" />
     <MakeDir Directories="$(ReleaseScriptsRoot)" />
     <MakeDir Directories="$(ReleaseSkillsRoot)" />
+    <MakeDir Directories="$(DiagnosticsVariantRoot)Debug" />
+    <MakeDir Directories="$(DiagnosticsVariantRoot)Release" />
     <MakeDir Directories="$(ReleaseSamplesRoot)source" />
 
     <MSBuild Projects="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.csproj"
@@ -64,6 +67,12 @@
     <MSBuild Projects="..\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj"
              Targets="Publish"
              Properties="Configuration=$(Configuration);PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Diagnostics\;SelfContained=false" />
+    <MSBuild Projects="..\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj"
+             Targets="Publish"
+             Properties="Configuration=Debug;PublishDir=$(DiagnosticsVariantRoot)Debug\;SelfContained=false" />
+    <MSBuild Projects="..\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj"
+             Targets="Publish"
+             Properties="Configuration=Release;PublishDir=$(DiagnosticsVariantRoot)Release\;SelfContained=false" />
     <MSBuild Projects="..\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj"
              Targets="Publish"
              Properties="Configuration=$(Configuration);PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Data\;SelfContained=false" />

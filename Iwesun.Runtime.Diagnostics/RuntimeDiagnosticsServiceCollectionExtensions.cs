@@ -26,6 +26,7 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 		services.AddSingleton<RuntimeManagedRegistry>();
 		services.AddSingleton<RuntimeShutdownCoordinator>();
 		services.AddSingleton<RuntimeManagedCommandTarget>();
+		services.AddSingleton<RuntimeHostCommandTarget>();
 		services.AddSingleton<RuntimePipeRegistryTarget>();
 		services.AddSingleton<RuntimeFileRegistryTarget>();
 		services.AddSingleton<RuntimeProxyCommandTarget>();
@@ -59,6 +60,7 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 		var hooks = provider.GetRequiredService<RuntimeDiagnosticHooks>();
 		var executionManager = provider.GetRequiredService<RuntimeExecutionManager>();
 		var managedTarget = provider.GetRequiredService<RuntimeManagedCommandTarget>();
+		var hostTarget = provider.GetRequiredService<RuntimeHostCommandTarget>();
 		var pipeRegistryTarget = provider.GetRequiredService<RuntimePipeRegistryTarget>();
 		var fileRegistryTarget = provider.GetRequiredService<RuntimeFileRegistryTarget>();
 		var proxyTarget = provider.GetRequiredService<RuntimeProxyCommandTarget>();
@@ -100,6 +102,7 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 			InvokableMembers = ["RegisterThread", "SetThreadState", "HeartbeatThread", "RegisterTask", "SetTaskState", "HeartbeatTask", "Snapshot"]
 		});
 		hub.Register(managedTarget);
+		hub.Register(hostTarget);
 		hub.Register(pipeRegistryTarget);
 		hub.Register(fileRegistryTarget);
 		hub.Register(proxyTarget);

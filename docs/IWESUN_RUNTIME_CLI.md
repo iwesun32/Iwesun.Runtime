@@ -96,6 +96,8 @@ iwrt breakpoint.disable my-product.worker.pause
 
 CLI 连接和断开不改变断点状态。只有显式 `breakpoint.resume` 才恢复相应等待链。Release 不装配断点注入。
 
+安装包包含独立的 Diagnostics Debug/Release DLL。需要调试断点的宿主必须引用 `lib/Iwesun.Runtime.Diagnostics/Debug` 版本；根目录和 `Release` 子目录版本均按生产策略裁掉断点。
+
 ### 5.4 登记与执行对象
 
 ```powershell

@@ -270,6 +270,8 @@ using Iwesun.Runtime.Diagnostics;
 
 Release 保留输出、日志、反射白名单、事件钩子、管道、状态、文件记录和安全退出。断点和数值断点调用必须由 `#if DEBUG` 隔离。
 
+发布包同时提供 Diagnostics Debug 与 Release 变体：Debug 宿主必须引用 `lib/Iwesun.Runtime.Diagnostics/Debug/Iwesun.Runtime.Diagnostics.dll`；Release 宿主引用 `lib/Iwesun.Runtime.Diagnostics/Release/Iwesun.Runtime.Diagnostics.dll`。根目录同名 DLL 是 Release 兼容副本。Debug 应用加载 Release DLL 时，编译期裁掉的断点功能无法通过配置恢复。
+
 ### 3.3 输出与 Watch
 
 ```csharp
