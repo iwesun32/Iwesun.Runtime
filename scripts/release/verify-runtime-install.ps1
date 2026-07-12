@@ -34,6 +34,8 @@ Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.WebView2\Iwe
 
 # Program Files documentation and integration payload
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_USER_GUIDE.md") -Label "User guide"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_CLI.md") -Label "CLI guide"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_JSON_PIPE_CLI_PLAN.md") -Label "WebView2 pipe plan"
 Assert-PathExists -Path (Join-Path $InstallRoot "samples\templates\RuntimeHost.Startup.Template.cs.txt") -Label "Startup template"
 Assert-PathExists -Path (Join-Path $InstallRoot "samples\source\Program.cs") -Label "SampleHost source"
 Assert-PathExists -Path (Join-Path $InstallRoot "skills\iwesun-runtime-integration\SKILL.md") -Label "Integration skill"

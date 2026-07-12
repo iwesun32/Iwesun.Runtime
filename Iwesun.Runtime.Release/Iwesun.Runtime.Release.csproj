@@ -29,6 +29,8 @@
   <ItemGroup>
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_USER_GUIDE.md" />
     <ReleaseDocs Include="..\docs\RUNTIME_DIAGNOSTICS.md" />
+    <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_CLI.md" />
+    <ReleaseDocs Include="..\docs\WEBVIEW2_JSON_PIPE_CLI_PLAN.md" />
     <ReleaseConfig Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.commands.json" />
     <ReleaseConfig Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.user.example.json" />
     <ReleaseSamples Include="..\Iwesun.Runtime.SampleHost\templates\RuntimeHost.*.Template.cs.txt" />
