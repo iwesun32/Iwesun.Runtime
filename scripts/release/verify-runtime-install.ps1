@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$InstallRoot = "$env:ProgramFiles\Iwesun Runtime",
+    [string]$InstallRoot = "$env:ProgramFiles\Iwesun\Runtime",
     [string]$DataRoot = "$env:ProgramData\Iwesun\Runtime"
 )
 
@@ -32,11 +32,15 @@ Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Diagnostics\
 Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll") -Label "Data library"
 Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.dll") -Label "WebView2 interface library"
 
-# ProgramData payload
+# Program Files documentation and integration payload
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_USER_GUIDE.md") -Label "User guide"
+Assert-PathExists -Path (Join-Path $InstallRoot "samples\templates\RuntimeHost.Startup.Template.cs.txt") -Label "Startup template"
+Assert-PathExists -Path (Join-Path $InstallRoot "samples\source\Program.cs") -Label "SampleHost source"
+Assert-PathExists -Path (Join-Path $InstallRoot "skills\iwesun-runtime-integration\SKILL.md") -Label "Integration skill"
+Assert-PathExists -Path (Join-Path $InstallRoot "scripts\verify-runtime-install.ps1") -Label "Self-check script"
+
+# ProgramData mutable payload
 Assert-PathExists -Path (Join-Path $DataRoot "config\Iwesun.Runtime.Cli.commands.json") -Label "CLI v3 command config"
-Assert-PathExists -Path (Join-Path $DataRoot "docs\IWESUN_RUNTIME_CLI.md") -Label "CLI documentation"
-Assert-PathExists -Path (Join-Path $DataRoot "samples\templates\RuntimeHost.Startup.Template.cs.txt") -Label "Startup template"
-Assert-PathExists -Path (Join-Path $DataRoot "scripts\verify-runtime-install.ps1") -Label "Self-check script"
 
 $cliExe = Join-Path $InstallRoot "bin\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.exe"
 $helpOutput = & $cliExe --help 2>&1

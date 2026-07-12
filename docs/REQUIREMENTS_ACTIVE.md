@@ -3,6 +3,12 @@
 > 状态：ACTIVE  
 > 最后更新：2026-07-12
 
+## 2026-07-12 安装目录修订
+
+- 完整只读套件必须形成在 `C:\Program Files\Iwesun\Runtime`：`bin`、`lib`、`docs`、`samples`、`scripts`、`skills`。
+- `C:\ProgramData\Iwesun\Runtime` 仅保留运行期可修改的 `config`。
+- MSI 版本升级到 1.0.2，必须从 1.0.1 正常迁移并移除旧 ProgramData 文档/样例布局。
+
 ## 当前任务（WebView2 JSON 协议与 CLI 重规划）
 
 1. `Iwesun.Runtime.WebView2` 需借用 Runtime 的命名管道与 JSON 转发能力。

@@ -11,11 +11,11 @@
     <ReleaseDataRoot>$(ReleaseRoot)data\</ReleaseDataRoot>
     <ReleaseBinRoot>$(ReleaseAppRoot)bin\</ReleaseBinRoot>
     <ReleaseLibRoot>$(ReleaseAppRoot)lib\</ReleaseLibRoot>
-    <ReleaseDocsRoot>$(ReleaseDataRoot)docs\</ReleaseDocsRoot>
+    <ReleaseDocsRoot>$(ReleaseAppRoot)docs\</ReleaseDocsRoot>
     <ReleaseConfigRoot>$(ReleaseDataRoot)config\</ReleaseConfigRoot>
-    <ReleaseSamplesRoot>$(ReleaseDataRoot)samples\</ReleaseSamplesRoot>
-    <ReleaseScriptsRoot>$(ReleaseDataRoot)scripts\</ReleaseScriptsRoot>
-    <ReleaseSkillsRoot>$(ReleaseDataRoot)skills\iwesun-runtime-integration\</ReleaseSkillsRoot>
+    <ReleaseSamplesRoot>$(ReleaseAppRoot)samples\</ReleaseSamplesRoot>
+    <ReleaseScriptsRoot>$(ReleaseAppRoot)scripts\</ReleaseScriptsRoot>
+    <ReleaseSkillsRoot>$(ReleaseAppRoot)skills\iwesun-runtime-integration\</ReleaseSkillsRoot>
   </PropertyGroup>
 
   <ItemGroup>
