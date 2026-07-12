@@ -15,6 +15,10 @@
 - 每类业务使用自己的专用命名管道实例，不与 RuntimeDiagnostics/CLI 控制通道混发业务消息。
 - Runtime 统一的是管道治理、代理路由和 `RuntimeDiagnosticFrame` JSON 命令格式，不是把所有流量合并到一个物理管道。
 - 业务宿主持有实际服务端实例并执行具体业务命令；Runtime 保存 `Name / RequestedPipeName / ResolvedPipeName` 租约和路由关系。
+- 完成 CLI v3 手册重写后统一生成 1.0.4 MSI，禁止继续分发包含旧 v2 手册的 1.0.3 构建。
+- Management、WebRuntime 及其客户端只允许使用 4 字节小端长度前缀的 `RuntimeDiagnosticFrame`；不得保留 `ManagementPipeMessage`、私有 `PipeMessage` 或无长度前缀 JSON 的线协议兼容分支。
+- 旧 `Iwesun.Runtime.WebView2.WebRuntimePipeClient` 必须由统一帧客户端完全取代，AIGateway Service、Desktop、Tester 同步一次性迁移。
+- 唯一允许的兼容面位于 CLI v3 用户 JSON 配置：用户可定义别名、自定义命令和结构化组合命令；线协议和公共客户端不提供旧格式兼容。
 
 ## 当前任务（WebView2 JSON 协议与 CLI 重规划）
 
