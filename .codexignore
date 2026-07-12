@@ -1,0 +1,50 @@
+# Build intermediates and generated outputs
+**/obj/
+**/publish/
+**/publish-output/
+**/TestResults/
+artifacts/
+logs/
+.vs/
+bin/
+
+# Dependency and tool caches
+**/.dotnet/
+**/.nuget/
+**/packages/
+**/node_modules/
+**/vendor/
+
+# Machine-local and sensitive files
+.env
+.env.*
+*.user
+*.suo
+*.pfx
+*.p12
+*.key
+*.pem
+*.snk
+
+# Generated packages, traces, dumps, and archives
+*.dll
+*.exe
+*.pdb
+*.wixpdb
+*.msi
+*.msix
+*.nupkg
+*.snupkg
+*.zip
+*.7z
+*.log
+*.jsonl
+*.trace
+*.dmp
+*.tmp
+*.bak
+
+# Historical material is not active context
+docs/archive/
+archive/
+ai-ignore/

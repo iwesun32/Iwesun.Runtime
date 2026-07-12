@@ -7,12 +7,15 @@
     <IsPackable>false</IsPackable>
     <Platforms>AnyCPU;x64</Platforms>
     <ReleaseRoot>$(MSBuildThisFileDirectory)..\artifacts\release\Iwesun.Runtime\</ReleaseRoot>
-    <ReleaseBinRoot>$(ReleaseRoot)bin\</ReleaseBinRoot>
-    <ReleaseLibRoot>$(ReleaseRoot)lib\</ReleaseLibRoot>
-    <ReleaseDocsRoot>$(ReleaseRoot)docs\</ReleaseDocsRoot>
-    <ReleaseConfigRoot>$(ReleaseRoot)config\</ReleaseConfigRoot>
-    <ReleaseSamplesRoot>$(ReleaseRoot)samples\</ReleaseSamplesRoot>
-    <ReleaseScriptsRoot>$(ReleaseRoot)scripts\</ReleaseScriptsRoot>
+    <ReleaseAppRoot>$(ReleaseRoot)app\</ReleaseAppRoot>
+    <ReleaseDataRoot>$(ReleaseRoot)data\</ReleaseDataRoot>
+    <ReleaseBinRoot>$(ReleaseAppRoot)bin\</ReleaseBinRoot>
+    <ReleaseLibRoot>$(ReleaseAppRoot)lib\</ReleaseLibRoot>
+    <ReleaseDocsRoot>$(ReleaseDataRoot)docs\</ReleaseDocsRoot>
+    <ReleaseConfigRoot>$(ReleaseDataRoot)config\</ReleaseConfigRoot>
+    <ReleaseSamplesRoot>$(ReleaseDataRoot)samples\</ReleaseSamplesRoot>
+    <ReleaseScriptsRoot>$(ReleaseDataRoot)scripts\</ReleaseScriptsRoot>
+    <ReleaseSkillsRoot>$(ReleaseDataRoot)skills\iwesun-runtime-integration\</ReleaseSkillsRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,14 +27,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_CLI.md" />
-    <ReleaseDocs Include="..\docs\05-runtime-tooling\RUNTIME_INTEGRATION_GUIDE.md" />
-    <ReleaseDocs Include="..\docs\05-runtime-tooling\INJECTOR_STANDARDIZATION.md" />
-    <ReleaseDocs Include="..\docs\05-runtime-tooling\SAMPLE_HOST.md" />
-    <ReleaseDocs Include="..\docs\05-runtime-tooling\WEB_RUNTIME_CONTROL.md" />
-    <ReleaseDocs Include="..\docs\05-runtime-tooling\RUNTIME_RELEASE_PACKAGING.md" />
-    <ReleaseConfig Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.commands.v2.json" />
-    <ReleaseSamples Include="..\Iwesun.Runtime.SampleHost\templates\**\*.*" />
+    <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_USER_GUIDE.md" />
+    <ReleaseDocs Include="..\docs\RUNTIME_DIAGNOSTICS.md" />
+    <ReleaseConfig Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.commands.json" />
+    <ReleaseConfig Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.user.example.json" />
+    <ReleaseSamples Include="..\Iwesun.Runtime.SampleHost\templates\RuntimeHost.*.Template.cs.txt" />
+    <ReleaseSources Include="..\Iwesun.Runtime.SampleHost\Program.cs" />
+    <ReleaseSources Include="..\Iwesun.Runtime.Diagnostics\RuntimeHostTemplate.cs" />
+    <ReleaseSkills Include="..\skills\iwesun-runtime-integration\**\*.*" />
     <ReleaseScripts Include="..\scripts\release\verify-runtime-install.ps1" />
   </ItemGroup>
 
@@ -47,6 +50,8 @@
     <MakeDir Directories="$(ReleaseConfigRoot)" />
     <MakeDir Directories="$(ReleaseSamplesRoot)templates" />
     <MakeDir Directories="$(ReleaseScriptsRoot)" />
+    <MakeDir Directories="$(ReleaseSkillsRoot)" />
+    <MakeDir Directories="$(ReleaseSamplesRoot)source" />
 
     <MSBuild Projects="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.csproj"
              Targets="Publish"
@@ -76,6 +81,14 @@
     <Copy SourceFiles="@(ReleaseScripts)"
           DestinationFiles="@(ReleaseScripts->'$(ReleaseScriptsRoot)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ReleaseSources)"
+          DestinationFiles="@(ReleaseSources->'$(ReleaseSamplesRoot)source\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ReleaseSkills)"
+          DestinationFiles="@(ReleaseSkills->'$(ReleaseSkillsRoot)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(ReleaseBinRoot)Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.exe"
+          DestinationFiles="$(ReleaseBinRoot)Iwesun.Runtime.Cli\iwrt.exe" />
   </Target>
 
 </Project>

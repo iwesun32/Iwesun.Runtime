@@ -130,3 +130,11 @@ archive/
 archive/**
 docs/archive/
 docs/archive/**
+
+# ========== 10. Agent-local state and installer intermediates
+.codex/
+.agents/
+**/.dotnet/
+**/*.wixpdb
+**/*.msi
+**/*.msix

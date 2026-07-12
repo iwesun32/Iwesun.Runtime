@@ -1,0 +1,34 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Iwesun Runtime" Manufacturer="Iwesun" Version="1.0.1" UpgradeCode="7B2C38BC-6DC7-4C07-8EEF-CABF8A8A0A5F" Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Iwesun Runtime is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="IwesunProgramDirectory" Name="Iwesun">
+        <Directory Id="INSTALLFOLDER" Name="Runtime">
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="IwesunDataDirectory" Name="Iwesun">
+        <Directory Id="DATAROOT" Name="Runtime">
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="RuntimeFeature" Title="Iwesun Runtime" Level="1">
+      <Files Directory="INSTALLFOLDER" Include="$(var.ReleaseAppRoot)\**" />
+      <Files Directory="DATAROOT" Include="$(var.ReleaseDataRoot)\**" />
+      <ComponentGroupRef Id="RuntimePathComponents" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="RuntimePathComponents" Directory="INSTALLFOLDER">
+      <Component Id="RuntimePathComponent" Guid="B26BCA87-919D-4B83-9A60-24BDAD60820B">
+        <Environment Id="RuntimePath" Name="PATH" Value="[INSTALLFOLDER]bin\Iwesun.Runtime.Cli" Permanent="no" Part="last" Action="set" System="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

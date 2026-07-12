@@ -15,18 +15,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Iwesun.Runtime.Cli.commands.v2.json">
+    <Content Include="Iwesun.Runtime.Cli.commands.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Include="Iwesun.Runtime.Cli.user.v2.example.json">
+    <Content Include="Iwesun.Runtime.Cli.user.example.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Include="Iwesun.Runtime.Cli.user.v2.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <EmbeddedResource Include="Iwesun.Runtime.Cli.commands.v2.json" />
+    <EmbeddedResource Include="Iwesun.Runtime.Cli.commands.json" />
   </ItemGroup>
 </Project>

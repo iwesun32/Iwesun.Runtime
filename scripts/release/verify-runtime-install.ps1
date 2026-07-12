@@ -33,7 +33,7 @@ Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\Iwesun.
 Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.dll") -Label "WebView2 interface library"
 
 # ProgramData payload
-Assert-PathExists -Path (Join-Path $DataRoot "config\Iwesun.Runtime.Cli.commands.v2.json") -Label "CLI command config"
+Assert-PathExists -Path (Join-Path $DataRoot "config\Iwesun.Runtime.Cli.commands.json") -Label "CLI v3 command config"
 Assert-PathExists -Path (Join-Path $DataRoot "docs\IWESUN_RUNTIME_CLI.md") -Label "CLI documentation"
 Assert-PathExists -Path (Join-Path $DataRoot "samples\templates\RuntimeHost.Startup.Template.cs.txt") -Label "Startup template"
 Assert-PathExists -Path (Join-Path $DataRoot "scripts\verify-runtime-install.ps1") -Label "Self-check script"

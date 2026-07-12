@@ -19,22 +19,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="templates\**\*.*">
+    <Content Include="templates\RuntimeHost.*.Template.cs.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Include="..\docs\05-runtime-tooling\RUNTIME_INTEGRATION_GUIDE.md">
-      <Link>docs\RUNTIME_INTEGRATION_GUIDE.md</Link>
+    <Content Include="..\docs\IWESUN_RUNTIME_USER_GUIDE.md">
+      <Link>docs\IWESUN_RUNTIME_USER_GUIDE.md</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Include="..\docs\IWESUN_RUNTIME_CLI.md">
-      <Link>docs\IWESUN_RUNTIME_CLI.md</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.commands.v2.json">
-      <Link>cli\Iwesun.Runtime.Cli.commands.v2.json</Link>
+    <Content Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.commands.json">
+      <Link>cli\Iwesun.Runtime.Cli.commands.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
