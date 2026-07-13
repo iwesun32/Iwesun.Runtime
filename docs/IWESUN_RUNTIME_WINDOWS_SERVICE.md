@@ -38,6 +38,12 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddRuntimeDiagnostics();
 
 var runtimeDirectory = Path.Combine(AppContext.BaseDirectory, "runtime");
+var pipeAccess = new RuntimeNamedPipeAccessOptions
+{
+    AllowLocalInteractiveUsers = true,
+    AllowAuthenticatedUsers = false,
+    AllowedWindowsPrincipals = [$@"{Environment.MachineName}\IwesunAiDiag"]
+};
 builder.Services.StartWindowsService(
     serviceOptions: new RuntimeWindowsServiceOptions
     {
@@ -47,7 +53,8 @@ builder.Services.StartWindowsService(
         ShutdownTimeout = TimeSpan.FromSeconds(30)
     },
     runtimeDirectory: runtimeDirectory,
-    startupRuntimeDiagnosticsPipeName: "MyProduct.RuntimeDiagnostics");
+    startupRuntimeDiagnosticsPipeName: "MyProduct.RuntimeDiagnostics",
+    pipeAccessOptions: pipeAccess);
 
 builder.Services.AddHostedService<MyBusinessWorker>();
 
@@ -144,6 +151,9 @@ public static class MyProductServiceRegistration
 | `startupRuntimeDiagnosticsPipeName` | RuntimeDiagnostics 主管道 |
 | `startupRuntimeDiagnosticsFilePath` | 可选诊断记录文件 |
 | `hostScanOptions` | 可选程序集扫描设置 |
+| `pipeAccessOptions` | Program.cs 固定管道账号/组授权；凭据不进入服务端配置 |
+
+远端 AI 账号的完整配置和验收见 [IWESUN_RUNTIME_REMOTE_ACCESS.md](IWESUN_RUNTIME_REMOTE_ACCESS.md)。
 
 ## 4. 业务服务
 

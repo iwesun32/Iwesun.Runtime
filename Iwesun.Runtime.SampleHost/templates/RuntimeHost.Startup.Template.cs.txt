@@ -16,9 +16,18 @@ using Microsoft.Extensions.Hosting;
 
 var builder = Host.CreateApplicationBuilder(args);
 var runtimeDirectory = Path.Combine(AppContext.BaseDirectory, "runtime");
+var runtimePipeAccess = new RuntimeNamedPipeAccessOptions
+{
+	AllowLocalInteractiveUsers = true,
+	AllowAuthenticatedUsers = false,
+	AllowedWindowsPrincipals = []
+};
 
 builder.Logging.AddRuntimeDiagnostics();
-builder.Services.Start(runtimeDirectory, startupRuntimeDiagnosticsPipeName: "YourProduct.RuntimeDiagnostics");
+builder.Services.Start(
+	runtimeDirectory,
+	startupRuntimeDiagnosticsPipeName: "YourProduct.RuntimeDiagnostics",
+	pipeAccessOptions: runtimePipeAccess);
 
 // Business registration area: move registrations from the old Program.cs here.
 builder.Services.AddHostedService<YourHostedWorker>();

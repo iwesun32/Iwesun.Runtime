@@ -533,8 +533,18 @@
 - [x] `multi.query` 提供有界并发只读多 Target 查询，并在连接前拒绝非只读命令。
 - [ ] Atlas 的 NetworkService、Runtime Operators 账户、Service/UI 四管道 ACL 和大 Frame 仍需真实远程环境验收。
 
-## 1.0.20 发布状态
+## 1.0.21 发布状态
 
 - [x] Shell 上下文、远程 Node/Target、稳定错误码、Windows IPC 辅助和多 Target 只读协调完成本地回归。
 - [x] Atlas UI 完成远程 Frame 往返，Atlas Service 的拒绝访问准确分类为 `CLI_REMOTE_ACCESS_DENIED`。
-- [x] 版本统一升级到 1.0.20，进入 Debug/Release、全量 staging、内容验证和 MSI 构建。
+- [x] 版本统一升级到 1.0.21，进入 Debug/Release、全量 staging、内容验证和 MSI 构建。
+
+## 远程 AI 账号与管道 ACL 源码声明
+
+- 远端宿主必须在 `Program.cs` 的 Runtime 启动调用中固定声明允许访问主管道的 Windows 账号或组；该声明随业务程序编译、发布并在管道创建前生效。
+- Runtime 提供统一的管道访问策略参数，普通程序、Windows Service 和配置式 Windows Service 使用同一策略，不允许各宿主自行创建管道 ACL。
+- 严格部署必须能够关闭 `Authenticated Users` 兼容授权，只向 SYSTEM、NetworkService、Administrators 和业务声明的账号/组授权。
+- 已声明的 Windows principal 无法解析时必须使宿主启动失败并给出配置错误，禁止静默跳过后形成不可访问管道。
+- Windows 用户或域账号必须预先存在；Runtime 不创建操作系统账号，也不把密码、令牌或可逆凭据编译进业务程序。
+- 远端 CLI 使用对应 AI 账号凭据建立 Windows IPC 会话；服务端源码只负责身份授权，客户端只负责凭据登录。
+- SampleHost、主程序模板、CLI 手册、Server 手册和集成技能必须提供可照搬的严格授权示例。

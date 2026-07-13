@@ -7,9 +7,16 @@ Use `Iwesun.Runtime.SampleHost/Program.cs` as the canonical executable example.
 ```csharp
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddRuntimeDiagnostics();
+var pipeAccess = new RuntimeNamedPipeAccessOptions
+{
+    AllowLocalInteractiveUsers = true,
+    AllowAuthenticatedUsers = false,
+    AllowedWindowsPrincipals = [$@"{Environment.MachineName}\IwesunAiDiag"]
+};
 builder.Services.Start(
     runtimeDirectory,
-    startupRuntimeDiagnosticsPipeName: "Product.RuntimeDiagnostics");
+    startupRuntimeDiagnosticsPipeName: "Product.RuntimeDiagnostics",
+    pipeAccessOptions: pipeAccess);
 
 // Register business services here.
 
@@ -33,7 +40,8 @@ builder.Services.StartWindowsService(
         ShutdownTimeout = TimeSpan.FromSeconds(30)
     },
     runtimeDirectory: runtimeDirectory,
-    startupRuntimeDiagnosticsPipeName: "Product.RuntimeDiagnostics");
+    startupRuntimeDiagnosticsPipeName: "Product.RuntimeDiagnostics",
+    pipeAccessOptions: pipeAccess);
 ```
 
 Business services remain standard `IHostedService` or `BackgroundService`. Runtime owns SCM Stop/Shutdown, coordinated cleanup, exit codes, and deregistration. Do not call `AddWindowsService()` separately.
@@ -49,6 +57,7 @@ The current model permits one Runtime host per process. Repeating `Start` with i
 - Business area: DI registrations, hosted workers, explicit reflection targets.
 - Declare fixed startup pipe and file settings in source. `--diag-pipe` and `--diag-file` are the only temporary startup overrides.
 - Runtime ignores legacy `diagnostic-switchboard.json` files and never writes them.
+- Declare remote Windows accounts or groups through `RuntimeNamedPipeAccessOptions` in Program.cs. Keep `AllowLocalInteractiveUsers=true` for local CLI, disable `AllowAuthenticatedUsers` for strict remote access, and never put credentials in host source or Runtime JSON.
 
 ## Migration audit
 

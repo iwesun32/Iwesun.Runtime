@@ -213,7 +213,7 @@ get /host
 
 本机连接超时、写入超时、响应超时与本地取消分别返回 `CLI_CONNECT_TIMEOUT`、`CLI_WRITE_TIMEOUT`、`CLI_RESPONSE_TIMEOUT` 和 `CLI_LOCAL_CANCELLED`。远程连接进一步区分 `CLI_REMOTE_ACCESS_DENIED`、`CLI_REMOTE_CREDENTIAL_CONFLICT`、`CLI_REMOTE_NODE_UNREACHABLE`、`CLI_REMOTE_PIPE_NOT_FOUND`、`CLI_REMOTE_CONNECT_TIMEOUT` 和 `CLI_REMOTE_PROTOCOL_ERROR`。错误数据包含 Node、serverName、实际管道、阶段、Windows 错误码和可重试性，不包含凭据。
 
-CLI 复用当前 Windows 登录会话的 SMB/IPC 身份，不保存密码，也不自动注销 IPC 会话。首次认证由管理员使用 Windows Credential Manager 或安全的 `net use \\Server\IPC$ /user:User *` 完成。
+CLI 复用当前 Windows 登录会话的 SMB/IPC 身份，不保存密码，也不自动注销 IPC 会话。首次认证由管理员使用 Windows Credential Manager、安全的 `net use \\Server\IPC$ /user:User *`，或 Shell 的 `node auth` 完成。服务端必须在 Program.cs 通过 `RuntimeNamedPipeAccessOptions` 授权对应 AI 账号；详见 [IWESUN_RUNTIME_REMOTE_ACCESS.md](IWESUN_RUNTIME_REMOTE_ACCESS.md)。
 
 交互式 Shell 也提供 `node auth atlas --user DOMAIN\\User`，密码仅通过不可回显终端读取；输入被重定向时该命令拒绝执行。`node logout atlas --confirm` 会影响当前 Windows 登录会话中访问同一服务器的其他程序，因此必须显式确认。
 

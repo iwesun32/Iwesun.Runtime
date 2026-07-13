@@ -5,14 +5,22 @@ using Microsoft.Extensions.Hosting;
 // Replacement list:
 // __PRODUCT_PREFIX__       Stable product prefix, for example Contoso.Server.
 // __RUNTIME_DIRECTORY__    Writable runtime directory, for example C:\ProgramData\Contoso\Server.
+// Add existing remote AI accounts to AllowedWindowsPrincipals when remote CLI access is required.
 
 [assembly: DiagnosticPipePrefix("__PRODUCT_PREFIX__")]
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddRuntimeDiagnostics();
+var runtimePipeAccess = new RuntimeNamedPipeAccessOptions
+{
+    AllowLocalInteractiveUsers = true,
+    AllowAuthenticatedUsers = false,
+    AllowedWindowsPrincipals = []
+};
 builder.Services.Start(
     runtimeDirectory: @"__RUNTIME_DIRECTORY__",
-    startupRuntimeDiagnosticsPipeName: "__PRODUCT_PREFIX__.RuntimeDiagnostics");
+    startupRuntimeDiagnosticsPipeName: "__PRODUCT_PREFIX__.RuntimeDiagnostics",
+    pipeAccessOptions: runtimePipeAccess);
 
 // Business service registrations are optional. This template builds with this area empty.
 

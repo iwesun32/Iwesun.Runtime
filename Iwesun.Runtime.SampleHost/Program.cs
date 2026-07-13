@@ -80,6 +80,12 @@ using Microsoft.Extensions.Hosting;
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddRuntimeDiagnostics();
 var runtimeDirectory = Path.Combine(AppContext.BaseDirectory, "runtime");
+var runtimePipeAccess = new RuntimeNamedPipeAccessOptions
+{
+	AllowLocalInteractiveUsers = true,
+	AllowAuthenticatedUsers = false,
+	AllowedWindowsPrincipals = []
+};
 var runAsWindowsService = args.Contains("--windows-service", StringComparer.OrdinalIgnoreCase);
 if (runAsWindowsService)
 {
@@ -92,11 +98,15 @@ if (runAsWindowsService)
 			ShutdownTimeout = TimeSpan.FromSeconds(30)
 		},
 		runtimeDirectory: runtimeDirectory,
-		startupRuntimeDiagnosticsPipeName: "Iwesun.SampleHost.RuntimeDiagnostics");
+		startupRuntimeDiagnosticsPipeName: "Iwesun.SampleHost.RuntimeDiagnostics",
+		pipeAccessOptions: runtimePipeAccess);
 }
 else
 {
-	builder.Services.Start(runtimeDirectory, startupRuntimeDiagnosticsPipeName: "Iwesun.SampleHost.RuntimeDiagnostics");
+	builder.Services.Start(
+		runtimeDirectory,
+		startupRuntimeDiagnosticsPipeName: "Iwesun.SampleHost.RuntimeDiagnostics",
+		pipeAccessOptions: runtimePipeAccess);
 }
 builder.Services.AddSingleton(SampleHostProfile.CreateDefault());
 builder.Services.AddSingleton<SampleHostState>();

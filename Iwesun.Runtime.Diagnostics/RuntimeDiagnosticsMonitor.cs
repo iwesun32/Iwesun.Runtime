@@ -13,6 +13,7 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 	private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 	private readonly RuntimeDiagnosticHub _hub;
 	private readonly DiagnosticSwitchboardConfigStore _configStore;
+	private readonly RuntimeNamedPipeAccessPolicy _accessPolicy;
 	private readonly ILogger<RuntimeDiagnosticsMonitor> _logger;
 	private readonly ConcurrentDictionary<int, NamedPipeServerStream> _activePipes = new();
 	private int _nextPipeId;
@@ -22,10 +23,13 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 	public RuntimeDiagnosticsMonitor(
 		RuntimeDiagnosticHub hub,
 		DiagnosticSwitchboardConfigStore configStore,
+		RuntimeNamedPipeAccessOptions accessOptions,
 		ILogger<RuntimeDiagnosticsMonitor> logger)
 	{
 		_hub = hub ?? throw new ArgumentNullException(nameof(hub));
 		_configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
+		_accessPolicy = new RuntimeNamedPipeAccessPolicy(
+			accessOptions ?? throw new ArgumentNullException(nameof(accessOptions)));
 		_logger = logger ?? throw new ArgumentNullException(nameof(logger));
 	}
 
@@ -43,7 +47,7 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 		{
 			while (!stoppingToken.IsCancellationRequested)
 			{
-				var server = RuntimeNamedPipeServerFactory.CreateDiagnosticsServer(_pipeName);
+				var server = RuntimeNamedPipeServerFactory.CreateDiagnosticsServer(_pipeName, _accessPolicy);
 				var pipeId = Interlocked.Increment(ref _nextPipeId);
 				_activePipes[pipeId] = server;
 

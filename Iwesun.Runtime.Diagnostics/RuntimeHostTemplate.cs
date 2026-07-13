@@ -33,14 +33,16 @@ public static class RuntimeHostTemplate
 		string? runtimeDirectory = null,
 		RuntimeHostScanOptions? hostScanOptions = null,
 		string? startupRuntimeDiagnosticsPipeName = null,
-		string? startupRuntimeDiagnosticsFilePath = null)
+		string? startupRuntimeDiagnosticsFilePath = null,
+		RuntimeNamedPipeAccessOptions? pipeAccessOptions = null)
 	{
 		ArgumentNullException.ThrowIfNull(services);
 		services.Start(
 			runtimeDirectory,
 			hostScanOptions,
 			startupRuntimeDiagnosticsPipeName,
-			startupRuntimeDiagnosticsFilePath);
+			startupRuntimeDiagnosticsFilePath,
+			pipeAccessOptions);
 		services.AddWindowsService();
 		services.AddSingleton<IConfigureOptions<WindowsServiceLifetimeOptions>, RuntimeWindowsServiceOptionsSetup>();
 		if (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService())
@@ -55,7 +57,8 @@ public static class RuntimeHostTemplate
 		TimeSpan? shutdownTimeout = null,
 		RuntimeHostScanOptions? hostScanOptions = null,
 		string? startupRuntimeDiagnosticsPipeName = null,
-		string? startupRuntimeDiagnosticsFilePath = null)
+		string? startupRuntimeDiagnosticsFilePath = null,
+		RuntimeNamedPipeAccessOptions? pipeAccessOptions = null)
 	{
 		return services.StartWindowsService(
 			new RuntimeWindowsServiceOptions
@@ -67,7 +70,8 @@ public static class RuntimeHostTemplate
 			runtimeDirectory,
 			hostScanOptions,
 			startupRuntimeDiagnosticsPipeName,
-			startupRuntimeDiagnosticsFilePath);
+			startupRuntimeDiagnosticsFilePath,
+			pipeAccessOptions);
 	}
 
 	public static IServiceCollection StartWindowsService(
@@ -76,7 +80,8 @@ public static class RuntimeHostTemplate
 		string? runtimeDirectory = null,
 		RuntimeHostScanOptions? hostScanOptions = null,
 		string? startupRuntimeDiagnosticsPipeName = null,
-		string? startupRuntimeDiagnosticsFilePath = null)
+		string? startupRuntimeDiagnosticsFilePath = null,
+		RuntimeNamedPipeAccessOptions? pipeAccessOptions = null)
 	{
 		ArgumentNullException.ThrowIfNull(services);
 		ArgumentNullException.ThrowIfNull(serviceOptions);
@@ -91,7 +96,8 @@ public static class RuntimeHostTemplate
 			runtimeDirectory,
 			hostScanOptions,
 			startupRuntimeDiagnosticsPipeName,
-			startupRuntimeDiagnosticsFilePath);
+			startupRuntimeDiagnosticsFilePath,
+			pipeAccessOptions);
 		services.AddWindowsService(options => options.ServiceName = serviceOptions.ServiceName);
 		services.Configure<RuntimeWindowsServiceOptions>(options =>
 		{
@@ -111,14 +117,19 @@ public static class RuntimeHostTemplate
 		string? runtimeDirectory = null,
 		RuntimeHostScanOptions? hostScanOptions = null,
 		string? startupRuntimeDiagnosticsPipeName = null,
-		string? startupRuntimeDiagnosticsFilePath = null)
+		string? startupRuntimeDiagnosticsFilePath = null,
+		RuntimeNamedPipeAccessOptions? pipeAccessOptions = null)
 	{
 		ArgumentNullException.ThrowIfNull(services);
+		var normalizedPipeAccess = (pipeAccessOptions ?? new RuntimeNamedPipeAccessOptions()).Normalize();
 		var registration = new RuntimeHostStartRegistration(
 			NormalizeRuntimeDirectory(runtimeDirectory),
 			hostScanOptions,
 			startupRuntimeDiagnosticsPipeName ?? string.Empty,
-			startupRuntimeDiagnosticsFilePath ?? string.Empty);
+			startupRuntimeDiagnosticsFilePath ?? string.Empty,
+			normalizedPipeAccess.AllowLocalInteractiveUsers,
+			normalizedPipeAccess.AllowAuthenticatedUsers,
+			string.Join('\u001f', normalizedPipeAccess.AllowedWindowsPrincipals));
 		lock (StartSync)
 		{
 			if (StartRegistrations.TryGetValue(services, out var existing))
@@ -134,7 +145,8 @@ public static class RuntimeHostTemplate
 			runtimeDirectory,
 			hostScanOptions,
 			startupRuntimeDiagnosticsPipeName,
-			startupRuntimeDiagnosticsFilePath);
+			startupRuntimeDiagnosticsFilePath,
+			normalizedPipeAccess);
 		return services;
 	}
 
@@ -189,7 +201,10 @@ public static class RuntimeHostTemplate
 		string RuntimeDirectory,
 		RuntimeHostScanOptions? HostScanOptions,
 		string PipeName,
-		string FilePath);
+		string FilePath,
+		bool AllowLocalInteractiveUsers,
+		bool AllowAuthenticatedUsers,
+		string AllowedWindowsPrincipals);
 
 }
 

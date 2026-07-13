@@ -7,9 +7,12 @@ namespace Iwesun.Runtime.Diagnostics;
 
 internal static class RuntimeNamedPipeServerFactory
 {
-	public static NamedPipeServerStream CreateDiagnosticsServer(string pipeName)
+	public static NamedPipeServerStream CreateDiagnosticsServer(
+		string pipeName,
+		RuntimeNamedPipeAccessPolicy accessPolicy)
 	{
 		ArgumentException.ThrowIfNullOrWhiteSpace(pipeName);
+		ArgumentNullException.ThrowIfNull(accessPolicy);
 
 		if (!OperatingSystem.IsWindows())
 		{
@@ -26,11 +29,22 @@ internal static class RuntimeNamedPipeServerFactory
 		AddRule(security, WellKnownSidType.LocalSystemSid, PipeAccessRights.FullControl);
 		AddRule(security, WellKnownSidType.NetworkServiceSid, PipeAccessRights.FullControl);
 		AddRule(security, WellKnownSidType.BuiltinAdministratorsSid, PipeAccessRights.FullControl);
-		AddRuntimeOperatorsRule(security);
-		AddRule(
-			security,
-			WellKnownSidType.AuthenticatedUserSid,
-			PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance);
+		if (accessPolicy.AllowLocalInteractiveUsers)
+		{
+			AddRule(
+				security,
+				WellKnownSidType.InteractiveSid,
+				PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance);
+		}
+		foreach (var principal in accessPolicy.AllowedWindowsPrincipals)
+			AddRule(security, principal, PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance);
+		if (accessPolicy.AllowAuthenticatedUsers)
+		{
+			AddRule(
+				security,
+				WellKnownSidType.AuthenticatedUserSid,
+				PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance);
+		}
 
 		return NamedPipeServerStreamAcl.Create(
 			pipeName,
@@ -44,29 +58,17 @@ internal static class RuntimeNamedPipeServerFactory
 	}
 
 	[SupportedOSPlatform("windows")]
-	private static void AddRuntimeOperatorsRule(PipeSecurity security)
-	{
-		try
-		{
-			var account = new NTAccount(Environment.MachineName, "Iwesun Runtime Operators");
-			var sid = (SecurityIdentifier)account.Translate(typeof(SecurityIdentifier));
-			security.AddAccessRule(new PipeAccessRule(
-				sid,
-				PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance,
-				AccessControlType.Allow));
-		}
-		catch (IdentityNotMappedException)
-		{
-			// Installation of the optional operators group is an administrator deployment task.
-		}
-	}
-
-	[SupportedOSPlatform("windows")]
 	private static void AddRule(PipeSecurity security, WellKnownSidType sidType, PipeAccessRights rights)
 	{
 		security.AddAccessRule(new PipeAccessRule(
 			new SecurityIdentifier(sidType, domainSid: null),
 			rights,
 			AccessControlType.Allow));
+	}
+
+	[SupportedOSPlatform("windows")]
+	private static void AddRule(PipeSecurity security, SecurityIdentifier principal, PipeAccessRights rights)
+	{
+		security.AddAccessRule(new PipeAccessRule(principal, rights, AccessControlType.Allow));
 	}
 }

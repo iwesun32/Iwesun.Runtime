@@ -36,6 +36,8 @@ The Shell expands `$name` and `${name}` before local-command, path, and target d
 
 CLI reuses the current Windows SMB/IPC identity. Never place passwords in arguments, JSON, environment variables, history, Frames, or logs. Prepare credentials through Windows Credential Manager or an interactive `net use \\Server\IPC$ /user:User *`. Remote errors distinguish access denied, credential conflict, unreachable node, missing pipe, timeout, and protocol failure.
 
+The remote host must declare the matching AI account or group in Program.cs through `RuntimeNamedPipeAccessOptions`. Strict hosts keep local interactive access enabled, set `AllowAuthenticatedUsers=false`, and list only approved remote principals. Runtime applies ACLs but never creates the operating-system account or stores its credential.
+
 Interactive operators may use `node auth <alias> --user <identity>`; redirected input is rejected and the command is excluded from history. `node logout <alias> --confirm` is explicit because it affects the whole Windows logon session. Use `multi.query <read-only-command> <target,target...> [concurrency]` for bounded read-only fan-out; never use it for shutdown, invoke, or state changes.
 
 CLI v3 is current. The standard catalog remains canonical and contains no product-specific aliases. Load process-local user extensions explicitly:

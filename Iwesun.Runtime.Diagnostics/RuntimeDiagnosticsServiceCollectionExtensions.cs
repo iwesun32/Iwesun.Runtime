@@ -12,9 +12,12 @@ public static class RuntimeDiagnosticsServiceCollectionExtensions
 		string? runtimeDirectory = null,
 		RuntimeHostScanOptions? hostScanOptions = null,
 		string? startupRuntimeDiagnosticsPipeName = null,
-		string? startupRuntimeDiagnosticsFilePath = null)
+		string? startupRuntimeDiagnosticsFilePath = null,
+		RuntimeNamedPipeAccessOptions? pipeAccessOptions = null)
 	{
 		startupRuntimeDiagnosticsPipeName ??= Environment.GetEnvironmentVariable("IWESUN_RUNTIME_DIAGNOSTICS_PIPE");
+		var normalizedPipeAccess = (pipeAccessOptions ?? new RuntimeNamedPipeAccessOptions()).Normalize();
+		services.AddSingleton(normalizedPipeAccess);
 		services.AddSingleton(new RuntimeDiagnosticHub(hostScanOptions));
 		services.AddSingleton(new DiagnosticSwitchboardConfigStore(
 			runtimeDirectory,

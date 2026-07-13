@@ -7,4 +7,9 @@ public sealed class RuntimeHostConfigurationException : InvalidOperationExceptio
         : base(message)
     {
     }
+
+    public RuntimeHostConfigurationException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }
