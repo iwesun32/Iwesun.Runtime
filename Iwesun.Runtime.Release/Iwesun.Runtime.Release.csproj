@@ -31,6 +31,7 @@
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_USER_GUIDE.md" />
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_QUICK_START.md" />
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_WINDOWS_SERVICE.md" />
+    <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_REMOTE_ACCESS.md" />
     <ReleaseDocs Include="..\docs\RUNTIME_DIAGNOSTICS.md" />
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_CLI.md" />
     <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\WEBVIEW2_JSON_PIPE_CLI_PLAN.md" />

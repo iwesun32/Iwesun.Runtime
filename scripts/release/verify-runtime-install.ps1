@@ -64,6 +64,7 @@ Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_USER_GUIDE.
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_QUICK_START.md") -Label "Quick start guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_CLI.md") -Label "CLI guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_WINDOWS_SERVICE.md") -Label "Windows Service guide"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_REMOTE_ACCESS.md") -Label "Remote access guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_JSON_PIPE_CLI_PLAN.md") -Label "WebView2 pipe plan"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEB_RUNTIME_CONTROL.md") -Label "WebView2 control guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_RUNTIME_CAPABILITIES.md") -Label "WebView2 capability status"
