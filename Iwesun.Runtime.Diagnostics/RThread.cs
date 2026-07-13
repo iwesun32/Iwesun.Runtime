@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.Versioning;
 using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
@@ -7,7 +8,6 @@ namespace Iwesun.Runtime.Diagnostics;
 public sealed class RThread : IDisposable
 {
 	private const int NormalExitCode = 0;
-	private const int TimeoutExitCode = 124;
 	private readonly Thread _inner;
 	private readonly RuntimeManagedUnitBase _unit;
 	private readonly RuntimeExecutionManager? _execution;
@@ -17,8 +17,8 @@ public sealed class RThread : IDisposable
 	private readonly string _owner;
 	private readonly string _sourceLocation;
 	private readonly DelegateRuntimeManagedCommandHandler _commandHandler;
+	private readonly RuntimeManagedCleanup _cleanup;
 	private readonly IDisposable? _commandRegistration;
-	private readonly int _stopTimeoutMilliseconds;
 	private readonly CancellationTokenSource _guardianCts = new();
 	private Task? _guardianLoop;
 	private int _registered;
@@ -47,10 +47,11 @@ public sealed class RThread : IDisposable
 		_kind = kind;
 		_owner = owner;
 		_sourceLocation = sourceLocation;
-		_stopTimeoutMilliseconds = Math.Max(100, stopTimeoutMilliseconds);
+		_ = stopTimeoutMilliseconds; // Retained for source compatibility; shutdown uses only the controller deadline.
 		_execution = _unit.Execution;
 		_managed = _unit.Managed;
 		State = _unit.State;
+		_cleanup = new RuntimeManagedCleanup(this, State);
 		_inner = new Thread(() => Execute(start));
 		_commandHandler = new DelegateRuntimeManagedCommandHandler(UnitId, _managed)
 		{
@@ -83,10 +84,11 @@ public sealed class RThread : IDisposable
 		_kind = kind;
 		_owner = owner;
 		_sourceLocation = sourceLocation;
-		_stopTimeoutMilliseconds = Math.Max(100, stopTimeoutMilliseconds);
+		_ = stopTimeoutMilliseconds; // Retained for source compatibility; shutdown uses only the controller deadline.
 		_execution = _unit.Execution;
 		_managed = _unit.Managed;
 		State = _unit.State;
+		_cleanup = new RuntimeManagedCleanup(this, State);
 		_inner = new Thread(parameter => Execute(start, parameter));
 		_commandHandler = new DelegateRuntimeManagedCommandHandler(UnitId, _managed)
 		{
@@ -107,6 +109,12 @@ public sealed class RThread : IDisposable
 	public event EventHandler<RThreadExitRequestedEventArgs>? ExitRequested;
 	public event EventHandler<RThreadExitResultEventArgs>? ExitCompleted;
 	public event EventHandler<RThreadExitRequestedEventArgs>? ExitHandlingRequested;
+	public event RuntimeManagedCleanupHandler CleanupRequested
+	{
+		add => _cleanup.Requested += value;
+		remove => _cleanup.Requested -= value;
+	}
+	public bool IsCleanupCompleted => _cleanup.IsCompleted;
 
 	public string? Name
 	{
@@ -129,6 +137,8 @@ public sealed class RThread : IDisposable
 	public bool IsAlive => _inner.IsAlive;
 	public ThreadState ThreadState => _inner.ThreadState;
 	public int ManagedThreadId => _inner.ManagedThreadId;
+	[SupportedOSPlatform("windows")]
+	public void SetApartmentState(ApartmentState state) => _inner.SetApartmentState(state);
 
 	public void SetDetail(string key, string value) => _unit.SetDetail(key, value);
 	public bool TryGetDetail(string key, out string? value) => _unit.TryGetDetail(key, out value);
@@ -162,9 +172,9 @@ public sealed class RThread : IDisposable
 		_unit = new RuntimeManagedUnitBase($"thread.current.{thread.ManagedThreadId}", RuntimeInstructionEntityKind.Thread);
 		UnitId = _unit.UnitId;
 		State = _unit.State;
+		_cleanup = new RuntimeManagedCleanup(this, State);
 		_execution = _unit.Execution;
 		_managed = _unit.Managed;
-		_stopTimeoutMilliseconds = 5000;
 		_lifetime = RuntimeExecutionLifetime.Dynamic;
 		_kind = RuntimeThreadKind.Custom;
 		_owner = "";
@@ -241,44 +251,42 @@ public sealed class RThread : IDisposable
 	private void HandleStopCommand(RuntimeManagedCommand command)
 	{
 		State.SetDetail("stopCommandSeq", command.Sequence.ToString());
-		var args = new RThreadExitRequestedEventArgs(command.Sequence, command.Payload);
-		ExitRequested?.Invoke(this, args);
-		ExitHandlingRequested?.Invoke(this, args);
+		_cleanup.Begin(command);
+		_ = WakeForManagedExitAsync();
+		_ = PublishLegacyExitNotificationsAsync(command);
 		_managed?.PublishEvent(UnitId, "thread-exit-requested", "Stop command received by guardian loop.", new { command.Sequence, command.Payload });
+	}
 
+	private Task PublishLegacyExitNotificationsAsync(RuntimeManagedCommand command) => Task.Run(() =>
+	{
+		var args = new RThreadExitRequestedEventArgs(command.Sequence, command.Payload);
+		InvokeLegacyHandlers(ExitRequested, args);
+		InvokeLegacyHandlers(ExitHandlingRequested, args);
+	});
+
+	private void InvokeLegacyHandlers(EventHandler<RThreadExitRequestedEventArgs>? handlers, RThreadExitRequestedEventArgs args)
+	{
+		if (handlers == null)
+			return;
+		foreach (EventHandler<RThreadExitRequestedEventArgs> handler in handlers.GetInvocationList())
+		{
+			try { handler(this, args); }
+			catch (Exception ex) { _managed?.PublishEvent(UnitId, "thread-legacy-exit-handler-faulted", ex.Message, null); }
+		}
+	}
+
+	private async Task WakeForManagedExitAsync()
+	{
+		await _cleanup.WaitForExitSignalAsync().ConfigureAwait(false);
+		Interlocked.Exchange(ref _exitCode, _cleanup.ExitCode);
+		if (!_inner.IsAlive)
+			return;
 		try
 		{
-			if (_inner.IsAlive)
-			{
-				try
-				{
-					_inner.Interrupt();
-				}
-				catch
-				{
-					// Best effort only.
-				}
-
-				if (!_inner.Join(_stopTimeoutMilliseconds))
-				{
-					Interlocked.Exchange(ref _exitCode, TimeoutExitCode);
-					State.SetDetail("timeout", _stopTimeoutMilliseconds.ToString());
-					State.SetDetail("error", "timeout");
-					_execution?.SetThreadState(UnitId, RuntimeThreadState.ForcedExit, managedThreadId: _inner.ManagedThreadId, payload: State.Snapshot());
-					_managed?.PublishEvent(UnitId, "thread-stop-timeout", $"Thread stop timed out after {_stopTimeoutMilliseconds}ms.", State.Snapshot());
-					RaiseExitCompletedOnce(new RThreadExitResultEventArgs(TimeoutExitCode, true, "Thread stop timeout."));
-					throw new TimeoutException($"Thread stop timed out after {_stopTimeoutMilliseconds}ms.");
-				}
-			}
-
-			Interlocked.Exchange(ref _exitCode, NormalExitCode);
-			_managed?.PublishEvent(UnitId, "thread-stop-completed", "Thread stop completed.", State.Snapshot());
-			RaiseExitCompletedOnce(new RThreadExitResultEventArgs(NormalExitCode, false, "Thread stopped."));
+			_inner.Interrupt();
+			_managed?.PublishEvent(UnitId, "thread-stop-wakeup", "Cleanup completed or reached the controller deadline; the managed wait was interrupted.", State.Snapshot());
 		}
-		catch (TimeoutException ex)
-		{
-			_managed?.PublishEvent(UnitId, "thread-stop-timeout-exception", ex.Message, State.Snapshot());
-		}
+		catch { }
 	}
 
 	private void Execute(ThreadStart start)
@@ -310,6 +318,7 @@ public sealed class RThread : IDisposable
 		}
 		finally
 		{
+			RestoreCleanupTerminalState();
 			ConsumePendingInterrupt();
 			if (Interlocked.Exchange(ref _exitCode, ExitCode) == ExitCode)
 			{
@@ -318,9 +327,7 @@ public sealed class RThread : IDisposable
 
 			if (Volatile.Read(ref _exitCompletedRaised) == 0)
 			{
-				var timedOut = Volatile.Read(ref _exitCode) == TimeoutExitCode;
-				var message = timedOut ? "Thread stop timeout." : "Thread stopped.";
-				RaiseExitCompletedOnce(new RThreadExitResultEventArgs(Volatile.Read(ref _exitCode), timedOut, message));
+				RaiseExitCompletedOnce(new RThreadExitResultEventArgs(Volatile.Read(ref _exitCode), false, "Thread stopped."));
 			}
 
 			CompleteLifetime();
@@ -356,12 +363,11 @@ public sealed class RThread : IDisposable
 		}
 		finally
 		{
+			RestoreCleanupTerminalState();
 			ConsumePendingInterrupt();
 			if (Volatile.Read(ref _exitCompletedRaised) == 0)
 			{
-				var timedOut = Volatile.Read(ref _exitCode) == TimeoutExitCode;
-				var message = timedOut ? "Thread stop timeout." : "Thread stopped.";
-				RaiseExitCompletedOnce(new RThreadExitResultEventArgs(Volatile.Read(ref _exitCode), timedOut, message));
+				RaiseExitCompletedOnce(new RThreadExitResultEventArgs(Volatile.Read(ref _exitCode), false, "Thread stopped."));
 			}
 
 			CompleteLifetime();
@@ -378,6 +384,13 @@ public sealed class RThread : IDisposable
 		ExitCompleted?.Invoke(this, args);
 	}
 
+	private void RestoreCleanupTerminalState()
+	{
+		if (!_cleanup.HasStarted)
+			return;
+		State.TransitionTo(Volatile.Read(ref _exitCode) == RuntimeShutdownExitCodes.Timeout ? "Timeout" : "Completed");
+	}
+
 	private static void ConsumePendingInterrupt()
 	{
 		try { Thread.Sleep(0); }
@@ -392,6 +405,7 @@ public sealed class RThread : IDisposable
 		_commandRegistration?.Dispose();
 		_managed?.Unregister(UnitId);
 		_guardianCts.Dispose();
+		_cleanup.Dispose();
 	}
 
 	public void Dispose()

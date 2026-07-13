@@ -464,14 +464,14 @@ CLI 负责帧的组装与发送；业务侧不直接操作管道。
 
 ## 七、CLI 命令格式规范
 
-> **v2 已废弃，v3 迁移中**：本章下方的 `commands.v2`、`sw.*`、`bp.*`、`reg.*` 只是历史参考，不再是新 CLI 规范。已批准的 v3 设计见 [2026-07-12-cli-v3-redesign.md](superpowers/specs/2026-07-12-cli-v3-redesign.md)。
+> **v2 已废弃，v3 已生效**：当前路由权威文件为 `RuntimeCliSystemConfig.json`，命令帮助元数据位于 `RuntimeCliSystemMetadata.json`；旧 `sw.*`、`bp.*`、`reg.*` 不再是有效命令。
 
 ### 7.1 设计定位
 
 CLI（`iwrt`）是一个**通用命令解释器**：
 
 - 内置指令格式由框架发布（基础 canonical 指令）
-- 用户通过 `Iwesun.Runtime.Cli.commands.v2.json` 配置扩展：别名、复合指令、自定义样式
+- 用户通过 `--user-config=PATH` 加载 v3 增量配置，扩展别名、命令和 `composites`
 - CLI 不含业务逻辑，职责是"发令"，不是"解释业务"
 
 ```
@@ -515,25 +515,24 @@ iwrt status                 # 连接状态（别名，JSON 配置定义）
 iwrt monitor                # 实时监控流（别名）
 
 # 开关板
-iwrt sw.status              # 开关板快照
-iwrt sw.global -enabled true
-iwrt sw.section -name worker -enabled true
-iwrt sw.fileout -path logs/diag.log -mode CreateNew -format PlainText
-iwrt sw.fifo -depth 2048
+iwrt switchboard.get
+iwrt switchboard.enable
+iwrt switchboard.enable worker
+iwrt switchboard.point.list
 
 # 注册表
-iwrt reg.list               # 全部注册项
-iwrt reg.points -section worker
-iwrt reg.breakpoints
-iwrt reg.hooks
+iwrt registry.list
+iwrt switchboard.point.list "" worker
+iwrt breakpoint.list
+iwrt hook.list
 
 # 断点
-iwrt bp.list
-iwrt bp.on  -id myapp.worker.pause
-iwrt bp.off -id myapp.worker.pause
-iwrt bp.resume -id myapp.worker.pause
-iwrt bp.listNumeric
-iwrt bp.setNumericThreshold -id numeric.default.threshold gt 7
+iwrt breakpoint.list
+iwrt breakpoint.enable myapp.worker.pause
+iwrt breakpoint.disable myapp.worker.pause
+iwrt breakpoint.resume myapp.worker.pause
+iwrt breakpoint.list-numeric
+iwrt breakpoint.set-numeric-threshold numeric.default.threshold gt 7
 
 # 执行管理
 iwrt thread.list
@@ -567,14 +566,14 @@ iwrt web.status
 iwrt web.invoke -module web.runtime -command reload
 ```
 
-> 以上为 canonical 形式；用户可在 `commands.v2.json` 中添加 Verb-Noun 别名（如 `Get-Status → host.info`）。
+> 以上为 canonical 形式；用户可在 v3 用户增量配置的 `extensions.extend` 中追加别名。
 
-### 7.4 JSON 配置扩展（commands.v2.json）
+### 7.4 JSON 配置扩展（CLI v3）
 
 配置文件路径优先级：
 1. `--config=<path>`
-2. `<config-dir>/Iwesun.Runtime.Cli.commands.v2.json`
-3. `<exe-dir>/Iwesun.Runtime.Cli.commands.v2.json`
+2. `<config-dir>/RuntimeCliSystemConfig.json`
+3. `<exe-dir>/RuntimeCliSystemConfig.json`
 4. 当前目录
 5. 内嵌默认配置
 

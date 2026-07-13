@@ -2,7 +2,7 @@
 
 ## 1. 定位
 
-`iwrt` 是 Runtime 诊断与业务代理的命令客户端。CLI 文本不是协议；`Iwesun.Runtime.Cli.commands.json` 才是命令路由的权威配置，CLI 将命令编译为 `RuntimeDiagnosticFrame`，通过 4 字节 little-endian 长度前缀的 UTF-8 JSON 发送。
+`iwrt` 是 Runtime 诊断与业务代理的命令客户端。CLI 文本不是协议；`RuntimeCliSystemConfig.json` 才是命令路由的权威配置，CLI 将命令编译为 `RuntimeDiagnosticFrame`，通过 4 字节 little-endian 长度前缀的 UTF-8 JSON 发送。
 
 当前配置 schema 固定为：
 
@@ -27,7 +27,7 @@ iwesun.runtime.cli/3.0
 
 ```text
 C:\Program Files\Iwesun\Runtime\bin\Iwesun.Runtime.Cli\iwrt.exe
-C:\ProgramData\Iwesun\Runtime\config\Iwesun.Runtime.Cli.commands.json
+C:\ProgramData\Iwesun\Runtime\config\RuntimeCliSystemConfig.json
 ```
 
 安装器将 CLI 目录加入系统 `PATH`。已打开的终端不会自动刷新环境变量，需要重新打开终端。
@@ -83,6 +83,16 @@ iwrt switchboard.disable worker
 iwrt switchboard.disable
 ```
 
+单独查询或控制输出点：
+
+```powershell
+iwrt switchboard.point.list
+iwrt switchboard.point.enable sample.host.random
+iwrt switchboard.point.disable sample.host.random
+```
+
+记录发布需要全局、section、output point 和输出通道同时启用。不存在的输出点会返回 `OUTPUT_POINT_NOT_FOUND`，不会静默成功。
+
 诊断默认保持静默。完成观察后应恢复所启用的 section，并关闭全局开关。
 
 ### 5.3 断点
@@ -126,17 +136,24 @@ iwrt file.list
 iwrt reflection.list
 iwrt reflection.get runtime.execution
 iwrt reflection.get runtime.execution Processes
+iwrt reflection.invoke my-host.control GetSnapshot
 ```
 
-反射目标必须由宿主显式加入白名单，不允许通过 CLI 扩大可访问成员范围。
+`reflection.get` 只读取白名单属性/字段，不调用方法。Debug 宿主中的 `reflection.invoke <target> <member>` 只调用宿主在 `InvokableMembers` 中显式登记的无参数方法；未登记方法、带参数方法和未知目标均拒绝执行。Release Diagnostics 不编译 invoke 路由和执行代码，命令会返回不支持。CLI 不会扩大反射访问范围。
 
 ### 5.7 WebRuntime 代理
 
 ```powershell
-iwrt web.snapshot backend-id
+iwrt web.programs.capabilities
+iwrt web.programs.status
+iwrt web.snapshot openai-web
+iwrt web.navigate openai-web https://chatgpt.com/
+iwrt web.mouse.click openai-web 640 480
+iwrt web.keyboard.press openai-web Enter
+iwrt web.keyboard.type openai-web "hello"
 ```
 
-CLI 不直接连接 WebRuntime 管道。请求先进入 RuntimeDiagnostics，再由 Proxy 根据 Runtime 管道租约转发到 WebRuntime 专用管道。
+CLI 不直接连接 WebRuntime 管道。请求先进入 RuntimeDiagnostics，再由 `diagnostics.proxy` 根据 `RuntimePipeRegistry` 中的 `WebRuntime` 租约解析真实 `ResolvedPipeName`，转发标准 `RuntimeDiagnosticFrame`。代理参数固定采用 `module=WebRuntime / pipe=WebRuntime / targetId=<backend> / domain=web.runtime / proxyAction=<action>`；业务参数和 ProgramId 继续作为 typed Args 转发。
 
 ## 6. 配置结构
 
@@ -148,7 +165,7 @@ CLI 不直接连接 WebRuntime 管道。请求先进入 RuntimeDiagnostics，再
   "application": {},
   "endpoints": {},
   "commands": [],
-  "workflows": [],
+  "composites": [],
   "extensions": {}
 }
 ```
@@ -165,7 +182,44 @@ CLI 不直接连接 WebRuntime 管道。请求先进入 RuntimeDiagnostics，再
 
 CLI 不根据命令名或 action 猜测协议字段。旧 schema 会返回 `CLI_CONFIG_SCHEMA_UNSUPPORTED` 或 `CLI_CONFIG_INVALID`，不会自动迁移。
 
-当前发布版使用内置 v3 catalog。用户扩展示例属于后续完整扩展加载能力的配置模板；在 `--user-config`、结构化 workflow 和 `add/extend/replace/disable` 合并链完成前，不应将示例文件当作已自动加载的运行配置。
+当前发布版默认使用标准 v3 catalog，不预置用户别名或组合指令。使用 `--user-config=PATH` 可在标准 catalog 之上加载用户增量配置：`add` 新增命令、`extend` 为现有命令追加别名、`replace` 替换完整命令定义、`disable` 禁用命令。合并顺序固定为 `disable -> replace -> add -> extend`，冲突或未知目标会返回配置错误。
+
+命令级帮助使用 `iwrt <command> --help`，显示 endpoint、参数、风险、Debug/Release 能力和示例。路由由纯 `iwesun.runtime.cli/3.0` 的 `RuntimeCliSystemConfig.json` 提供；帮助元数据位于 `RuntimeCliSystemMetadata.json`。Composite 默认仍只输出一个完整 JSON Frame。
+
+```powershell
+iwrt --user-config="C:\ProgramData\Iwesun\Runtime\config\Iwesun.Runtime.Cli.user.json" diagnostics.status
+```
+
+`RuntimeCliUserConfig.example.json` 是可复制模板。复制为当前目录的 `RuntimeCliUserConfig.json` 后会自动加载；显式 `--user-config=PATH` 优先并取代缺省文件。组合能力统一使用 `composites`。
+
+## 上下文 Shell
+
+使用 `iwrt shell` 或 `iwrt --interactive` 进入上下文模式。支持 `pwd/cd/ls/get/root` 统一 Runtime 虚拟路径，以及 `set/unset/vars/history/clear`。变量使用 `$name` 或 `${name}`。`exit`、`quit` 和 EOF 只退出 CLI Shell，不向宿主发送任何命令；停止宿主必须显式执行 `lifecycle.shutdown`。
+
+多宿主调试使用 `target add/list/use/current/remove` 管理当前 Shell 的目标，或用 `@name command` 临时选择一次目标。CLI 不会猜测相似管道。`RuntimeCliUserConfig.json` 可在 `targets` 中预置目标。
+
+连接超时、写入超时、响应超时与本地取消分别返回 `CLI_CONNECT_TIMEOUT`、`CLI_WRITE_TIMEOUT`、`CLI_RESPONSE_TIMEOUT` 和 `CLI_LOCAL_CANCELLED`；只有本地取消使用退出码 130。错误数据包含实际管道、阶段、期限和可重试性。
+
+`runtime.inspect` 使用轻量 `host.summary`，不默认展开程序集类型。`process.list/thread.list/task.list/pipe.list/file.list/reflection.list` 等目录命令使用默认 100、最大 500 的分页结果。
+
+### 6.1 复合命令
+
+`composites` 已实现：它将多条已有命令打包为一个协议 batch，一次发送并统一返回。每一步必须引用 catalog 中的现有命令；它不是 workflow，不支持条件、循环、结果绑定或脚本文本。
+
+```json
+{
+  "name": "diagnostics.quick-check",
+  "aliases": ["diag.quick"],
+  "stopOnError": false,
+  "steps": [
+    { "command": "host.info" },
+    { "command": "switchboard.get" },
+    { "command": "host.events", "arguments": ["20"] }
+  ]
+}
+```
+
+同一复合命令中的步骤必须引用相同 endpoint。执行时直接使用 `iwrt diagnostics.quick-check`。
 
 ## 7. 返回与退出码
 

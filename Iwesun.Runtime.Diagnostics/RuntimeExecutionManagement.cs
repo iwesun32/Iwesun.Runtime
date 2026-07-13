@@ -40,6 +40,7 @@ public enum RuntimeTaskState
 
 public sealed record RuntimeThreadRecord
 {
+	public string Origin { get; init; } = "Managed";
 	public string Id { get; init; } = "";
 	public string Name { get; init; } = "";
 	public RuntimeExecutionLifetime Lifetime { get; init; }
@@ -59,6 +60,7 @@ public sealed record RuntimeThreadRecord
 
 public sealed record RuntimeTaskRecord
 {
+	public string Origin { get; init; } = "Managed";
 	public string Id { get; init; } = "";
 	public string Name { get; init; } = "";
 	public RuntimeExecutionLifetime Lifetime { get; init; }
@@ -98,13 +100,15 @@ public sealed class RuntimeExecutionManager
 		int managedThreadId = 0,
 		int? nativeThreadId = null,
 		IReadOnlyList<string>? tags = null,
-		object? payload = null)
+		object? payload = null,
+		string origin = "Managed")
 	{
 		var now = DateTimeOffset.UtcNow;
 		lock (_gate)
 		{
 			var current = new RuntimeThreadRecord
 			{
+				Origin = origin,
 				Id = id,
 				Name = name,
 				Lifetime = lifetime,
@@ -174,13 +178,15 @@ public sealed class RuntimeExecutionManager
 		string parentTaskId = "",
 		string step = "",
 		IReadOnlyList<string>? tags = null,
-		object? payload = null)
+		object? payload = null,
+		string origin = "Managed")
 	{
 		var now = DateTimeOffset.UtcNow;
 		lock (_gate)
 		{
 			var current = new RuntimeTaskRecord
 			{
+				Origin = origin,
 				Id = id,
 				Name = name,
 				Lifetime = lifetime,

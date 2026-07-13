@@ -2,7 +2,7 @@
 
 本文整理 AIGateway 对 WebView2 的正式运行时能力边界。目标不是暴露 WebView2 的全部底层 COM API，而是把 Web 后端调试、自动化、登录、人机协助、协议探索所需的能力统一到一个可调用、可返回、可组合的控制面。
 
-本文是能力规划和命名规范，不重复列出完整命令协议。实际接口参考见 [WEB_RUNTIME_CONTROL.md](WEB_RUNTIME_CONTROL.md)，AI 操作流程见 [WEBVIEW2-AI-CONTROL-SKILL.md](../archive/WEBVIEW2-AI-CONTROL-SKILL.md)。
+本文是能力规划和命名规范，不重复列出完整命令协议。实际接口参考见 [WEB_RUNTIME_CONTROL.md](WEB_RUNTIME_CONTROL.md)。业务调试必须通过当前 Runtime CLI 与管道租约链路操作真实宿主会话，不再采用旧 Tester 直连说明。
 
 ## 1. 总原则
 

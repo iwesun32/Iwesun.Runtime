@@ -1,0 +1,13 @@
+{
+  "schema": "iwesun.runtime.cli/3.0",
+  "application": { "name": "default fixture", "description": "default fixture" },
+  "endpoints": {},
+  "commands": [],
+  "composites": [],
+  "extensions": {
+    "add": [],
+    "extend": [ { "name": "host.info", "aliases": ["default.host"] } ],
+    "replace": [],
+    "disable": []
+  }
+}

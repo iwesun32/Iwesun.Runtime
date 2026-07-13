@@ -80,12 +80,24 @@ using Microsoft.Extensions.Hosting;
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddRuntimeDiagnostics();
 var runtimeDirectory = Path.Combine(AppContext.BaseDirectory, "runtime");
-const string pipeArgument = "--runtime-diagnostics-pipe=";
-var startupPipeName = args
-	.FirstOrDefault(x => x.StartsWith(pipeArgument, StringComparison.OrdinalIgnoreCase))?
-	[pipeArgument.Length..];
-
-builder.Services.Start(runtimeDirectory, startupRuntimeDiagnosticsPipeName: startupPipeName);
+var runAsWindowsService = args.Contains("--windows-service", StringComparer.OrdinalIgnoreCase);
+if (runAsWindowsService)
+{
+	builder.Services.StartWindowsService(
+		serviceOptions: new RuntimeWindowsServiceOptions
+		{
+			ServiceName = "Iwesun.Runtime.SampleHost",
+			DisplayName = "Iwesun Runtime Sample Host",
+			Description = "Demonstrates Runtime-managed Windows Service startup and coordinated shutdown.",
+			ShutdownTimeout = TimeSpan.FromSeconds(30)
+		},
+		runtimeDirectory: runtimeDirectory,
+		startupRuntimeDiagnosticsPipeName: "Iwesun.SampleHost.RuntimeDiagnostics");
+}
+else
+{
+	builder.Services.Start(runtimeDirectory, startupRuntimeDiagnosticsPipeName: "Iwesun.SampleHost.RuntimeDiagnostics");
+}
 builder.Services.AddSingleton(SampleHostProfile.CreateDefault());
 builder.Services.AddSingleton<SampleHostState>();
 builder.Services.AddSingleton<SampleHostRandomState>();

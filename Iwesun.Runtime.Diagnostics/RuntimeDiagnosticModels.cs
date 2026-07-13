@@ -18,12 +18,13 @@ public sealed class RuntimeDiagnosticActionResult
 	public string Action { get; init; } = "";
 	public object? Value { get; init; }
 	public string? Error { get; init; }
+	public string? ErrorCode { get; init; }
 
 	public static RuntimeDiagnosticActionResult Ok(string targetId, string action, object? value = null) =>
 		new() { Success = true, TargetId = targetId, Action = action, Value = value };
 
-	public static RuntimeDiagnosticActionResult Fail(string targetId, string action, string error) =>
-		new() { Success = false, TargetId = targetId, Action = action, Error = error };
+	public static RuntimeDiagnosticActionResult Fail(string targetId, string action, string error, string? errorCode = null) =>
+		new() { Success = false, TargetId = targetId, Action = action, Error = error, ErrorCode = errorCode };
 }
 
 public sealed class RuntimeDiagnosticEvent
@@ -96,6 +97,11 @@ public sealed class RuntimeDiagnosticBatchResult
 	public List<RuntimeDiagnosticBatchStepResult> Steps { get; init; } = [];
 	public bool StoppedOnError { get; init; }
 	public long DurationMs { get; init; }
+	public int TotalSteps { get; init; }
+	public int SuccessfulSteps { get; init; }
+	public int FailedSteps { get; init; }
+	public int SkippedSteps { get; init; }
+	public string? FirstFailureCode { get; init; }
 }
 
 public sealed class RuntimeDiagnosticBatchStepResult

@@ -26,15 +26,48 @@ Keep the requested pipe name and resolved pipe name separate:
 
 Resolved duplicates use `_001`, `_002`, and so on. Do not claim uniqueness unless the pipe host atomically holds the exclusive server instance and registers the lease.
 
-## CLI version gate
+## CLI v3 user extensions
 
-CLI v3 is approved but remains migration-only until the source contains `Iwesun.Runtime.Cli.commands.json` with schema `iwesun.runtime.cli/3.0`. Until then:
+Use `RuntimeCliSystemConfig.json` for routes, `RuntimeCliSystemMetadata.json` for help metadata, and `RuntimeCliUserConfig.json` for current-directory user extensions. Explicit `--user-config` replaces the default user file. Use `iwrt shell` for client-only context, variables, and virtual paths. `exit` and `quit` only close the shell and never stop the host. Composite output remains one complete JSON Runtime Frame.
 
-- Do not present v3 commands as executable.
-- Treat v2 command and configuration documentation as deprecated migration reference.
-- Do not add new v2 aliases, string workflow steps, or compatibility code.
+For multiple hosts, use `target add/list/use/current/remove` or `@name command`. Never guess a similar pipe. Connection, write, response, and local-cancellation failures have distinct codes. Prefer `host.summary` and bounded list commands for routine inspection; use detailed snapshots only explicitly.
 
-## Live-debug workflow
+CLI v3 is current. The standard catalog remains canonical and contains no product-specific aliases. Load process-local user extensions explicitly:
+
+```powershell
+iwrt --user-config="C:\ProgramData\Product\runtime-cli.user.json" diagnostics.status
+```
+
+The user file supports `extensions.add`, `extend`, `replace`, and `disable`. Put aliases in `commands[].aliases` for complete catalogs or in `extensions.extend[].aliases` for incremental files. Missing targets and alias collisions are configuration errors.
+
+## Composite commands
+
+Use `composites` to package existing commands into one `rtdiag/3.0` batch request:
+
+```json
+{
+  "name": "diagnostics.quick-check",
+  "aliases": ["diag.quick"],
+  "stopOnError": false,
+  "steps": [
+    { "command": "host.info" },
+    { "command": "switchboard.get" },
+    { "command": "host.events", "arguments": ["20"] }
+  ]
+}
+```
+
+All steps must use one endpoint. Composites do not provide workflow branches, loops, result bindings, or script strings.
+
+## Current focused commands
+
+- `reflection.get <target> [member]` routes directly to an explicitly registered target.
+- Debug-only `reflection.invoke <target> <member>` calls only a parameterless method explicitly listed in `InvokableMembers`; Release Diagnostics does not compile the invoke route.
+- `switchboard.point.list [id]` queries compiled and runtime-discovered points.
+- `switchboard.point.enable <id>` and `switchboard.point.disable <id>` control one point in the current process.
+- `breakpoint.list` returns `LastContext` in Debug when a breakpoint has captured context.
+
+## Live-debug sequence
 
 1. Query status and registries.
 2. Enable the smallest required section or point set.

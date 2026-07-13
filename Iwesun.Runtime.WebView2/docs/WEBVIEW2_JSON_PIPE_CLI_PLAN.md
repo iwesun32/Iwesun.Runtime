@@ -2,7 +2,7 @@
 
 ## 1. 目标与边界
 
-本阶段只统一协议设计与迁移边界，不改变 WebView2 现有业务动作、CLI 命令语义或已发布的管道线格式。
+本文件记录已经落地的协议边界与迁移结果。WebView2 业务动作已纳入 CLI v3、`RuntimeDiagnosticFrame` 和 Runtime 管道租约体系；旧线格式不再兼容。
 
 ### 1.1 统一管理不等于共用一条管道
 
@@ -131,11 +131,11 @@ CLI 分为四层：
 - 输出默认保留完整 frame；人类摘要是可选渲染。
 - CLI 始终先连接 RuntimeDiagnostics 控制入口；需要访问 Management 或 WebRuntime 时，由 Proxy 按登记键解析专用管道并转发，不要求 CLI 直接维护每条业务管道连接。
 
-## 6. 兼容迁移顺序
+## 6. 已完成的一次性迁移
 
 1. 抽取可共用的 JSON 默认选项、frame 模型和长度前缀传输器。
-2. WebView2 增加新 frame 入口，旧 `ExecuteAsync(WebRuntimeControlRequest, ...)` 作为适配器保留。
-3. WebView2 服务端在兼容期同时支持新 frame 与旧消息。
+2. WebView2 使用 Frame 入口；`WebRuntimeControlRequest` 仅作为 Command typed Args，不是旧线协议适配器。
+3. WebView2 服务端只支持标准 Frame，不再同时接受旧消息。
 4. Diagnostics Proxy 只转发 frame，不再重建 WebView2 私有 JSON。
 5. CLI WebRuntime 命令切换到统一 frame。
 6. 所有消费方迁移后，删除私有 `PipeMessage`、`PayloadJson` 和数字命令枚举。
@@ -150,4 +150,4 @@ CLI 分为四层：
 - 请求和响应被拆分为多次字节读写时仍能完整解析。
 - payload 保持 JSON 原生类型，不变成带转义字符的 JSON 字符串。
 - Proxy 保留 `requestId` / `correlationId`，正确传递错误码和 `retryable`。
-- 旧 WebView2 入口在兼容期内行为不变。
+- 旧 WebView2 Envelope、私有 PipeMessage 和脚本请求入口均不可用。

@@ -1,0 +1,30 @@
+using Iwesun.Runtime.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+
+// Optional examples. Copy only the blocks required by the business host.
+
+// Descriptive registration: records an external thread but does not create or manage it.
+var execution = host.Services.GetRequiredService<RuntimeExecutionManager>();
+RuntimeInjector.Thread(
+    execution,
+    "product.thread.external",
+    "External Thread",
+    RuntimeExecutionLifetime.Static,
+    RuntimeThreadKind.Custom,
+    owner: "Product");
+
+// Managed execution: creates a real Runtime-owned task.
+using RTask task = RuntimeInjector.CreateTask(
+    token => RunBusinessLoop(token),
+    unitId: "product.task.worker",
+    startImmediately: true);
+
+#if DEBUG
+// Debug-only reflection invocation must use an explicit whitelist.
+var hub = host.Services.GetRequiredService<RuntimeDiagnosticHub>();
+RuntimeInjector.Data(hub, "product.state", businessState, new RuntimeDiagnosticObjectAccess
+{
+    ReadableMembers = ["Snapshot"],
+    InvokableMembers = ["Refresh"]
+});
+#endif

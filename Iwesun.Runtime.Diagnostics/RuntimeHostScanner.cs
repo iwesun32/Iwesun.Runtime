@@ -5,6 +5,7 @@ namespace Iwesun.Runtime.Diagnostics;
 
 public static class RuntimeHostScanner
 {
+	private static readonly string InstanceId = Guid.NewGuid().ToString("N");
 	public static RuntimeHostSnapshot Scan(
 		IEnumerable<string> registeredTargets,
 		RuntimeHostScanOptions? options = null)
@@ -20,6 +21,8 @@ public static class RuntimeHostScanner
 
 		return new RuntimeHostSnapshot
 		{
+			InstanceId = InstanceId,
+			ProcessStartTimeUtc = process.StartTime.ToUniversalTime(),
 			ProcessName = process.ProcessName,
 			ProcessId = process.Id,
 			RuntimeVersion = Environment.Version.ToString(),

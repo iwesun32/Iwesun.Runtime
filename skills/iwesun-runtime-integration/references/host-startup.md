@@ -9,7 +9,7 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddRuntimeDiagnostics();
 builder.Services.Start(
     runtimeDirectory,
-    startupRuntimeDiagnosticsPipeName: startupPipeName);
+    startupRuntimeDiagnosticsPipeName: "Product.RuntimeDiagnostics");
 
 // Register business services here.
 
@@ -21,12 +21,34 @@ host.Services.Activate(Assembly.GetExecutingAssembly());
 await host.RunAsync();
 ```
 
+For a Windows Service, replace only `Start(...)` with the platform-owned service entry:
+
+```csharp
+builder.Services.StartWindowsService(
+    serviceOptions: new RuntimeWindowsServiceOptions
+    {
+        ServiceName = "Company.ProductService",
+        DisplayName = "Product Service",
+        Description = "Business-owned service description.",
+        ShutdownTimeout = TimeSpan.FromSeconds(30)
+    },
+    runtimeDirectory: runtimeDirectory,
+    startupRuntimeDiagnosticsPipeName: "Product.RuntimeDiagnostics");
+```
+
+Business services remain standard `IHostedService` or `BackgroundService`. Runtime owns SCM Stop/Shutdown, coordinated cleanup, exit codes, and deregistration. Do not call `AddWindowsService()` separately.
+
+If service identity belongs in a business DI module, call `StartConfiguredWindowsService(...)` in the fixed Program.cs and `ConfigureRuntimeWindowsService(...)` anywhere before `Build()`. Runtime never supplies a default business ServiceName.
+
 ## Boundaries
+
+The current model permits one Runtime host per process. Repeating `Start` with identical settings on the same `IServiceCollection` is idempotent; conflicting settings throw `RuntimeHostConfigurationException`. Repeating `Activate` on the same provider is idempotent, while a different provider fails fast without replacing the first static context.
 
 - Fixed template: logging bridge, `Start`, `Build`, `Activate`, `RunAsync`.
 - Host configuration: runtime directory, startup pipe name, startup file path.
 - Business area: DI registrations, hosted workers, explicit reflection targets.
-- Resolve startup pipe and file settings once. Do not mutate their names during normal runtime.
+- Declare fixed startup pipe and file settings in source. `--diag-pipe` and `--diag-file` are the only temporary startup overrides.
+- Runtime ignores legacy `diagnostic-switchboard.json` files and never writes them.
 
 ## Migration audit
 

@@ -37,16 +37,16 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
                 return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, _registry.Snapshot(ReadInt(command, "count") ?? 100)));
             case "registrations":
             case "list":
-                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, _registry.SnapshotRegistrations()));
+                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, Page(_registry.SnapshotRegistrations(), command)));
             case "processes":
             case "listprocesses":
-                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, SnapshotByUnitType("process", ReadInt(command, "count") ?? 100)));
+                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, SnapshotByUnitType("process", command)));
             case "threads":
             case "listthreads":
-                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, SnapshotByUnitType("thread", ReadInt(command, "count") ?? 100)));
+                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, SnapshotByUnitType("thread", command)));
             case "tasks":
             case "listtasks":
-                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, SnapshotByUnitType("task", ReadInt(command, "count") ?? 100)));
+                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, SnapshotByUnitType("task", command)));
             case "globalstate":
             case "globalstateget":
             case "global.state.get":
@@ -96,7 +96,7 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
                 }
             case "reflectionlist":
             case "reflection.list":
-                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, _hub.TargetIds));
+                return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, Page(_hub.TargetIds.Order(StringComparer.OrdinalIgnoreCase), command)));
             case "globalcommandbroadcast":
             case "lifecycle.broadcast":
                 {
@@ -266,13 +266,15 @@ public sealed class RuntimeManagedCommandTarget : RuntimeDiagnosticTargetBase
 		return null;
 	}
 
-    private IReadOnlyList<RuntimeManagedRegistration> SnapshotByUnitType(string unitType, int count)
+    private RuntimePagedResult<RuntimeManagedRegistration> SnapshotByUnitType(string unitType, RuntimeDiagnosticAction command)
     {
-        return _registry.SnapshotRegistrations()
+        return Page(_registry.SnapshotRegistrations()
             .Where(x => x.UnitType.Equals(unitType, StringComparison.OrdinalIgnoreCase))
-            .Take(Math.Clamp(count, 1, 4096))
-            .ToArray();
+            .OrderBy(x => x.UnitId, StringComparer.OrdinalIgnoreCase), command);
     }
+
+    private static RuntimePagedResult<T> Page<T>(IEnumerable<T> source, RuntimeDiagnosticAction command) =>
+        RuntimePagedResult<T>.Create(source, ReadInt(command, "offset") ?? 0, ReadInt(command, "limit") ?? ReadInt(command, "count") ?? 100);
 
     private Task<RuntimeDiagnosticActionResult> ExecuteProcessReflectionAsync(RuntimeDiagnosticAction command, string reflectionAction)
     {

@@ -19,7 +19,9 @@ public sealed class RuntimeHostScanOptions
 
 public sealed class RuntimeHostSnapshot
 {
+	public string InstanceId { get; init; } = "";
 	public DateTimeOffset ScannedAt { get; init; } = DateTimeOffset.UtcNow;
+	public DateTimeOffset ProcessStartTimeUtc { get; init; }
 	public string ProcessName { get; init; } = "";
 	public int ProcessId { get; init; }
 	public string RuntimeVersion { get; init; } = "";
@@ -27,6 +29,19 @@ public sealed class RuntimeHostSnapshot
 	public IReadOnlyList<RuntimeAssemblySnapshot> Assemblies { get; init; } = Array.Empty<RuntimeAssemblySnapshot>();
 	public IReadOnlyList<string> RegisteredTargets { get; init; } = Array.Empty<string>();
 }
+
+public sealed record RuntimeHostSummary(
+	string InstanceId,
+	DateTimeOffset GeneratedAt,
+	string ProcessName,
+	int ProcessId,
+	DateTimeOffset ProcessStartTimeUtc,
+	string RuntimeVersion,
+	string RuntimeDiagnosticsPipeName,
+	IReadOnlyList<string> AssemblyNames,
+	int AssemblyCount,
+	int TypeCount,
+	int RegisteredTargetCount);
 
 public sealed class RuntimeAssemblySnapshot
 {

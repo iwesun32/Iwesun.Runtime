@@ -1,0 +1,54 @@
+Iwesun Runtime - Standard Project-Wide Replacements
+
+Run one replacement step at a time and build after every step.
+
+1. Process creation
+   Find:    Process.Start(
+   Replace: RuntimeInjector.CreateProcess(
+   Then add a stable unitId and verify arguments/start timing.
+
+2. Process construction
+   Find:    new Process()
+   Replace: new RProcess(unitId)
+   Then preserve ProcessStartInfo and explicit Start() behavior.
+
+3. Thread creation
+   Find:    new Thread(
+   Replace: RuntimeInjector.CreateThread(
+   Do not mechanically replace UI, STA, COM, or message-pump threads.
+
+4. Managed task creation
+   Find:    Task.Run(
+   Replace: RuntimeInjector.CreateTask(
+   Prefer a CancellationToken-aware action so FIFO Stop can cancel the task.
+
+5. Explicit task construction
+   Find:    new Task(
+   Replace: RuntimeInjector.CreateTask(
+   Review TaskScheduler and startImmediately behavior.
+
+6. Declared types
+   Process / Process? -> RProcess / RProcess?
+   Thread / Thread?   -> RThread / RThread?
+   Task / Task?       -> RTask / RTask?
+   List<Task>         -> List<RTask>
+
+7. Method return types
+   Process -> RProcess
+   Thread  -> RThread
+   Task    -> RTask only when the method returns a managed wrapper task.
+
+Never mechanically replace:
+- Task<T>
+- ordinary async Task APIs
+- BackgroundService.ExecuteAsync
+- UI Dispatcher/STA/COM threads
+- framework members that require System.Threading.Tasks.Task
+
+Old Program.cs backup location:
+  _migration/Program.before-runtime.cs.txt
+
+New Program.cs source:
+  samples/templates/RuntimeHost.Startup.Minimal.Template.cs.txt
+  samples/templates/RuntimeHost.DiagnosticsExamples.Template.cs.txt
+  samples/templates/RuntimeHost.ManagedWorker.Template.cs.txt

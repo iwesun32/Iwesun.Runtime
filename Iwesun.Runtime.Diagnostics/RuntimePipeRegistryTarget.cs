@@ -18,7 +18,11 @@ public sealed class RuntimePipeRegistryTarget : RuntimeDiagnosticTargetBase
 		{
 			case "snapshot":
 			case "list":
-				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action, RuntimePipeRegistry.Snapshot(ReadBool(command, "includeInactive") ?? true)));
+				return Task.FromResult(RuntimeDiagnosticActionResult.Ok(TargetId, command.Action,
+					RuntimePagedResult<RuntimePipeLeaseSnapshot>.Create(
+						RuntimePipeRegistry.Snapshot(ReadBool(command, "includeInactive") ?? true),
+						ReadInt(command, "offset") ?? 0,
+						ReadInt(command, "limit") ?? 100)));
 			case "acquire":
 			case "register":
 				var requestedName = ReadString(command, "requestedPipeName")

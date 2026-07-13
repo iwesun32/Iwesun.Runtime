@@ -15,6 +15,7 @@ public class RProcess : Process
     private readonly RuntimeManagedRegistry? _managed;
     private readonly RuntimeDiagnosticHub? _hub;
     private readonly DelegateRuntimeManagedCommandHandler _commandHandler;
+	private readonly RuntimeManagedCleanup _cleanup;
 	private readonly IDisposable? _commandRegistration;
     private readonly CancellationTokenSource _pipeGuardianCts = new();
     private int _registered;
@@ -30,12 +31,13 @@ public class RProcess : Process
         _unit = new RuntimeManagedUnitBase(resolvedUnitId, RuntimeInstructionEntityKind.Process);
         UnitId = _unit.UnitId;
         State = _unit.State;
+		_cleanup = new RuntimeManagedCleanup(this, State);
         _execution = _unit.Execution;
         _managed = _unit.Managed;
         _hub = RuntimeInjectionContext.Hub;
         _commandHandler = new DelegateRuntimeManagedCommandHandler(UnitId, _managed)
         {
-            OnStopAction = command => TryHandleGlobalStop(command.Payload),
+			OnStopAction = BeginManagedStop,
             OnWakeupAction = command => _managed?.PublishEvent(UnitId, "process-guardian-wakeup", "Process guardian received wakeup command.", new { command.Sequence, command.Payload }),
             OnSnapshotAction = _ => _managed?.PublishEvent(UnitId, "process-guardian-snapshot", "Process guardian snapshot requested.", State.Snapshot())
         };
@@ -47,6 +49,13 @@ public class RProcess : Process
     public string UnitId { get; }
     public string RuntimeProcessId => UnitId;
     public IRManagedState State { get; }
+	public bool IsCleanupCompleted => _cleanup.IsCompleted;
+	public int ManagedExitCode => _cleanup.ExitCode;
+	public event RuntimeManagedCleanupHandler CleanupRequested
+	{
+		add => _cleanup.Requested += value;
+		remove => _cleanup.Requested -= value;
+	}
 
     public void SetDetail(string key, string value) => _unit.SetDetail(key, value);
     public bool TryGetDetail(string key, out string? value) => _unit.TryGetDetail(key, out value);
@@ -245,7 +254,10 @@ public class RProcess : Process
         RuntimePipeRegistry.ReleasePipe(UnitId);
         UnregisterReflectionTarget();
         State.SetDetail("exitCode", ExitCode.ToString());
-        State.TransitionTo("Stop");
+		if (_cleanup.HasStarted)
+			State.TransitionTo(_cleanup.ExitCode == RuntimeShutdownExitCodes.Timeout ? "Timeout" : "Completed");
+		else
+			State.TransitionTo("Stop");
         var state = ExitCode == 0 ? RuntimeTaskState.Completed : RuntimeTaskState.Faulted;
         _execution?.SetTaskState(UnitId, state, step: "exited", error: ExitCode == 0 ? null : $"ExitCode={ExitCode}", payload: State.Snapshot());
         _managed?.PublishEvent(UnitId, "process-exited", ExitCode == 0 ? "Process exited successfully." : $"Process exited with code {ExitCode}.", State.Snapshot());
@@ -326,7 +338,7 @@ public class RProcess : Process
         {
             if (_managed?.IsGlobalStopOrExitRequested == true && Interlocked.Exchange(ref _globalStopHandled, 1) == 0)
             {
-                TryHandleGlobalStop();
+				BeginManagedStop(new RuntimeManagedCommand(0, UnitId, RuntimeManagedCommandKind.Stop, "global-stop", DateTimeOffset.UtcNow));
             }
 
             if (_managed?.TryDequeueCommand(UnitId, out var command) == true && command is not null)
@@ -359,8 +371,15 @@ public class RProcess : Process
         }
     }
 
-    private void TryHandleGlobalStop(string? commandPayload = null)
+	private void BeginManagedStop(RuntimeManagedCommand command)
+	{
+		_cleanup.Begin(command);
+		_ = RequestManagedProgramExitAsync(command.Payload);
+	}
+
+	private async Task RequestManagedProgramExitAsync(string? commandPayload)
     {
+		await _cleanup.WaitForExitSignalAsync().ConfigureAwait(false);
         try
         {
             var deadline = RuntimeManagedPayloadInterpreter.GetDateTimeOffset(commandPayload, "deadlineUtc");
@@ -370,17 +389,10 @@ public class RProcess : Process
                 return;
             }
 
-            if (CloseMainWindow())
-            {
-                if (!WaitForExit(1500))
-                {
-                    Kill(entireProcessTree: true);
-                }
-
-                return;
-            }
-
-            Kill(entireProcessTree: true);
+			if (!CloseMainWindow())
+			{
+				_managed?.PublishEvent(UnitId, "process-stop-awaiting-managed-exit", "The child has no main window; its own guardian must return through the managed program exit.", new { unitId = UnitId, deadlineUtc = deadline });
+			}
         }
         catch (Exception ex)
         {
@@ -575,18 +587,11 @@ public class RProcess : Process
 
 		if (disposing && Volatile.Read(ref _registered) != 0 && !HasProcessExitedSafely())
 		{
-			var deadline = DateTimeOffset.UtcNow.AddSeconds(3);
 			_managed?.TryEnqueueCommand(UnitId, RuntimeManagedCommandKind.Stop,
-				RuntimeManagedPayloadInterpreter.ToJson(new { reason = "dispose", deadlineUtc = deadline }));
-			try { WaitForExit(1500); } catch { }
+				RuntimeManagedPayloadInterpreter.ToJson(new { reason = "dispose" }));
 			if (!HasProcessExitedSafely())
 			{
-				TryHandleGlobalStop(RuntimeManagedPayloadInterpreter.ToJson(new { reason = "dispose-timeout", deadlineUtc = deadline }));
-				try { WaitForExit(1500); } catch { }
-			}
-			if (!HasProcessExitedSafely())
-			{
-				_managed?.PublishEvent(UnitId, "process-dispose-deferred", "Process disposal deferred because the child is still alive.", new { deadline });
+				_managed?.PublishEvent(UnitId, "process-dispose-deferred", "Process disposal is deferred until the child returns through its managed program exit.", null);
 				return;
 			}
 		}
@@ -601,6 +606,7 @@ public class RProcess : Process
 			{
 				_commandRegistration?.Dispose();
 				_pipeGuardianCts.Dispose();
+				_cleanup.Dispose();
 			}
 		}
 

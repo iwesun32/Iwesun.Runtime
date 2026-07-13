@@ -1,0 +1,311 @@
+{
+  "schema": "iwesun.runtime.cli.metadata/1.0",
+  "commands": {
+    "host.info": {
+      "summary": "Show Runtime host identity and build information.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt host.info"
+      ]
+    },
+    "host.summary": {
+      "summary": "Show lightweight host identity and assembly counts without type details.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [ "iwrt host.summary" ]
+    },
+    "host.events": {
+      "summary": "List recent Runtime host events.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt host.events"
+      ]
+    },
+    "lifecycle.status": {
+      "summary": "Show coordinated lifecycle and shutdown state.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt lifecycle.status"
+      ]
+    },
+    "lifecycle.shutdown": {
+      "summary": "Request coordinated host shutdown through the normal exit path.",
+      "risk": "destructive",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt lifecycle.shutdown true"
+      ]
+    },
+    "switchboard.get": {
+      "summary": "Show the current diagnostic switchboard state.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt switchboard.get"
+      ]
+    },
+    "switchboard.enable": {
+      "summary": "Enable diagnostic output globally or for one section.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt switchboard.enable"
+      ]
+    },
+    "switchboard.disable": {
+      "summary": "Disable diagnostic output globally or for one section.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt switchboard.disable"
+      ]
+    },
+    "switchboard.point.list": {
+      "summary": "List registered diagnostic output points.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt switchboard.point.list"
+      ]
+    },
+    "switchboard.point.enable": {
+      "summary": "Enable one diagnostic output point.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt switchboard.point.enable"
+      ]
+    },
+    "switchboard.point.disable": {
+      "summary": "Disable one diagnostic output point.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt switchboard.point.disable"
+      ]
+    },
+    "breakpoint.list": {
+      "summary": "List Debug breakpoint states.",
+      "risk": "read-only",
+      "capability": "debug-only",
+      "examples": [
+        "iwrt breakpoint.list"
+      ]
+    },
+    "breakpoint.enable": {
+      "summary": "Enable one Debug breakpoint.",
+      "risk": "state-changing",
+      "capability": "debug-only",
+      "examples": [
+        "iwrt breakpoint.enable"
+      ]
+    },
+    "breakpoint.disable": {
+      "summary": "Disable one Debug breakpoint.",
+      "risk": "state-changing",
+      "capability": "debug-only",
+      "examples": [
+        "iwrt breakpoint.disable"
+      ]
+    },
+    "breakpoint.resume": {
+      "summary": "Resume one waiting Debug breakpoint.",
+      "risk": "state-changing",
+      "capability": "debug-only",
+      "examples": [
+        "iwrt breakpoint.resume"
+      ]
+    },
+    "breakpoint.set-numeric-threshold": {
+      "summary": "Set a Debug numeric breakpoint threshold.",
+      "risk": "state-changing",
+      "capability": "debug-only",
+      "examples": [ "iwrt breakpoint.set-numeric-threshold sample.host.random.numeric gt 0" ]
+    },
+    "breakpoint.clear-numeric": {
+      "summary": "Clear a Debug numeric breakpoint threshold override.",
+      "risk": "state-changing",
+      "capability": "debug-only",
+      "examples": [ "iwrt breakpoint.clear-numeric sample.host.random.numeric" ]
+    },
+    "hook.list": {
+      "summary": "List registered diagnostic event hooks.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt hook.list"
+      ]
+    },
+    "registry.list": {
+      "summary": "List diagnostic registries and targets.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt registry.list"
+      ]
+    },
+    "process.list": {
+      "summary": "List Runtime-managed processes.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt process.list"
+      ]
+    },
+    "thread.list": {
+      "summary": "List Runtime thread records.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt thread.list"
+      ]
+    },
+    "task.list": {
+      "summary": "List Runtime task records.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt task.list"
+      ]
+    },
+    "pipe.list": {
+      "summary": "List registered Runtime pipe leases.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt pipe.list"
+      ]
+    },
+    "pipe.acquire": {
+      "summary": "Acquire a collision-free Runtime pipe lease.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt pipe.acquire"
+      ]
+    },
+    "pipe.resolve": {
+      "summary": "Resolve a requested Runtime pipe name.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt pipe.resolve"
+      ]
+    },
+    "file.list": {
+      "summary": "List registered Runtime file paths.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt file.list"
+      ]
+    },
+    "reflection.list": {
+      "summary": "List explicitly registered reflection targets.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt reflection.list"
+      ]
+    },
+    "reflection.get": {
+      "summary": "Read an explicitly whitelisted reflection member.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt reflection.get sample.host Snapshot"
+      ]
+    },
+    "reflection.invoke": {
+      "summary": "Invoke a Debug-only, parameterless, explicitly whitelisted member.",
+      "risk": "state-changing",
+      "capability": "debug-only",
+      "examples": [
+        "iwrt reflection.invoke sample.host Refresh"
+      ]
+    },
+    "web.programs.capabilities": {
+      "summary": "Show WebRuntime program capabilities.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.programs.capabilities"
+      ]
+    },
+    "web.programs.status": {
+      "summary": "Show WebRuntime program execution status.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.programs.status"
+      ]
+    },
+    "web.programs.cancel": {
+      "summary": "Cancel one WebRuntime program execution.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.programs.cancel"
+      ]
+    },
+    "web.programs.execute": {
+      "summary": "Execute one registered WebRuntime C# program.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.programs.execute"
+      ]
+    },
+    "web.capabilities": {
+      "summary": "Query a proxied WebRuntime capability set.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.capabilities"
+      ]
+    },
+    "web.snapshot": {
+      "summary": "Read a proxied WebRuntime snapshot.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.snapshot"
+      ]
+    },
+    "web.navigate": {
+      "summary": "Navigate a registered WebRuntime target.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.navigate"
+      ]
+    },
+    "web.mouse.click": {
+      "summary": "Send a virtual mouse click to WebRuntime.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.mouse.click"
+      ]
+    },
+    "web.keyboard.press": {
+      "summary": "Send one virtual key press to WebRuntime.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.keyboard.press"
+      ]
+    },
+    "web.keyboard.type": {
+      "summary": "Send text through the WebRuntime virtual keyboard.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.keyboard.type"
+      ]
+    }
+  }
+}

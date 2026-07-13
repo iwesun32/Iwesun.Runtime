@@ -1,0 +1,39 @@
+using Iwesun.Runtime.Diagnostics;
+using Microsoft.Extensions.Hosting;
+
+public sealed class RuntimeManagedWorker(RuntimeManagedRegistry registry) : BackgroundService
+{
+    private RTask? _worker;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _worker = RuntimeInjector.CreateTask(
+            token => RunLoopAsync(token).GetAwaiter().GetResult(),
+            unitId: "product.task.worker",
+            cancellationToken: stoppingToken,
+            startImmediately: false);
+
+        _worker.CleanupRequested += async (_, _, token) =>
+        {
+            await FlushBusinessStateAsync(token);
+        };
+
+        _worker.Start();
+        await _worker;
+    }
+
+    private async Task RunLoopAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested && !registry.IsGlobalStopOrExitRequested)
+        {
+            await RunOneBusinessCycleAsync(stoppingToken);
+
+            // Wakeup returns true and starts the next cycle. Stop cancels the managed
+            // token after cleanup and returns through this normal loop exit.
+            await _worker!.WaitForWakeupAsync(TimeSpan.FromMinutes(5), stoppingToken);
+        }
+    }
+
+    private static Task RunOneBusinessCycleAsync(CancellationToken token) => Task.CompletedTask;
+    private static ValueTask FlushBusinessStateAsync(CancellationToken token) => ValueTask.CompletedTask;
+}

@@ -1,0 +1,93 @@
+using System.Buffers.Binary;
+using System.Diagnostics;
+using System.IO.Pipes;
+using System.Text;
+using System.Text.Json;
+using Iwesun.Runtime.Diagnostics;
+
+namespace Iwesun.Runtime.Cli;
+
+internal static class CliTransport
+{
+    public static async Task<string> SendAsync(
+        string endpoint,
+        string pipeName,
+        string? targetAlias,
+        RuntimeDiagnosticFrame frame,
+        int connectTimeoutMs,
+        int requestTimeoutMs,
+        int maxBytes,
+        CancellationToken cancellationToken)
+    {
+        var payload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(frame));
+        await using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        var started = Stopwatch.GetTimestamp();
+        using (var connect = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            connect.CancelAfter(connectTimeoutMs);
+            try
+            {
+                await pipe.ConnectAsync(connect.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && connect.IsCancellationRequested)
+            {
+                throw Timeout("CLI_CONNECT_TIMEOUT", "Timed out connecting to named pipe.", "connect", connectTimeoutMs);
+            }
+        }
+
+        using var request = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        request.CancelAfter(requestTimeoutMs);
+        var header = new byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(header, payload.Length);
+        await RunPhaseAsync("write", "CLI_WRITE_TIMEOUT", async () =>
+        {
+            await pipe.WriteAsync(header, request.Token);
+            await pipe.WriteAsync(payload, request.Token);
+            await pipe.FlushAsync(request.Token);
+        });
+        await RunPhaseAsync("read-header", "CLI_RESPONSE_TIMEOUT", () => ReadExactAsync(pipe, header, request.Token));
+        var length = BinaryPrimitives.ReadInt32LittleEndian(header);
+        if (length <= 0 || length > maxBytes)
+            throw new CliException("CLI_PROTOCOL_RESPONSE_LENGTH", $"Invalid response length {length}.", 5);
+        var response = new byte[length];
+        await RunPhaseAsync("read-body", "CLI_RESPONSE_TIMEOUT", () => ReadExactAsync(pipe, response, request.Token));
+        return Encoding.UTF8.GetString(response);
+
+        CliException Timeout(string code, string message, string phase, int timeoutMs) =>
+            new(code, message, 4, data: new
+            {
+                transport = "namedPipe",
+                endpoint,
+                pipeName,
+                targetAlias,
+                phase,
+                timeoutMs,
+                elapsedMs = Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds, 2),
+                retryable = true
+            });
+
+        async Task RunPhaseAsync(string phase, string code, Func<Task> operation)
+        {
+            try
+            {
+                await operation();
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && request.IsCancellationRequested)
+            {
+                throw Timeout(code, phase == "write" ? "Timed out writing named pipe request." : "Timed out waiting for named pipe response.", phase, requestTimeoutMs);
+            }
+        }
+    }
+
+    private static async Task ReadExactAsync(Stream stream, byte[] buffer, CancellationToken cancellationToken)
+    {
+        var offset = 0;
+        while (offset < buffer.Length)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(offset), cancellationToken);
+            if (read == 0)
+                throw new CliException("CLI_PROTOCOL_TRUNCATED", "The pipe closed before the response completed.", 5);
+            offset += read;
+        }
+    }
+}

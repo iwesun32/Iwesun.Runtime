@@ -1,6 +1,6 @@
 ---
 name: iwesun-runtime-integration
-description: Integrate or migrate .NET hosts to Iwesun Runtime. Use when replacing Program.cs startup, converting Process/Thread/Task creation to RProcess/RThread/RTask, adding RuntimeInjector output/watch/break/data points, implementing managed state/events/coordinated shutdown, or operating Runtime JSON and CLI commands.
+description: Integrate or migrate .NET hosts to Iwesun Runtime. Use when replacing Program.cs startup, converting Process/Thread/Task creation to RProcess/RThread/RTask, adding RuntimeInjector output/watch/break/data points, implementing managed state/events/coordinated shutdown, or operating Runtime pipes and CLI v3 commands.
 ---
 
 # Iwesun Runtime Integration
@@ -42,4 +42,5 @@ For a full host migration, read the references in the order listed above.
 - Do not unregister a live process, thread, or task merely because Dispose or a timeout occurred.
 - Treat CLI disconnect, breakpoint resume, and host shutdown as independent actions.
 - Use 4-byte little-endian length-prefixed UTF-8 JSON; do not hand-roll clients when the Runtime CLI is available.
-- Mark CLI v3 features as migration-only until the repository contains the v3 implementation and configuration.
+- Treat CLI v3, user aliases, incremental extensions, and composite batch commands as current supported features.
+- Runtime does not read or write diagnostic-switchboard.json; source declarations are fixed and CLI controls are process-local.

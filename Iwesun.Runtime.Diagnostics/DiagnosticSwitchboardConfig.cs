@@ -53,11 +53,6 @@ public sealed class DiagnosticSwitchboardConfigStore
 	private const string RuntimeDiagnosticsPipeArgShort = "--diag-pipe=";
 	private const string RuntimeDiagnosticsFileArgShort = "--diag-file=";
 
-	private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-	{
-		WriteIndented = true
-	};
-
 	private readonly string? _startupRuntimeDiagnosticsPipeName;
 	private readonly string? _startupRuntimeDiagnosticsFilePath;
 
@@ -72,42 +67,18 @@ public sealed class DiagnosticSwitchboardConfigStore
 	}
 
 	public string RuntimeDirectory { get; }
-	public string ConfigPath => Path.Combine(RuntimeDirectory, "diagnostic-switchboard.json");
+	public string? ConfigPath => null;
 
 	public DiagnosticSwitchboardConfig Load()
 	{
-		Directory.CreateDirectory(RuntimeDirectory);
 		var defaults = BuildStartupDefaults();
-		if (!File.Exists(ConfigPath))
-		{
-			Save(defaults);
-			return defaults;
-		}
-
-		try
-		{
-			var json = File.ReadAllText(ConfigPath);
-			var config = JsonSerializer.Deserialize<DiagnosticSwitchboardConfig>(json, JsonOptions);
-			config = DiagnosticSwitchboardCompiledConfig.MergeWithCompiledDefaults(config);
-			ApplyStartupFallback(config);
-			ApplyDefaultRecordingCompatibility(config, defaults);
-			ApplyCommandLineOverrides(config);
-			Save(config);
-			return config;
-		}
-		catch
-		{
-			ApplyCommandLineOverrides(defaults);
-			Save(defaults);
-			return defaults;
-		}
+		ApplyCommandLineOverrides(defaults);
+		return defaults;
 	}
 
 	public void Save(DiagnosticSwitchboardConfig config)
 	{
-		config = DiagnosticSwitchboardCompiledConfig.MergeWithCompiledDefaults(config);
-		Directory.CreateDirectory(RuntimeDirectory);
-		File.WriteAllText(ConfigPath, JsonSerializer.Serialize(config, JsonOptions));
+		ArgumentNullException.ThrowIfNull(config);
 	}
 
 	private static string ResolveRuntimeDirectory(string? runtimeDirectory)
@@ -129,55 +100,6 @@ public sealed class DiagnosticSwitchboardConfigStore
 		if (!string.IsNullOrWhiteSpace(_startupRuntimeDiagnosticsFilePath))
 			defaults.FilePath = _startupRuntimeDiagnosticsFilePath;
 		return defaults;
-	}
-
-	private void ApplyStartupFallback(DiagnosticSwitchboardConfig config)
-	{
-		if (string.IsNullOrWhiteSpace(config.RuntimeDiagnosticsPipeName)
-			&& !string.IsNullOrWhiteSpace(_startupRuntimeDiagnosticsPipeName))
-		{
-			config.RuntimeDiagnosticsPipeName = _startupRuntimeDiagnosticsPipeName;
-		}
-
-		if (string.IsNullOrWhiteSpace(config.FilePath)
-			&& !string.IsNullOrWhiteSpace(_startupRuntimeDiagnosticsFilePath))
-		{
-			config.FilePath = _startupRuntimeDiagnosticsFilePath;
-		}
-	}
-
-	private static void ApplyDefaultRecordingCompatibility(
-		DiagnosticSwitchboardConfig config,
-		DiagnosticSwitchboardConfig defaults)
-	{
-		if (config.GlobalEnabled || config.PipeOutputEnabled || config.FileOutputEnabled)
-			return;
-
-		var hasEnabledSection = config.Sections.Any(x => x.Value);
-		var hasEnabledPoint = config.OutputPoints.Any(x => x.Enabled);
-		if (hasEnabledSection || hasEnabledPoint)
-			return;
-
-		config.GlobalEnabled = defaults.GlobalEnabled;
-		config.PipeOutputEnabled = defaults.PipeOutputEnabled;
-		config.FileOutputEnabled = defaults.FileOutputEnabled;
-
-		foreach (var (key, enabled) in defaults.Sections)
-		{
-			if (enabled)
-				config.Sections[key] = true;
-		}
-
-		var enabledPointIds = defaults.OutputPoints
-			.Where(x => x.Enabled)
-			.Select(x => x.Id)
-			.ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-		foreach (var point in config.OutputPoints)
-		{
-			if (enabledPointIds.Contains(point.Id))
-				point.Enabled = true;
-		}
 	}
 
 	private static void ApplyCommandLineOverrides(DiagnosticSwitchboardConfig config)
@@ -438,6 +360,28 @@ public static class DiagnosticSwitchboardCompiledConfig
 				"retry",
 				"PeerSync HTTP transient failure",
 				"peer-sync"),
+			Point(
+				"service.merge.dlist-policy",
+				"pipeline",
+				"DList policy state at final recursive merge entry.",
+				"DdnsSnap.Service.Services.Pipeline.MergeTreeSourcesStage",
+				"MergeTreeSourcesStage.Execute -> RuntimeOutput.TracePoint -> FIFO",
+				"structured-json",
+				"duplicate policy state and source identity counts",
+				"merge.policy",
+				"Final recursive merge entry",
+				"pipeline"),
+			Point(
+				"service.merge.identity-result",
+				"pipeline",
+				"IP and MAC identities after final recursive merge.",
+				"DdnsSnap.Service.Services.Pipeline.MergeTreeSourcesStage",
+				"MergeTreeSourcesStage.Execute -> RuntimeOutput.TracePoint -> FIFO",
+				"structured-json",
+				"input, output, and missing IP plus MAC identities",
+				"merge.identity",
+				"Final recursive merge completion",
+				"pipeline"),
 			Point(
 				"ui.startup",
 				"ui",

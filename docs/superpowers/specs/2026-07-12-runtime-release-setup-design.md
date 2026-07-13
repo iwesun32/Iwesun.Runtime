@@ -156,9 +156,9 @@ ProgramData `config` 只包含可变用户配置。
 - `RUNTIME_DIAGNOSTICS.md`
 - `RUNTIME_ROOT_DATA_STRUCTURE.md`
 - CLI v3 正式手册
-- `WEBVIEW2_JSON_PIPE_CLI_PLAN.md`
+- `Iwesun.Runtime.WebView2/docs/WEBVIEW2_JSON_PIPE_CLI_PLAN.md`
 - `05-runtime-tooling/RUNTIME_RELEASE_PACKAGING.md`
-- `05-runtime-tooling/WEB_RUNTIME_CONTROL.md`
+- `Iwesun.Runtime.WebView2/docs/WEB_RUNTIME_CONTROL.md`
 - `05-runtime-tooling/SAMPLE_HOST.md`
 
 不安装：

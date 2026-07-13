@@ -29,16 +29,29 @@
 
   <ItemGroup>
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_USER_GUIDE.md" />
+    <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_QUICK_START.md" />
+    <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_WINDOWS_SERVICE.md" />
     <ReleaseDocs Include="..\docs\RUNTIME_DIAGNOSTICS.md" />
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_CLI.md" />
-    <ReleaseDocs Include="..\docs\WEBVIEW2_JSON_PIPE_CLI_PLAN.md" />
-    <ReleaseConfig Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.commands.json" />
-    <ReleaseConfig Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.user.example.json" />
+    <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\WEBVIEW2_JSON_PIPE_CLI_PLAN.md" />
+    <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\WEB_RUNTIME_CONTROL.md" />
+    <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\WEBVIEW2_RUNTIME_CAPABILITIES.md" />
+    <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\WEBVIEW2_RELEASE_STATUS.md" />
+    <ReleaseDocs Include="..\docs\RUNTIME_无配置文件整改方案.md" />
+    <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\安全审计报告.md" />
+    <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\安全审计答复报告.md" />
+    <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\完整整改方案.md" />
+    <ReleaseConfig Include="..\Iwesun.Runtime.Cli\RuntimeCliSystemConfig.json" />
+    <ReleaseConfig Include="..\Iwesun.Runtime.Cli\RuntimeCliSystemMetadata.json" />
+    <ReleaseConfig Include="..\Iwesun.Runtime.Cli\RuntimeCliUserConfig.example.json" />
     <ReleaseSamples Include="..\Iwesun.Runtime.SampleHost\templates\RuntimeHost.*.Template.cs.txt" />
-    <ReleaseSources Include="..\Iwesun.Runtime.SampleHost\Program.cs" />
+    <ReleaseSamples Include="..\Iwesun.Runtime.SampleHost\templates\RuntimeCreation.*.Template.txt" />
+    <ReleaseSampleHostSources Include="..\Iwesun.Runtime.SampleHost\*.cs" />
+    <ReleaseInstalledSampleProject Include="..\Iwesun.Runtime.SampleHost\installed\Iwesun.Runtime.SampleHost.Installed.csproj" />
     <ReleaseSources Include="..\Iwesun.Runtime.Diagnostics\RuntimeHostTemplate.cs" />
     <ReleaseSkills Include="..\skills\iwesun-runtime-integration\**\*.*" />
     <ReleaseScripts Include="..\scripts\release\verify-runtime-install.ps1" />
+    <ReleaseScripts Include="..\scripts\release\build-runtime-setup.ps1" />
   </ItemGroup>
 
   <Target Name="PublishRuntimeRelease">
@@ -57,6 +70,7 @@
     <MakeDir Directories="$(DiagnosticsVariantRoot)Debug" />
     <MakeDir Directories="$(DiagnosticsVariantRoot)Release" />
     <MakeDir Directories="$(ReleaseSamplesRoot)source" />
+    <MakeDir Directories="$(ReleaseSamplesRoot)source\Iwesun.Runtime.SampleHost\installed" />
 
     <MSBuild Projects="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.csproj"
              Targets="Publish"
@@ -94,6 +108,12 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ReleaseSources)"
           DestinationFiles="@(ReleaseSources->'$(ReleaseSamplesRoot)source\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ReleaseSampleHostSources)"
+          DestinationFiles="@(ReleaseSampleHostSources->'$(ReleaseSamplesRoot)source\Iwesun.Runtime.SampleHost\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ReleaseInstalledSampleProject)"
+          DestinationFiles="@(ReleaseInstalledSampleProject->'$(ReleaseSamplesRoot)source\Iwesun.Runtime.SampleHost\installed\%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ReleaseSkills)"
           DestinationFiles="@(ReleaseSkills->'$(ReleaseSkillsRoot)%(RecursiveDir)%(Filename)%(Extension)')"

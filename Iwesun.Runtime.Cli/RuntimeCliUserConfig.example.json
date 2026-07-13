@@ -1,0 +1,30 @@
+{
+  "schema": "iwesun.runtime.cli/3.0",
+  "application": { "name": "Iwesun Runtime CLI user extensions", "description": "Example only" },
+  "endpoints": {},
+  "targets": {
+    "service": { "endpoint": "diagnostics", "pipeName": "DdnsSnap.Service.RuntimeDiagnostics" },
+    "agent": { "endpoint": "diagnostics", "pipeName": "DdnsSnap.Agent.Server.RuntimeDiagnostics" }
+  },
+  "commands": [],
+  "composites": [
+    {
+      "name": "diagnostics.quick-check",
+      "aliases": ["diag.quick"],
+      "summary": "Example user-defined batch command.",
+      "stopOnError": false,
+      "steps": [
+        { "command": "host.info" },
+        { "command": "switchboard.get" },
+        { "command": "registry.list" }
+      ]
+    }
+  ],
+  "extensions": {
+    "add": [],
+    "extend": [ { "name": "switchboard.get", "aliases": ["diagnostics.status"] } ],
+    "replace": [],
+    "disable": []
+  }
+}
+

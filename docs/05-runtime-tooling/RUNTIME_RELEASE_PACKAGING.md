@@ -1,5 +1,21 @@
 # Runtime 发布与安装总项目
 
+## 唯一全量打包入口
+
+以后只使用下列脚本生成安装包：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtime-setup.ps1 -ProductVersion 1.0.19
+```
+
+脚本固定执行完整流程：Debug 全解决方案构建、Release 全解决方案构建、清空并重建完整 staging、发布目录自检、WiX 强制 Rebuild、输出 MSI 大小和 SHA-256。不得再把普通增量 `dotnet build` 生成的 MSI 当作发布包。
+
+每次发布必须提供新的 `ProductVersion`。所有 DLL、CLI 配置、文档、技能、样例和脚本均从当前源码重新收集，不复用旧 staging 或旧 MSI。
+
+`Iwesun.Runtime.WebView2` 是全量 Runtime 发布的固定组成部分。每次执行统一打包入口时必须从当前源码重新构建 WebView2 DLL，同步复制 WebView2 控制手册、能力状态和 JSON 管道/CLI 规划文档，并验证 WebView2 DLL 的 `FileVersion` 与本次 Diagnostics DLL 完全一致。即使某次没有修改 WebView2 源码，也不得复用上一次 staging 中的旧 DLL；发布结果必须让用户能够从安装目录判断本次 WebView2 能力状态。
+
+打包程序把同一版本同步注入所有 Runtime DLL：`AssemblyVersion/FileVersion = major.minor.patch.0`，`InformationalVersion = major.minor.patch`。禁止继续发布文件版本固定为 `1.0.0.0` 的 DLL。
+
 本文定义 Runtime 的统一发布工程、发布清单、目录结构，以及 Windows 可卸载安装工程。
 
 ## 1. 总项目
@@ -37,6 +53,7 @@ dotnet build setup\Iwesun.Runtime.Setup\Iwesun.Runtime.Setup.wixproj -c Release
 - `Iwesun.Runtime.Diagnostics.dll`
 - `Iwesun.Runtime.Data.dll`
 - `Iwesun.Runtime.WebView2.dll`
+- `WEBVIEW2_RELEASE_STATUS.md`、`WEB_RUNTIME_CONTROL.md`、`WEBVIEW2_RUNTIME_CAPABILITIES.md` 和 `WEBVIEW2_JSON_PIPE_CLI_PLAN.md`，用于区分本次发布状态、控制接口、已实现能力和后续边界。
 
 ### 2.2 CLI 可执行程序
 
@@ -46,7 +63,9 @@ dotnet build setup\Iwesun.Runtime.Setup\Iwesun.Runtime.Setup.wixproj -c Release
 
 ### 2.3 配置 JSON
 
-- `Iwesun.Runtime.Cli.commands.v2.json`
+- `RuntimeCliSystemConfig.json`
+- `RuntimeCliSystemMetadata.json`
+- `RuntimeCliUserConfig.example.json`
 
 ### 2.4 使用说明书
 
@@ -59,7 +78,9 @@ dotnet build setup\Iwesun.Runtime.Setup\Iwesun.Runtime.Setup.wixproj -c Release
 
 来自 `Iwesun.Runtime.SampleHost/templates`：
 
-- `RuntimeHost.Startup.Template.cs.txt`
+- `RuntimeHost.Startup.Minimal.Template.cs.txt`
+- `RuntimeHost.DiagnosticsExamples.Template.cs.txt`
+- `RuntimeHost.ManagedWorker.Template.cs.txt`
 - `RuntimeHost.Shutdown.Template.cs.txt`
 - `RuntimeIntegration.Interface.Template.json`
 - `Iwesun.Runtime.Cli.commands.custom.sample.json`
@@ -76,7 +97,9 @@ artifacts/release/Iwesun.Runtime/
 │  ├─ Iwesun.Runtime.Data/
 │  └─ Iwesun.Runtime.WebView2/
 ├─ config/
-│  └─ Iwesun.Runtime.Cli.commands.v2.json
+│  ├─ RuntimeCliSystemConfig.json
+│  ├─ RuntimeCliSystemMetadata.json
+│  └─ RuntimeCliUserConfig.example.json
 ├─ docs/
 │  ├─ IWESUN_RUNTIME_CLI.md
 │  ├─ RUNTIME_INTEGRATION_GUIDE.md

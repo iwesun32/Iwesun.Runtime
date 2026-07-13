@@ -8,7 +8,8 @@ namespace Iwesun.Runtime.Diagnostics;
 
 public sealed record DiagnosticSectionSnapshot(
 	string Section,
-	bool Enabled,
+	bool ConfiguredEnabled,
+	bool EffectiveEnabled,
 	long Seen,
 	long Published,
 	long Suppressed);
@@ -25,6 +26,8 @@ public sealed record DiagnosticStatementSnapshot(
 	DateTimeOffset LastSeenAt);
 
 public sealed record DiagnosticSwitchboardSnapshot(
+	long SnapshotVersion,
+	DateTimeOffset GeneratedAt,
 	string Compiled,
 	string RuntimeDiagnosticsPipeName,
 	string? FilePath,
@@ -58,9 +61,11 @@ public static class DiagnosticSwitchboard
 	private static CancellationTokenSource? _pumpCts;
 	private static Task? _pumpTask;
 	private static List<DiagnosticOutputPointConfig> _outputPoints = [];
+	private static readonly object OutputPointsGate = new();
 	private static int _fifoDepth = 1024;
 	private static int _fifoCount;
 	private static long _fifoDropped;
+	private static long _snapshotVersion;
 	private static string? _filePath;
 	private static FileWriteMode _fileWriteMode = FileWriteMode.Append;
 	private static DiagnosticFileFormat _fileFormat = DiagnosticFileFormat.CompactJson;
@@ -89,6 +94,9 @@ public static class DiagnosticSwitchboard
 	public static bool PipeOutputEnabled { get; private set; }
 	public static bool FileOutputEnabled { get; private set; }
 	public static string? ConfigPath => _configStore?.ConfigPath;
+	public static string RuntimeDiagnosticsPipeName => _runtimeDiagnosticsPipeName;
+	public static long SnapshotVersion => Interlocked.Read(ref _snapshotVersion);
+	public static int FifoDepth => _fifoDepth;
 
 	public static void Attach(RuntimeDiagnosticHub hub)
 	{
@@ -121,7 +129,9 @@ public static class DiagnosticSwitchboard
 
 	public static void SetGlobal(bool enabled, bool persist = false)
 	{
+		var changed = GlobalEnabled != enabled;
 		GlobalEnabled = enabled;
+		if (changed) Interlocked.Increment(ref _snapshotVersion);
 		UpdateInputEnabled();
 		PublishControlEvent("runtime.diagnostics", enabled ? "enabled" : "disabled", new { global = enabled });
 		if (persist)
@@ -131,7 +141,9 @@ public static class DiagnosticSwitchboard
 	public static void SetSection(string section, bool enabled, bool persist = false)
 	{
 		var state = Sections.GetOrAdd(NormalizeSection(section), static key => new DiagnosticSectionState(key));
+		var changed = state.Enabled != enabled;
 		state.Enabled = enabled;
+		if (changed) Interlocked.Increment(ref _snapshotVersion);
 		PublishControlEvent(state.Section, enabled ? "section-enabled" : "section-disabled", new { state.Section, enabled });
 		if (persist)
 			SaveConfig();
@@ -140,6 +152,8 @@ public static class DiagnosticSwitchboard
 	public static DiagnosticSwitchboardSnapshot Snapshot()
 	{
 		return new DiagnosticSwitchboardSnapshot(
+			SnapshotVersion,
+			DateTimeOffset.UtcNow,
 #if DEBUG
 			"DEBUG",
 #else
@@ -165,6 +179,7 @@ public static class DiagnosticSwitchboard
 				.Select(x => new DiagnosticSectionSnapshot(
 					x.Section,
 					x.Enabled,
+					GlobalEnabled && x.Enabled,
 					Volatile.Read(ref x.Seen),
 					Volatile.Read(ref x.Published),
 					Volatile.Read(ref x.Suppressed)))
@@ -183,7 +198,7 @@ public static class DiagnosticSwitchboard
 					Volatile.Read(ref x.Suppressed),
 					x.LastSeenAt))
 				.ToArray(),
-			_outputPoints.ToArray());
+			SnapshotOutputPoints());
 	}
 
 	public static bool IsProxyModuleAllowed(string module)
@@ -193,11 +208,17 @@ public static class DiagnosticSwitchboard
 		if (string.IsNullOrWhiteSpace(module))
 			return false;
 
-		var normalized = module.Trim();
+		var normalized = NormalizeProxyModule(module);
 		return _proxyAllowedModules.Any(allowed =>
-			normalized.Equals(allowed, StringComparison.OrdinalIgnoreCase)
-			|| normalized.StartsWith($"{allowed}.", StringComparison.OrdinalIgnoreCase));
+			normalized.Equals(NormalizeProxyModule(allowed), StringComparison.OrdinalIgnoreCase)
+			|| module.Trim().StartsWith($"{allowed}.", StringComparison.OrdinalIgnoreCase));
 	}
+
+	public static bool GetSectionEnabled(string section) =>
+		Sections.TryGetValue(NormalizeSection(section), out var state) && state.Enabled;
+
+	private static string NormalizeProxyModule(string value) =>
+		new(value.Trim().Where(character => character is not ('.' or '-' or '_' or ' ')).ToArray());
 
 	public static void ReportConsole(string message)
 	{
@@ -259,6 +280,7 @@ public static class DiagnosticSwitchboard
 
 	public static void SetPipeOutput(bool enabled, bool persist = false)
 	{
+		if (PipeOutputEnabled != enabled) Interlocked.Increment(ref _snapshotVersion);
 		PipeOutputEnabled = enabled;
 		UpdateInputEnabled();
 		PublishControlEvent("runtime.diagnostics", enabled ? "pipe-output-enabled" : "pipe-output-disabled", new { enabled });
@@ -268,6 +290,7 @@ public static class DiagnosticSwitchboard
 
 	public static void SetFileOutput(bool enabled, bool persist = false)
 	{
+		if (FileOutputEnabled != enabled) Interlocked.Increment(ref _snapshotVersion);
 		FileOutputEnabled = enabled;
 		UpdateInputEnabled();
 		PublishControlEvent("runtime.diagnostics", enabled ? "file-output-enabled" : "file-output-disabled", new { enabled });
@@ -284,7 +307,9 @@ public static class DiagnosticSwitchboard
 
 	public static void SetFifoDepth(int depth, bool persist = false)
 	{
-		_fifoDepth = Math.Max(1024, depth);
+		var effective = Math.Max(1024, depth);
+		if (_fifoDepth != effective) Interlocked.Increment(ref _snapshotVersion);
+		_fifoDepth = effective;
 		if (persist)
 			SaveConfig();
 	}
@@ -299,25 +324,31 @@ public static class DiagnosticSwitchboard
 
 	public static void SetInput(bool enabled, bool persist = false)
 	{
-		PipeOutputEnabled = enabled;
-		UpdateInputEnabled();
+		if (InputEnabled != enabled) Interlocked.Increment(ref _snapshotVersion);
+		InputEnabled = enabled;
+		if (enabled) EnsurePump();
 		if (persist)
 			SaveConfig();
 	}
 
-	public static void SetOutputPoint(string outputPointId, bool enabled, bool persist = false)
+	public static bool SetOutputPoint(string outputPointId, bool enabled, bool persist = false)
 	{
 		if (string.IsNullOrWhiteSpace(outputPointId))
-			return;
+			return false;
 
-		var point = _outputPoints.FirstOrDefault(x => x.Id.Equals(outputPointId, StringComparison.OrdinalIgnoreCase));
-		if (point == null)
-			return;
-
-		point.Enabled = enabled;
+		DiagnosticOutputPointConfig? point;
+		lock (OutputPointsGate)
+		{
+			point = _outputPoints.FirstOrDefault(x => x.Id.Equals(outputPointId, StringComparison.OrdinalIgnoreCase));
+			if (point == null)
+				return false;
+			if (point.Enabled != enabled) Interlocked.Increment(ref _snapshotVersion);
+			point.Enabled = enabled;
+		}
 		PublishControlEvent(point.Section, enabled ? "output-point-enabled" : "output-point-disabled", new { outputPointId = point.Id, enabled });
 		if (persist)
 			SaveConfig();
+		return true;
 	}
 
 	public static IReadOnlyList<DiagnosticOutputPointConfig> QueryOutputPoints(
@@ -328,7 +359,7 @@ public static class DiagnosticSwitchboard
 		string? eventKind = null,
 		string? text = null)
 	{
-		return _outputPoints
+		return SnapshotOutputPoints()
 			.Where(point => IsNullOrEquals(id, point.Id))
 			.Where(point => IsNullOrEquals(section, point.Section))
 			.Where(point => IsNullOrEquals(category, point.Category))
@@ -383,6 +414,7 @@ public static class DiagnosticSwitchboard
 		var statementState = Statements.GetOrAdd(id, _ => new DiagnosticStatementState(id, outputPointId, section, kind, Trim(message, 300)));
 		Interlocked.Increment(ref statementState.Seen);
 		statementState.LastSeenAt = DateTimeOffset.UtcNow;
+		EnsureDynamicOutputPoint(outputPointId, section, kind);
 
 		if (!GlobalEnabled || !sectionState.Enabled)
 		{
@@ -498,7 +530,8 @@ public static class DiagnosticSwitchboard
 		if (_proxyAllowedModules.Count == 0)
 			_proxyAllowedModules = ["web.runtime"];
 		_fifoDepth = Math.Max(1024, config.FifoDepth);
-		_outputPoints = config.OutputPoints ?? [];
+		lock (OutputPointsGate)
+			_outputPoints = config.OutputPoints ?? [];
 		foreach (var item in config.Sections)
 		{
 			var state = Sections.GetOrAdd(NormalizeSection(item.Key), static key => new DiagnosticSectionState(key));
@@ -528,7 +561,7 @@ public static class DiagnosticSwitchboard
 			Sections = Sections.Values
 				.OrderBy(x => x.Section, StringComparer.OrdinalIgnoreCase)
 				.ToDictionary(x => x.Section, x => x.Enabled, StringComparer.OrdinalIgnoreCase),
-			OutputPoints = _outputPoints
+			OutputPoints = SnapshotOutputPoints().ToList()
 		};
 	}
 
@@ -857,6 +890,8 @@ public static class DiagnosticSwitchboard
 
 	private static bool IsOutputPointEnabled(string? outputPointId, string section, string kind)
 	{
+		lock (OutputPointsGate)
+		{
 		if (!string.IsNullOrWhiteSpace(outputPointId))
 		{
 			var exact = _outputPoints.FirstOrDefault(x => x.Id.Equals(outputPointId, StringComparison.OrdinalIgnoreCase));
@@ -875,6 +910,38 @@ public static class DiagnosticSwitchboard
 		}
 
 		return !matched || enabled;
+		}
+	}
+
+	private static IReadOnlyList<DiagnosticOutputPointConfig> SnapshotOutputPoints()
+	{
+		lock (OutputPointsGate)
+			return _outputPoints.ToArray();
+	}
+
+	private static void EnsureDynamicOutputPoint(string? outputPointId, string section, string kind)
+	{
+		if (string.IsNullOrWhiteSpace(outputPointId))
+			return;
+		lock (OutputPointsGate)
+		{
+			if (_outputPoints.Any(point => point.Id.Equals(outputPointId, StringComparison.OrdinalIgnoreCase)))
+				return;
+			_outputPoints.Add(new DiagnosticOutputPointConfig
+			{
+				Id = outputPointId,
+				Category = "dynamic",
+				Purpose = "Runtime-discovered diagnostic output point.",
+				SourceLocation = "runtime",
+				RuntimePath = "RuntimeOutput -> DiagnosticSwitchboard",
+				DataKind = "structured-json",
+				RelatedData = "runtime payload",
+				EventKind = kind,
+				Trigger = "First runtime observation",
+				Section = section,
+				Enabled = false
+			});
+		}
 	}
 
 	private static bool MatchesOutputPoint(DiagnosticOutputPointConfig point, string section, string kind) =>

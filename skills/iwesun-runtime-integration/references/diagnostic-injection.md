@@ -79,3 +79,5 @@ RuntimeInjector.Data(hub, "product.worker", state, new RuntimeDiagnosticObjectAc
 - Release does not compile or assemble breakpoint behavior.
 
 CLI disconnect does not resume a breakpoint. Resume is explicit. Restore enabled points, sections, hooks, pipe/file switches, and global state after focused debugging.
+
+Dynamic watch/output points enter the switchboard catalog on first observation and remain disabled by default. Use `switchboard.point.list`, `switchboard.point.enable`, and `switchboard.point.disable`; an unknown ID must return `OUTPUT_POINT_NOT_FOUND`.

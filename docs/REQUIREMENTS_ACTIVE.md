@@ -16,6 +16,13 @@
 - Runtime 统一的是管道治理、代理路由和 `RuntimeDiagnosticFrame` JSON 命令格式，不是把所有流量合并到一个物理管道。
 - 业务宿主持有实际服务端实例并执行具体业务命令；Runtime 保存 `Name / RequestedPipeName / ResolvedPipeName` 租约和路由关系。
 - 完成 CLI v3 手册重写后统一生成 1.0.4 MSI，禁止继续分发包含旧 v2 手册的 1.0.3 构建。
+- WebView2 专属技术文档统一归档到 `Iwesun.Runtime.WebView2/docs`；Runtime 总体用户手册、CLI 手册和 Quick Start 只保留跨模块入口与链接，不在根 `docs` 重复维护 WebView2 细节。
+- AIGateway 不保留公共 WebView2 DTO、虚拟输入、管道协议或 Program Registry 的本地副本；业务项目只保留 WebView2 会话适配、站点选择器、登录状态机和业务动作实现。
+- 完整迁移后进入业务调试前，必须审计公共 WebView2 的并发登记、取消/超时竞争、Dispose/停止顺序、Frame 关联标识、管道重连、输入坐标与会话生命周期，并以构建和相关测试确认。
+- DeepSeek Web 真实调试确认 CLI v3 的位置参数绑定不得在 LINQ 谓词中递增位置游标；`web.programs.execute` 等多位置参数命令必须稳定绑定后通过 RuntimeDiagnostics/Program 链路执行。
+- DeepSeek 完成等待必须只接受能够解析出非空 DeepSeek SSE 内容的当前完成消息，不能用“任意非调试 WebMessage”提前结束，否则上游已返回内容时网关仍可能输出空字符串。
+- WebView2 安全审计确认需要补齐 Ambient 可重启状态机、幂等释放和任务故障状态；Program 多实例初始化失败反向回滚、逐项可靠停止、停止期间拒绝新执行；以及 CommandTarget 生命周期命令统一经过 Host 锁和状态机。
+- 不恢复旧 `IWebRuntimeControl` 或旧线协议兼容层；该建议与已经批准的一次性破坏性迁移冲突，唯一兼容面仍仅限 CLI v3 用户 JSON 别名、扩展和 `composites`。
 
 ## 2026-07-12 发布版 Debug/Release 与 CLI 路由修订
 
@@ -23,9 +30,13 @@
 - `lib/Iwesun.Runtime.Diagnostics` 根目录继续保留 Release 兼容副本，并新增明确的 `Debug`、`Release` 子目录。
 - CLI v3 catalog 的 host、lifecycle、process、thread、task 路由必须逐项匹配实际注册 target/action，不得使用设计占位 target。
 - Release 断点命令返回不可用是编译策略，不得误报为运行时配置问题。
+- 用户手册必须提供按 `$(Configuration)` 条件引用 Diagnostics Debug/Release DLL 的完整 `.csproj` 示例，并明确安装器不替换宿主私有输出副本。
 - Management、WebRuntime 及其客户端只允许使用 4 字节小端长度前缀的 `RuntimeDiagnosticFrame`；不得保留 `ManagementPipeMessage`、私有 `PipeMessage` 或无长度前缀 JSON 的线协议兼容分支。
 - 旧 `Iwesun.Runtime.WebView2.WebRuntimePipeClient` 必须由统一帧客户端完全取代，AIGateway Service、Desktop、Tester 同步一次性迁移。
 - 唯一允许的兼容面位于 CLI v3 用户 JSON 配置：用户可定义别名、自定义命令和结构化组合命令；线协议和公共客户端不提供旧格式兼容。
+- `Iwesun.Runtime.WebView2` 必须提供与业务无关的脚本会话、输入会话、虚拟鼠标和虚拟键盘公共能力；业务宿主只保留站点选择器、业务流程和具体 WebView2 会话适配，不得复制一套私有虚拟输入框架。
+- WebRuntime 控制面不得接受或回退执行调用方提供的 JavaScript；所有业务扩展必须注册为编译期 C# 程序，由 Runtime 负责程序登记、统一 JSON 命令转接、超时、执行状态监控和结果返回。页面自身脚本不属于该控制面限制。
+- WebRuntime 不得维护私有 `schema/module/success/error` Envelope；请求与响应必须完整纳入 `RuntimeDiagnosticFrame` 的 Header/Command/Status/Data/Meta，公共请求模型不得包含 `Script`，客户端必须保留 RequestId/CorrelationId、错误 Code 和 Retryable。
 
 ## 当前任务（WebView2 JSON 协议与 CLI 重规划）
 
@@ -71,7 +82,7 @@
 5. 使用真实 CLI 动态修改数值数据断点规则，验证命中、未命中、规则切换与恢复链路。
 6. 断点初始化与动态控制必须分别验证：程序集反射 `Enabled=true` 无需 CLI 即生效，`Enabled=false` 默认不生效，运行期可通过 CLI 启用、禁止与恢复。
 7. 扩展真实 SampleHost：保留三条定时循环，Worker 周期生成随机数并注入输出、监视、对象、普通断点、数值断点、事件、线程/任务与状态能力。
-8. FunctionalTests 启动真实 SampleHost 后，必须通过编译后的 CLI 完整验证宿主、开关、RuntimeRoot、登记表、反射、断点、数据断点、Hook、执行状态、文件记录和 `safe-shutdown`。
+8. FunctionalTests 启动真实 SampleHost 后，必须通过编译后的 CLI v3 完整验证宿主、开关、登记表、反射、断点、数据断点、执行状态和 `lifecycle.shutdown`。
 
 ## 需求来源（用户对话整理）
 
@@ -248,3 +259,251 @@
 - 删除被根级 `Iwesun.Runtime.Setup` 取代的旧 `setup/Iwesun.Runtime.Setup`。
 - 更新 `.gitignore`、`.copilotignore` 并新增 `.codexignore`，统一屏蔽生成物、依赖缓存、本机配置和归档。
 - 活动文档、CLI v3、Setup 源码与清理规则完成验证后提交并推送仓库。
+
+# 2026-07-12 安装版接入速查手册
+
+- 技术手册保留完整设计和接口解释；另设一份很短的速查手册，作为安装后的首要入口。
+- 速查手册必须按可执行顺序说明：备份旧 `Program.cs`、按 Debug/Release 引用对应 DLL、全工程分步字符串替换、填写主管道名、填写主记录文件路径/格式/写入模式、编译验证。
+- 进程、线程、轻量任务及其声明类型和返回类型必须给出明确的“查找 -> 替换”样例。
+- 必须明确不能全局替换的类型和场景，尤其是 `Task<T>`、普通异步 `Task`、UI/STA/COM/message-pump 线程。
+- 发布包必须携带速查手册、启动模板、替换清单和可编译的安装版 SampleHost 项目。
+- 安装版 SampleHost 必须分别引用 Debug/Release Diagnostics DLL，并在两种配置下完成编译和真实 CLI 验证。
+- 速查手册必须完整纳入当前 Runtime 新架构，除宿主启动和受管执行外，还必须覆盖：统一 `RuntimeDiagnosticFrame`、4 字节小端帧、RuntimeDiagnostics 与业务专用管道边界、`RuntimePipeRegistry` 租约与名称解析、CLI v3 用户配置和 `composites`、WebRuntime 预编译 C# Program 截获、诊断/断点安全规则、Stop/Wakeup 与实际完成后释放、分层验证和迁移完成清单。
+- `WebRuntimeControlRequest` 只能描述 Command typed Args，不得重新成为私有线协议 Envelope；速查手册不得出现旧 `schema/module/success/error` WebRuntime DTO 或调用方 JavaScript 执行入口。
+- 源码 Quick Start 与 `C:\Program Files\Iwesun\Runtime\docs` 发布副本必须保持字节级一致。
+
+# 2026-07-12 CLI 用户增量配置
+
+- 标准 v3 catalog 保持规范化且不预置用户别名或组合指令。
+- 新增 `--user-config=PATH`，在标准 catalog 之上加载用户增量 JSON，而不是要求用户复制整份标准配置。
+- `extensions.add/extend/replace/disable` 必须按确定顺序合并；`extend` 当前用于追加别名，不能静默覆盖标准路由。
+- 用户配置中的 endpoint 可新增或显式覆盖，以便新增命令引用用户管道；合并后统一执行完整 schema、命令、别名和 endpoint 校验。
+- 未知的 extend/replace/disable 目标、重复命令、重复别名和缺失文件必须返回明确 CLI 错误。
+- 结构化 workflow 执行不混入本轮；配置字段保留，未实现时不得宣称可执行。
+
+# 2026-07-12 CLI 复合命令
+
+- 复合命令不是 workflow；只把若干现有标准命令展开为一个协议 batch，一次发送并统一返回。
+- 配置根字段统一为 `composites`，删除容易造成错误预期的 `workflows`。
+- 每个复合步骤引用已有命令名并携带固定参数；不提供条件、循环、结果绑定或脚本文本。
+- 一个复合命令内的所有步骤必须使用同一个 endpoint，步骤数限制为 1~128。
+- 标准 catalog 提供一个常用的大命令，用户增量配置也可以添加自己的复合命令和别名。
+
+# 2026-07-12 Runtime 配置无文件化整改
+
+- 取消 `diagnostic-switchboard.json` 的运行时读取、合并、回写和兼容迁移，不再让路径相关配置文件参与程序身份或诊断状态决议。
+- 源码/程序集声明提供可靠固定值；启动命令行参数是唯一启动期覆盖入口。
+- CLI 控制命令只修改当前进程内存状态，进程退出后自然恢复源码默认值。
+- 主管道名由源码固定，`--diag-pipe` 仅用于测试、调试和临时实例覆盖。
+- 主记录文件路径由源码固定，`--diag-file` 是唯一临时覆盖入口。
+- 删除或明确拒绝所有 `persist` 语义，禁止 CLI 把动态状态写入配置文件。
+- 快照继续只读显示最终管道名、文件路径和开关状态，供 CLI 审计实际生效值。
+- 整改方案与 WebView2 安全审计答复报告同步归档，实施和测试完成前不得重新发布。
+
+# 2026-07-12 整改所有权与变更冻结
+
+- Runtime、CLI、Diagnostics、Data、WebView2 公共库及发布工程的最终整改只在 `D:\Git Space\Runtime` 实施。
+- WebView2 使用方和其他宿主仓库以后只提交问题、复现步骤、日志、预期行为和审查意见，不再直接修改 Runtime 仓库源码。
+- 整改期间冻结外部并行改码；任何建议先进入审计答复和整改清单，由 Runtime 侧统一评估、实现、测试和发布。
+- 四宿主中已加入的强制写 JSON 仅作为临时联调措施；Runtime 无配置文件化完成后，由宿主侧按 Runtime 发布接口做最小删除/替换，不复制 Runtime 内部逻辑。
+- 全部整改必须按阶段提交证据，未通过阶段验收不得打包发布。
+
+# 2026-07-12 唯一全量打包入口
+
+- 新增 `scripts/release/build-runtime-setup.ps1` 作为唯一正式打包程序。
+- 每次固定执行 Debug/Release 全构建、完整 staging、自检和 MSI 强制 Rebuild。
+- 禁止把 WiX 增量复用产生的旧 MSI 当作新发布包。
+- `ProductVersion` 由打包程序统一传入 Setup，不再手工同步多个版本位置。
+- 每次全量收集 DLL、CLI JSON、文档、技能、样例和脚本；发布目录不得包含样例 bin/obj 或 diagnostic-switchboard.json。
+- Runtime 宿主最低 Microsoft.Extensions 依赖版本为 10.0.9，用户手册必须明确提示旧 preview 的运行时崩溃风险。
+- DLL AssemblyVersion/FileVersion 必须与 MSI ProductVersion 可比较地同步，不得继续固定为 1.0.0.0。
+- 发布文档中的所有相对链接必须在安装目录结构中有效，WebRuntime 控制文档必须实际进入 docs 目录。
+
+# 2026-07-12 零业务钩子安全退出
+
+- `RProcess`、`RThread`、`RTask` 的安全退出必须由 Runtime 托管层自行驱动，业务代码不需要挂载退出事件才能完成标准退出。
+- 收到全局 Stop 或单元 FIFO Stop 后，Runtime 先发布退出事件；没有订阅者时事件发布立即完成，并继续执行托管清理流程。
+- Runtime 必须监视退出期限，并且只在底层进程、线程或任务真实完成后转换停止状态、清理资源并反登记。
+- 支持取消令牌的 `RTask` 由 Runtime 发出取消；不响应取消且仍在运行的任务不得被伪反登记，主控应在期限到达后返回超时退出码 124。
+- 零业务退出钩子的标准路径必须由 SampleHost 或聚焦测试覆盖，正常退出应返回 0，登记表和阻塞退出的 DLIST 应排空。
+
+# 2026-07-12 扁平托管正常出口整改
+
+- Runtime 创建的每个进程、线程和小任务都必须拥有自己的守护处理，并采用相同的 Stop、退出事件、正常出口、完成确认和自动反登记流程。
+- 所有进程、线程和任务扁平登记在主控注册表；Stop 的枚举和广播统一由主控完成，单元之间不得建立父通知子或逐级转发命令链。
+- 进程、线程和任务不得拥有互相独立的退出倒计时；唯一截止时间由总控发布并随 Stop 指令传递。
+- 单元退出不得调用 `Process.Kill`、`Environment.Exit`、伪造完成或提前反登记；Runtime 只负责推动其受控执行入口从正常出口返回。
+- 三种单元提供统一的可选业务清理事件和清理完成标志；事件委托全部返回后标志成立。
+- 退出事件无人订阅时，清理完成标志必须在 Stop 到达时立即成立，守护程序不得增加空等待。
+- 退出事件存在订阅者时，守护程序同时监视清理完成标志和主控下发的唯一截止时间；委托完成则立即继续，截止时间到达仍未完成也必须继续退出。
+- 重复 Stop、全局状态轮询和 FIFO Stop 同时到达必须幂等，同一单元只发布一次退出周期、只完成一次清理、只反登记一次。
+- 只有总控在全局截止时间到达且登记仍未排空时返回 124，并负责处理不属于 Runtime 创建或无法沿托管出口退出的外部对象。
+- 高频退出必须覆盖零钩子、有钩子、清理完成标志、清理超时、重复 Stop、扁平广播及最终登记排空测试。
+
+# 2026-07-12 退出整改发布
+
+- 退出清理公共 API、共享状态、轻量信号量、退出码和自动反登记规则必须同步到用户手册、速查手册及仓库/本机技能。
+- Debug/Release 全构建和 thread/task/process 聚焦回归通过后，使用唯一全量打包程序发布 1.0.11。
+
+# 2026-07-12 Windows Service 平台宿主
+
+- Windows Service 接口由 Runtime 平台层实现，业务宿主不得重复拼接 SCM 生命周期、协调退出、退出码和幂等控制。
+- 保留现有 `Start(...)` 作为普通控制台、桌面和 Generic Host 入口，行为必须完全不变。
+- 新增显式、可选的 `StartWindowsService(...)`；只有调用该入口时才引入 Windows Service Lifetime 和 SCM Stop/Shutdown 处理。
+- 服务入口至少接收服务名、Runtime 目录、诊断管道/文件声明和唯一总退出期限，并复用现有 `Start/Activate` 与 `RuntimeShutdownCoordinator`。
+- SCM Stop、系统关机和 CLI shutdown 必须汇聚到同一个幂等协调退出任务；Root 扁平广播、CleanupRequested、共享状态、退出信号和反登记不得形成第二套实现。
+- Runtime 必须等待协调退出结果并设置 0/124；不得调用 Process.Kill 或为每个单元创建私有退出倒计时。
+- Windows Service 集成必须保留业务标准 `IHostedService`/`BackgroundService` 接口，不要求继承 Runtime 私有服务基类。
+- 必须测试普通 `Start()` 不注册 Windows Service Lifetime，以及服务模式 Stop 能触发 Runtime 协调退出。
+- Windows Service 公共入口作为 1.0.12 发布；安装目录必须携带 10.0.9 WindowsServices 运行依赖、更新后的 SampleHost、文档和技能。
+- 新增独立 `IWESUN_RUNTIME_WINDOWS_SERVICE.md`，明确 Runtime 主控负责服务系统接口，业务只实现标准 HostedService、可选清理与状态汇报；文档必须进入索引和全量发布包。
+- Windows Service 身份完全由业务提供：支持 Program.cs 直接传 `RuntimeWindowsServiceOptions`，也支持业务 DI 模块通过 `ConfigureRuntimeWindowsService` API 配置、固定主程序调用 `StartConfiguredWindowsService`；Runtime 不得预设 ServiceName。
+- 最终携带业务 API 配置入口和独立 Server 手册的全量发布版本为 1.0.13，禁止覆盖已生成的 1.0.12。
+
+# 2026-07-12 CLI 反射调用补口
+
+- CLI v3 新增 `reflection.invoke <target> <member>`，用于调用宿主已在 `InvokableMembers` 白名单登记的无参数方法。
+- `reflection.get` 继续只读，不得通过读取命令隐式调用方法；invoke 不得绕过白名单或支持任意带参数调用。
+- `GetPeerStatuses`、`GetAgentSnapshots`、`GetSnapshot` 等业务方法是否可调用完全取决于宿主显式登记，Runtime CLI 只提供通用协议入口。
+- `domains/peerServers`、公共 DNS 与服务商密钥解耦、`/api/darp/wake` 属于业务宿主整改，不进入 Runtime 公共实现。
+- 携带 Server 业务 API 配置、独立 Server 手册和 CLI reflection.invoke 的最终全量发布版本为 1.0.14。
+- `reflection.invoke` 与断点采用相同编译边界：仅 DEBUG 编译；Release 必须删除 invoke 路由和执行代码，保留 `reflection.get` 只读能力。
+- 宿主的 `InvokableMembers` 调试登记建议放入 `#if DEBUG`；CLI catalog 可保留命令定义，以便 Debug/Release 使用同一客户端并由 Release 宿主明确拒绝。
+- 独立 Windows Service 手册必须同步记录 Debug-only reflection.invoke、Release reflection.get 和业务方法白名单示例。
+- 文档、JSON、CLI、技能和 Server 专项手册全部同步后的最终全量发布版本为 1.0.15。
+- Server 专项手册必须同时提供完整 Program.cs 直配例子、固定 Program.cs + 业务 DI API 配置例子，以及 HostedService/RTask/CleanupRequested/状态汇报组合例子。
+- 包含三套完整 Server 示例的最终全量发布版本为 1.0.16。
+
+# 2026-07-12 CLI Server 标准框架审计意见
+
+- 对当前 CLI v3、`RuntimeHostTemplate`、Windows Service 生命周期、发布模板和安装版 catalog 形成正式书面审计意见。
+- 意见书必须区分已验证事实、必须整改、建议增强和验收标准，不把文档推断写成已验证功能。
+- 优先整改可复制模板的可编译性、真实执行对象与描述性登记的边界、Stop/Wakeup 完整示例、CLI 帮助摘要和重复 Start/Activate 语义。
+- 正式意见书放在仓库根目录 `CLI_Server标准框架审计意见书.md`，供后续 Runtime 公共模块整改和发布审查使用。
+
+# 2026-07-12 CLI Server 标准框架整改基线
+
+> 来源：仓库根目录 `CLI_Server标准框架审计意见书.md`。以下 P0、P1 为下一正式发布的阻断条件；P2 为兼容性增强，不得反向扩大为脚本工作流或任意反射执行。
+
+正式逐项答复、实施阶段、测试矩阵和责任边界见仓库根目录 `CLI_Server标准框架审计综合答复与整改方案.md`。
+
+## P0：发布前必须完成
+
+1. 发布两个职责分离的 Server 模板：
+   - `RuntimeHost.Startup.Minimal.Template.cs.txt` 必须能够复制到空白 .NET 10 Worker 项目，仅按文件顶部清单替换统一的 `__PLACEHOLDER__` 后，在 Debug、Release 下直接编译；业务注册区为空时也必须启动，不得依赖 `YourHostedWorker` 等预先创建的业务类型。
+   - `RuntimeHost.DiagnosticsExamples.Template.cs.txt` 只承载可选 Data、Thread、Task、Reflection 示例，不得让未定义业务变量进入最小启动模板。
+2. 文档、模板、快照和 CLI 必须明确区分：
+   - `RuntimeInjector.Thread/Task` 是描述性或外部对象登记，不创建、不托管执行对象。
+   - `RuntimeInjector.CreateThread/CreateTask`、`RThread/RTask` 才是实际受管执行对象。
+   - `BackgroundService.ExecuteAsync` 属于 Generic Host 执行链，不得仅因增加描述记录就宣称已转换为 `RTask`。
+3. 至少提供一个真实 `RTask` Server 示例，并验证 Stop、正常完成、异常和实际完成后反登记；仍在运行的对象不得因 Dispose 或超时被伪报停止。
+4. 标准 Worker 示例必须同时展示全局 Stop 状态轮询、FIFO `Stop`、FIFO `Wakeup`、可取消且可唤醒等待、`CleanupRequested`、完成状态和实际反登记。
+5. `Wakeup` 只打断当前等待并继续工作，不等同于 Stop；CLI 断开不得改变 Stop、Wakeup 或断点状态。
+
+## P1：正式发布阻断项
+
+1. CLI 标准 catalog 的每条内置命令必须具有非空 `summary`，并声明参数名称、类型、必填性、状态修改/危险等级以及 Debug/Release 可用性。
+   - 历史 CLI 使用严格未知字段拒绝，因此路由与元数据分离；新名称统一为 `RuntimeCliSystemConfig.json` 与 `RuntimeCliSystemMetadata.json`。
+2. `iwrt <command> --help` 必须显示 endpoint、参数、简短示例和能力限制；`lifecycle.shutdown` 必须说明破坏性/确认参数，`reflection.invoke` 必须说明 Debug-only、无参数和白名单限制。
+3. Runtime 采用“单进程单 Runtime Host”作为当前标准语义：
+   - 重复 `Start`、同一 provider 重复 `Activate` 的行为必须明确、幂等或结构化拒绝，并有测试。
+   - 同一 `IServiceCollection`、相同参数重复 `Start` 必须幂等；参数冲突抛出专用 .NET `RuntimeHostConfigurationException`。DI 注册阶段没有 Frame 通道，CLI 结构化错误只适用于宿主启动后的命令阶段。
+   - 不同 provider 再次 `Activate` 必须 fail-fast，保留首次 Host 身份，不得静默覆盖进程静态 `RuntimeInjectionContext`。
+   - 在真正实现 Host/Scope 隔离前，不得宣称支持同进程多 Runtime Host。
+4. CLI 手册主调用格式统一为：
+   `iwrt [--pipe=NAME] [--config=PATH] [--user-config=PATH] [--timeout-ms=15000] <command> [arguments]`。
+5. 文档必须给出可发现且返回明确退出码/检查总数的官方验证入口，分别覆盖解决方案构建、FunctionalTests 场景运行、安装版验证脚本以及 SampleHost + CLI 端到端验证；不得把无测试摘要的过滤命令记为通过。
+6. 安装版 SampleHost 不得使用 Runtime 源码 `ProjectReference` 或仓库内手工 DLL；引用来源必须是 `C:\Program Files\Iwesun\Runtime`。允许 `Private=true` 复制到输出目录，但副本哈希必须与对应 Debug/Release 安装 DLL 一致。
+
+## P2：保持兼容的增强项
+
+- Catalog 可增加只读、状态修改、破坏性风险元数据；自动化跳过交互必须使用显式参数。
+- Composite 结果可增加总步骤、成功、失败、跳过、首个失败代码和总耗时摘要，但摘要必须位于完整 Frame 的稳定 `Data/Meta` 字段中；CLI 默认仍只输出一个 JSON，不额外打印非 JSON 文字。Composite 仍是同 endpoint 的单次 batch，不引入条件、循环、结果绑定或脚本文本。
+- `runtime.inspect` 固定为只读 Server 健康检查并纳入 catalog 回归，不得启用开关、恢复断点或发送 shutdown。
+- Release Host 拒绝 Debug-only `reflection.invoke` 时应返回明确 capability code，避免被误判为网络或配置故障。
+
+## 1.0.17 发布验收门槛
+
+- [x] 最小 Startup 模板按替换清单复制后，Debug/Release 均可编译。
+- [x] 最小模板业务注册区为空时可启动，无需预先创建 Worker/RTask/Reflection 类型。
+- [x] `host.info`、`lifecycle.status` 在模板宿主启动后可用。
+- [x] descriptive 与 managed execution 在模型、快照、CLI 输出和文档中可区分。
+- [x] 长等待 Worker 的 Wakeup 立即继续且不退出，Stop 正常退出。
+- [ ] SCM Stop、系统 Shutdown、CLI shutdown 共用同一幂等协调任务。
+- [x] RProcess/RThread/RTask 仅在真实完成后反登记。
+- [x] 重复 Start/Activate 与不同 provider 激活均有明确测试结果，无静默上下文覆盖。
+- [x] Start 参数冲突抛出 `RuntimeHostConfigurationException`，且启动前异常与启动后 CLI Frame 错误边界清楚。
+- [x] 全部内置 CLI 命令具有摘要，命令级帮助覆盖参数、风险、示例和构建能力。
+- [x] Catalog 新旧解析器双向兼容通过，或完成明确的 schema 升级与版本错误验证。
+- [x] `--user-config` 在 CLI 帮助、用户手册、速查手册和技能中一致。
+- [x] `runtime.inspect` 单连接 batch、逐步结果和只读边界通过回归。
+- [x] Composite 汇总保留完整 Frame 和单 JSON 输出边界。
+- [x] Debug/Release Diagnostics 变体和 Release capability 拒绝分别验证。
+- [x] 安装版 SampleHost 使用安装 DLL 完成真实 CLI 验证。
+- [x] SampleHost 无源码 ProjectReference/手工 DLL，输出副本哈希与安装目录对应 DLL 一致。
+- [x] 文档、catalog、JSON、模板、技能和 MSI 内容及版本一致。
+- [ ] P0、P1 全部通过后才允许生成并发布 1.0.17 全量安装包。
+
+# 2026-07-13 CLI 缺省用户配置与上下文 Shell
+
+- 系统路由配置统一命名为 `RuntimeCliSystemConfig.json`，系统帮助元数据统一命名为 `RuntimeCliSystemMetadata.json`，用户增量配置统一命名为 `RuntimeCliUserConfig.json`。
+- 未指定 `--user-config` 时，CLI 自动加载当前工作目录的 `RuntimeCliUserConfig.json`；显式 `--user-config` 优先且取代缺省用户文件。
+- 单次模式保持现有执行一次后退出的行为；新增 `iwrt shell` 和 `iwrt --interactive` 上下文模式。
+- Shell 的 `exit`、`quit` 和 EOF 只退出本地 CLI 进程，不发送 Runtime Frame，不停止被控制设备；宿主停止必须显式执行 `lifecycle.shutdown`。
+- Shell 上下文仅存在于当前 CLI 进程，包括当前 Runtime 虚拟路径、显式变量、命令级非敏感参数记忆和输入历史；退出后不持久化。
+- 显式变量使用 `set/unset/vars` 管理，通过 `$name` 或 `${name}` 引用；未定义变量不得发送管道请求。
+- 统一虚拟路径覆盖 host、lifecycle、registry、execution、switchboard、pipes、files 和 reflection；通过 `pwd/cd/ls/get/root` 探索，并最终映射为现有 catalog 规范命令。
+- destructive 命令参数、敏感名称参数和 JSON 对象/数组不得进入隐含记忆。
+- 用户 alias 和 composites 继续来自用户配置，不得覆盖 Shell 保留命令，也不得扩张为 workflow 或脚本引擎。
+- 单次远程命令继续保持单 JSON Frame；Shell 每个远程命令仍各自输出一个完整 Frame，本地提示和上下文命令不属于协议输出。
+- 详细设计和验收标准见 `docs/superpowers/specs/2026-07-13-cli-context-shell-design.md`。
+
+# 2026-07-13 DDNS Snap 四宿主联调意见
+
+- 根据 DDNS Snap 的 Service、Agent、Service UI、Agent UI 四宿主真实联调结果，形成一份 Runtime/CLI 改进意见书。
+- 意见书必须区分已验证事实、待确认推断、建议整改和验收标准，不直接把宿主现象写成 Runtime 根因。
+- 优先覆盖 Agent 诊断端点持续返回 `CLI_CANCELLED`、单宿主退出影响其他宿主控制面、停止期间状态查询能力、生命周期残留隔离、CLI 大响应以及 v2 技能与 v3 实现漂移。
+- Root、runtime.inspect、switchboard 等树状数据必须支持分层回送：当前层只返回本层字段、直属子节点目录、计数和继续读取标识，不得默认递归序列化整棵树；调用方显式指定路径、深度或分页后才展开下一层。
+- 本任务只提交问题、复现步骤和建议，不修改 Runtime/CLI 实现源码。
+- 正式意见书存放于 `docs/DDNS_Snap四宿主运行时联调改进意见书.md`。
+
+# 2026-07-13 CLI_CANCELLED 错误分析
+
+- 单独形成 `CLI_CANCELLED错误分析报告.md`，记录 DDNS Agent 管道名漂移导致的错误诊断、CLI 取消语义合并问题及完整证据链。
+- 报告必须明确区分已证实根因、CLI 次生缺陷、被推翻的假设和仍待使用正确管道验证的安全退出行为。
+- 报告需提供源码定位、时序、复现命令、修复建议、错误码设计、测试矩阵、文档/技能同步清单和验收标准，帮助 Runtime/CLI 组直接实施。
+- 本任务仅生成分析报告，不修改 Runtime/CLI 或 DDNS Snap 业务源码。
+
+# 2026-07-13 WebView2 同步发布要求
+
+- `Iwesun.Runtime.WebView2` 必须作为 Runtime 全量安装包的固定组成部分，每次统一发布均从当前源码重新构建，不得复用旧 staging 或本地副本。
+- WebView2 DLL 的 `AssemblyVersion/FileVersion/InformationalVersion` 必须由统一打包入口注入，并与同一安装包中的 Runtime DLL 发布版本一致。
+- 安装目录必须同时包含 WebView2 DLL、`WEB_RUNTIME_CONTROL.md`、`WEBVIEW2_RUNTIME_CAPABILITIES.md` 和 `WEBVIEW2_JSON_PIPE_CLI_PLAN.md`，使用户能够确认当前接口和能力状态。
+- 安装验证脚本必须校验 WebView2 DLL 存在、版本同步及三份正式文档完整；任一项失败则禁止生成正式 MSI。
+
+# 2026-07-13 CLI 多宿主止血实施
+
+- [x] 不存在的管道返回 `CLI_CONNECT_TIMEOUT`，错误包含 pipe、phase、timeoutMs、elapsedMs 和 retryable。
+- [x] 本地取消与连接/请求超时分离，只有本地取消使用退出码 130。
+- [x] Shell 支持 `target add/list/use/current/remove` 和 `@name command`，`exit/quit` 仍只退出 Shell。
+- [x] 用户配置支持 targets，Agent 示例使用 `DdnsSnap.Agent.Server.RuntimeDiagnostics`。
+- [x] 新增轻量 `host.summary`，标准 `runtime.inspect` 不再默认展开程序集类型。
+- [x] process/thread/task/reflection/pipe/file/output-point 等高频目录采用默认 100、最大 500 的分页结果。
+- [x] Switchboard 全局、Section、输入、管道、文件和 FIFO 修改返回轻量 Mutation，不再返回完整快照。
+- [x] Switchboard 查询区分 configured/effective 状态，并提供 SnapshotVersion/GeneratedAt。
+- [x] Host 快照提供 InstanceId、ProcessStartTimeUtc 和实际诊断管道。
+- [x] 四宿主意见书已撤回由旧 Agent 管道产生的控制面失效结论。
+- [x] 下一阶段有界查询、服务端预算、业务适配器和 WebView2 共同模型已写入独立设计。
+- [x] Debug/Release 构建及 CLI context、transport、SampleHost 完整场景通过。
+- [x] 止血实现阶段未提前生成 MSI；完成发布前审计、修复 4 个阻断问题并回归后，统一生成 1.0.19 全量 MSI。
+
+## 1.0.19 发布审计结果
+
+- [x] 修复 Switchboard set/output-point 仍返回完整快照的问题。
+- [x] 修复 SetInput 错写 PipeOutputEnabled 的状态语义。
+- [x] 多目标 Shell 对未明确目标的 destructive 命令返回 CLI_TARGET_REQUIRED。
+- [x] 目标别名进入 CLI 传输错误上下文。
+- [x] CLI context、transport、数值断点、跨进程断点和 SampleHost 完整场景通过。
+- [x] Debug/Release 全解决方案构建通过。
+- [x] WebView2 与 Diagnostics 文件版本同步为 1.0.19.0，三份 WebView2 文档齐全。
+- [x] 安装版 SampleHost Debug/Release 引用边界和 DLL 哈希验证通过。

@@ -1,0 +1,21 @@
+using System.Reflection;
+using Iwesun.Runtime.Diagnostics;
+using Microsoft.Extensions.Hosting;
+
+// Replacement list:
+// __PRODUCT_PREFIX__       Stable product prefix, for example Contoso.Server.
+// __RUNTIME_DIRECTORY__    Writable runtime directory, for example C:\ProgramData\Contoso\Server.
+
+[assembly: DiagnosticPipePrefix("__PRODUCT_PREFIX__")]
+
+var builder = Host.CreateApplicationBuilder(args);
+builder.Logging.AddRuntimeDiagnostics();
+builder.Services.Start(
+    runtimeDirectory: @"__RUNTIME_DIRECTORY__",
+    startupRuntimeDiagnosticsPipeName: "__PRODUCT_PREFIX__.RuntimeDiagnostics");
+
+// Business service registrations are optional. This template builds with this area empty.
+
+using var host = builder.Build();
+host.Services.Activate(Assembly.GetExecutingAssembly());
+await host.RunAsync();

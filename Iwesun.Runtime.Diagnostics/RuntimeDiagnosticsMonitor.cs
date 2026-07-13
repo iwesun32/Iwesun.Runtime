@@ -63,6 +63,12 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 					await server.DisposeAsync();
 					break;
 				}
+				catch (IOException) when (stoppingToken.IsCancellationRequested || !_isRunning)
+				{
+					_activePipes.TryRemove(pipeId, out _);
+					await server.DisposeAsync();
+					break;
+				}
 				catch (Exception ex)
 				{
 					_activePipes.TryRemove(pipeId, out _);
@@ -80,6 +86,7 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 
 	public override async Task StopAsync(CancellationToken cancellationToken)
 	{
+		_isRunning = false;
 		foreach (var pipe in _activePipes.Values)
 		{
 			try { await pipe.DisposeAsync(); } catch { }

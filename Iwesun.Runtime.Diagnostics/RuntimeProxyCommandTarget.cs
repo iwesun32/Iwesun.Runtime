@@ -136,11 +136,14 @@ public sealed class RuntimeProxyCommandTarget : RuntimeDiagnosticTargetBase
 	private static bool IsModuleAuthorized(string module, RuntimePipeLeaseSnapshot lease)
 	{
 		var normalizedModule = module.Trim();
-		return lease.RequestedPipeName.Equals(normalizedModule, StringComparison.OrdinalIgnoreCase)
+		return NormalizeModuleToken(lease.RequestedPipeName).Equals(NormalizeModuleToken(normalizedModule), StringComparison.OrdinalIgnoreCase)
 			|| lease.Name.Equals(normalizedModule, StringComparison.OrdinalIgnoreCase)
 			|| lease.Name.StartsWith($"{normalizedModule}.", StringComparison.OrdinalIgnoreCase)
 			|| lease.Name.StartsWith($"{normalizedModule}_", StringComparison.OrdinalIgnoreCase);
 	}
+
+	private static string NormalizeModuleToken(string value) =>
+		new(value.Where(character => character is not ('.' or '-' or '_' or ' ')).ToArray());
 
 	private static Dictionary<string, JsonElement> BuildForwardedArgs(Dictionary<string, JsonElement>? args)
 	{

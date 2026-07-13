@@ -225,7 +225,7 @@ public sealed class RuntimeDiagnosticBreakpoints
 			.Select(b => new BreakpointSnapshot(
 				b.Id, b.Section, b.Description, b.SourceLocation,
 				b.SharedState.EnabledBool, b.HitCountTarget,
-				b.HitCount, b.SharedState.IsWaiting == 1, b.LastHitAt))
+				b.HitCount, b.SharedState.IsWaiting == 1, b.LastHitAt, b.LastContext))
 			.ToArray();
 	}
 
@@ -362,7 +362,8 @@ public sealed record BreakpointSnapshot(
 	int HitCountTarget,
 	long HitCount,
 	bool IsWaiting,
-	DateTimeOffset? LastHitAt);
+	DateTimeOffset? LastHitAt,
+	object? LastContext);
 
 internal enum RuntimeNumericBindingMode
 {

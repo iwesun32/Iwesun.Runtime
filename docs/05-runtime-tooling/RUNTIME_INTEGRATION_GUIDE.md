@@ -20,7 +20,9 @@
 
 发布目录自带模板文件（由 `Iwesun.Runtime.SampleHost` 打包）：
 
-- `templates/RuntimeHost.Startup.Template.cs.txt`
+- `templates/RuntimeHost.Startup.Minimal.Template.cs.txt`
+- `templates/RuntimeHost.DiagnosticsExamples.Template.cs.txt`
+- `templates/RuntimeHost.ManagedWorker.Template.cs.txt`
 - `templates/RuntimeHost.Shutdown.Template.cs.txt`
 
 集成规则：
@@ -173,7 +175,9 @@ await RuntimeInjector.Break(
 发布目录包含：
 
 - `docs/IWESUN_RUNTIME_CLI.md`
-- `cli/Iwesun.Runtime.Cli.commands.v2.json`
+- `config/RuntimeCliSystemConfig.json`
+- `config/RuntimeCliSystemMetadata.json`
+- `config/RuntimeCliUserConfig.example.json`
 - `templates/Iwesun.Runtime.Cli.commands.custom.sample.json`
 
 扩展规则：

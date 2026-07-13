@@ -51,8 +51,17 @@ public sealed class ReflectionRuntimeDiagnosticTarget : RuntimeDiagnosticTargetB
 		if (command.Action.Equals("set", StringComparison.OrdinalIgnoreCase))
 			return Task.FromResult(SetValue(command));
 
+		#if DEBUG
 		if (command.Action.Equals("invoke", StringComparison.OrdinalIgnoreCase))
 			return Task.FromResult(Invoke(command));
+		#else
+		if (command.Action.Equals("invoke", StringComparison.OrdinalIgnoreCase))
+			return Task.FromResult(RuntimeDiagnosticActionResult.Fail(
+				TargetId,
+				command.Action,
+				"Reflection invocation is not compiled into Release Diagnostics.",
+				"CAPABILITY_DEBUG_ONLY"));
+		#endif
 
 		if (command.Action.Equals("navigate", StringComparison.OrdinalIgnoreCase))
 			return Task.FromResult(NavigatePath(command.Member));
@@ -168,6 +177,7 @@ public sealed class ReflectionRuntimeDiagnosticTarget : RuntimeDiagnosticTargetB
 		}
 	}
 
+	#if DEBUG
 	private RuntimeDiagnosticActionResult Invoke(RuntimeDiagnosticAction command)
 	{
 		if (string.IsNullOrWhiteSpace(command.Member))
@@ -196,6 +206,7 @@ public sealed class ReflectionRuntimeDiagnosticTarget : RuntimeDiagnosticTargetB
 			return RuntimeDiagnosticActionResult.Fail(TargetId, command.Action, $"{ex.GetType().Name}: {ex.Message}");
 		}
 	}
+	#endif
 
 	private IEnumerable<MemberInfo> EnumerateReadableMembers()
 	{

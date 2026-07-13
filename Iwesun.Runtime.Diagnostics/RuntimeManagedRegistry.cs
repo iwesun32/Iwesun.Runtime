@@ -16,6 +16,7 @@ public sealed record RuntimeManagedRegistration(
 	string UnitId,
 	string UnitType,
 	string Ownership,
+	bool BlocksShutdown,
 	DateTimeOffset RegisteredAt,
 	DateTimeOffset UpdatedAt,
 	RManagedStateSnapshot State);
@@ -122,14 +123,14 @@ public sealed class RuntimeManagedRegistry : IDisposable
 		_globalLifecycleHistory.AddLast(initial);
 	}
 
-	public RuntimeManagedRegistration Register(string unitId, string unitType, string ownership, RManagedStateSnapshot state)
+	public RuntimeManagedRegistration Register(string unitId, string unitType, string ownership, RManagedStateSnapshot state, bool blocksShutdown = true)
 	{
 		ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
 		ArgumentException.ThrowIfNullOrWhiteSpace(unitType);
 		ArgumentException.ThrowIfNullOrWhiteSpace(ownership);
 
 		var now = DateTimeOffset.UtcNow;
-		var registration = new RuntimeManagedRegistration(unitId, unitType, ownership, now, now, state);
+		var registration = new RuntimeManagedRegistration(unitId, unitType, ownership, blocksShutdown, now, now, state);
 		_registrations[unitId] = registration;
 		_unitInboxes.AddOrUpdate(
 			unitId,
@@ -208,6 +209,7 @@ public sealed class RuntimeManagedRegistry : IDisposable
 		ImportSharedStates();
 		var now = nowUtc ?? DateTimeOffset.UtcNow;
 		var pending = SnapshotRegistrations()
+			.Where(x => x.BlocksShutdown)
 			.Select(x => new RuntimeShutdownPendingUnit(
 				x.UnitId,
 				x.UnitType,

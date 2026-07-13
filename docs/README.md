@@ -1,18 +1,22 @@
 # Iwesun Runtime 文档索引
 
+- [下一阶段框架规划](RUNTIME_NEXT_STAGE_FRAMEWORK_PLAN.md)：1.0.19 稳定基线、客户证据池、候选架构和实施准入门槛。
+
 Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制入口与 WebRuntime 通信模型。
 
 ## 快速入口
 
 | 文档 | 说明 |
 | --- | --- |
+| **[IWESUN_RUNTIME_QUICK_START.md](IWESUN_RUNTIME_QUICK_START.md)** | ⭐ **速查手册**：备份主程序、引用 DLL、全局替换、管道/日志配置、编译验证 |
 | **[IWESUN_RUNTIME_DESIGN.md](IWESUN_RUNTIME_DESIGN.md)** | ⭐ **完整设计文档**：架构、功能分类、注入界面、JSON指令、CLI格式 |
 | **[IWESUN_RUNTIME_USER_GUIDE.md](IWESUN_RUNTIME_USER_GUIDE.md)** | 业务接入权威手册：主程序、受管执行、单点注入、状态退出、JSON/CLI |
+| **[IWESUN_RUNTIME_WINDOWS_SERVICE.md](IWESUN_RUNTIME_WINDOWS_SERVICE.md)** | Windows Service 专项手册：SCM 生命周期、业务边界、清理状态与退出码 |
 | [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | 项目总览：定位、结构、依赖关系、核心链路 |
 | [RUNTIME_DIAGNOSTICS.md](RUNTIME_DIAGNOSTICS.md) | 运行时诊断核心机制、协议与输出控制 |
 | [RUNTIME_ROOT_DATA_STRUCTURE.md](RUNTIME_ROOT_DATA_STRUCTURE.md) | RuntimeRoot 单根挂载的数据结构总览（T01~T10） |
 | [IWESUN_RUNTIME_CLI.md](IWESUN_RUNTIME_CLI.md) | CLI 命令手册、配置驱动与管道入口 |
-| [WEBVIEW2_JSON_PIPE_CLI_PLAN.md](WEBVIEW2_JSON_PIPE_CLI_PLAN.md) | WebView2 统一 JSON 协议、管道唯一申请与 CLI 重规划 |
+| [WEBVIEW2_JSON_PIPE_CLI_PLAN.md](../Iwesun.Runtime.WebView2/docs/WEBVIEW2_JSON_PIPE_CLI_PLAN.md) | WebView2 统一 JSON 协议、管道唯一申请与 CLI v3 迁移结果 |
 | [REQUIREMENTS_ACTIVE.md](REQUIREMENTS_ACTIVE.md) | 当前活跃需求、功能覆盖与执行复核 |
 | [iwesun-runtime-integration](../skills/iwesun-runtime-integration/SKILL.md) | 可复制的 Codex Runtime 业务接入技能 |
 | [UNIFIED_INTERFACE.md](UNIFIED_INTERFACE.md) | 统一界面与术语规范 |
@@ -21,12 +25,14 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 ## 文档分组
 
 ### 当前权威入口
+- `docs/IWESUN_RUNTIME_QUICK_START.md`：最短接入路径，照步骤替换即可。
 - `docs/IWESUN_RUNTIME_DESIGN.md`：**主设计文档**，完整覆盖所有设计主题。
 - `docs/README.md`：文档索引入口。
 - `docs/REQUIREMENTS_ACTIVE.md`：当前活跃需求与功能测试状态。
 - `docs/RUNTIME_DIAGNOSTICS.md`：诊断内核、开关板、Hub、输出点说明。
 - `docs/RUNTIME_ROOT_DATA_STRUCTURE.md`：统一根对象下的数据结构、键设计与关联关系。
 - `docs/IWESUN_RUNTIME_CLI.md`：CLI 配置、命令、管道与 WebRuntime 桥接说明。
+- `docs/IWESUN_RUNTIME_WINDOWS_SERVICE.md`：Windows Service 平台入口和业务接入边界。
 
 ### 专题文档
 - `docs/05-runtime-tooling/`：状态、线程/任务、样板宿主、注入器标准化等专题。
@@ -38,7 +44,7 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | 项目 | 说明 |
 | --- | --- |
 | `Iwesun.Runtime.Diagnostics` | 运行时诊断内核：开关板、FIFO、Hub、反射、监控管道 |
-| `Iwesun.Runtime.WebView2` | WebRuntime 客户端模型和管道客户端 |
+| `Iwesun.Runtime.WebView2` | WebRuntime 公共平台：标准 Frame 编解码、专用管道客户端、虚拟输入、预编译 C# 程序截获转接、生命周期与执行监控 |
 | `Iwesun.Runtime.Cli` | 命令行工具：诊断、快照查询、事件消费、WebRuntime 控制 |
 | `Iwesun.Runtime.SampleHost` | 最小样板宿主：用于本地接入与演示 |
 
@@ -61,8 +67,8 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | [SAMPLE_HOST.md](05-runtime-tooling/SAMPLE_HOST.md) | 独立样板宿主、代码注入、诊断接入、发布模板 |
 | [RUNTIME_INTEGRATION_GUIDE.md](05-runtime-tooling/RUNTIME_INTEGRATION_GUIDE.md) | 发布版接入手册：启动/结束模板、创建API、状态接口、CLI扩展与发布清单 |
 | [RUNTIME_RELEASE_PACKAGING.md](05-runtime-tooling/RUNTIME_RELEASE_PACKAGING.md) | Runtime 发布总项目、发布清单、目录结构、MSI 安装与卸载 |
-| [WEB_RUNTIME_CONTROL.md](05-runtime-tooling/WEB_RUNTIME_CONTROL.md) | WebView2 运行时控制接口（AIGateway 最新版同步） |
-| [WEBVIEW2_RUNTIME_CAPABILITIES.md](05-runtime-tooling/WEBVIEW2_RUNTIME_CAPABILITIES.md) | WebView2 运行时能力规划与动作命名规范（AIGateway 最新版同步） |
+| [WEB_RUNTIME_CONTROL.md](../Iwesun.Runtime.WebView2/docs/WEB_RUNTIME_CONTROL.md) | WebView2 公共控制、C# Program 与监控接口 |
+| [WEBVIEW2_RUNTIME_CAPABILITIES.md](../Iwesun.Runtime.WebView2/docs/WEBVIEW2_RUNTIME_CAPABILITIES.md) | WebView2 运行时能力规划与动作命名规范 |
 | [INJECTOR_STANDARDIZATION.md](05-runtime-tooling/INJECTOR_STANDARDIZATION.md) | 六大类注入器标准化、最简写法、宏式体验边界 |
 | [INJECTOR_STANDARDIZATION_PLAN.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_PLAN.md) | 注入器标准化技术方案、实现边界、分阶段实施 |
 | [INJECTOR_STANDARDIZATION_TASKS.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_TASKS.md) | 注入器标准化任务书、交付清单、验收标准 |

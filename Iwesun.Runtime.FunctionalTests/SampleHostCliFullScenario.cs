@@ -15,7 +15,7 @@ internal static class SampleHostCliFullScenario
         var root = ResolveRepositoryRoot();
         var hostDll = Path.Combine(root, "Iwesun.Runtime.SampleHost", "bin", "Debug", "net10.0", "Iwesun.Runtime.SampleHost.dll");
         var cliDll = Path.Combine(root, "Iwesun.Runtime.Cli", "bin", "Debug", "net10.0", "Iwesun.Runtime.Cli.dll");
-        var cliConfig = Path.Combine(root, "Iwesun.Runtime.Cli", "bin", "Debug", "net10.0", "Iwesun.Runtime.Cli.commands.v2.json");
+        var cliConfig = Path.Combine(root, "Iwesun.Runtime.Cli", "bin", "Debug", "net10.0", "RuntimeCliSystemConfig.json");
         var pipeName = $"sample.host.validation.{Guid.NewGuid():N}";
         string? resolvedFilePath = null;
 
@@ -48,9 +48,9 @@ internal static class SampleHostCliFullScenario
             else
                 checks.Add("host-info");
 
-            await CheckCommand("host.list", "host-list");
+            await CheckCommand("host.summary", "host-summary");
             await CheckCommand("host.events", "host-events");
-            var switchboard = await RunCliAsync("sw.list");
+            var switchboard = await RunCliAsync("switchboard.get");
             if (switchboard.ExitCode == 0 && switchboard.Frame?.Status?.Ok == true)
             {
                 checks.Add("switchboard-list");
@@ -72,30 +72,26 @@ internal static class SampleHostCliFullScenario
             }
             else
             {
-                failures.Add($"sw.list: exit={switchboard.ExitCode} stderr={switchboard.Stderr.Trim()} stdout={switchboard.Stdout.Trim()}");
+                failures.Add($"switchboard.get: exit={switchboard.ExitCode} stderr={switchboard.Stderr.Trim()} stdout={switchboard.Stdout.Trim()}");
             }
-            await CheckCommand("sw.enable", "switchboard-global-enable");
-            await CheckCommand("sw.enable sample-host", "switchboard-sample-host-enable");
-            await CheckCommand("sw.enable hooks", "switchboard-hooks-enable");
-            await CheckCommand("sw.pipe true", "switchboard-pipe-enable");
-            await CheckCommand("sw.points", "switchboard-points");
-            await CheckCommand("root.paths", "root-paths");
-            await CheckCommand("reg.list", "registry-all");
-            await CheckCommand("reg.list breakpoints", "registry-breakpoints");
+            await CheckCommand("switchboard.enable", "switchboard-global-enable");
+            await CheckCommand("switchboard.enable sample-host", "switchboard-sample-host-enable");
+            await CheckCommand("switchboard.point.list", "switchboard-points");
+            await CheckCommand("registry.list", "registry-all");
             await CheckCommand("hook.list", "hook-list");
             await CheckCommand("thread.list", "thread-list");
             await CheckCommand("task.list", "task-list");
             await CheckCommand("lifecycle.status", "lifecycle-status");
 
-            var firstSnapshot = await RunCliAsync("bp.snapshot");
+            var firstSnapshot = await RunCliAsync("breakpoint.list");
             if (IsWaiting(firstSnapshot.Frame, InitialBreakpoint)) checks.Add("breakpoint-compiled-enabled");
             else failures.Add("Compiled enabled breakpoint did not enter waiting state.");
 
-            var secondSnapshot = await RunCliAsync("bp.snapshot");
+            var secondSnapshot = await RunCliAsync("breakpoint.list");
             if (IsWaiting(secondSnapshot.Frame, InitialBreakpoint)) checks.Add("breakpoint-disconnect-stable");
             else failures.Add("Read-only CLI disconnect changed breakpoint state.");
 
-            await CheckCommand($"bp.resume {InitialBreakpoint}", "breakpoint-resume");
+            await CheckCommand($"breakpoint.resume {InitialBreakpoint}", "breakpoint-resume");
             var firstCount = await ReadLongAsync("sample.host.random", "SampleCount");
             if (await WaitForLongAsync("sample.host.random", "SampleCount", value => value > firstCount, TimeSpan.FromSeconds(5)))
                 checks.Add("random-sample-count-increased");
@@ -106,69 +102,37 @@ internal static class SampleHostCliFullScenario
             if (currentValue is >= 0 and <= 100) checks.Add("random-value-in-range");
             else failures.Add($"Random value out of range: {currentValue}.");
 
-            await CheckCommand("ref.exec sample.host.random Snapshot", "object-invoke");
-            var denied = await RunCliAsync("ref.get sample.host.random NotAllowed");
+            await CheckCommand("reflection.invoke sample.host.random Snapshot", "object-invoke");
+            var denied = await RunCliAsync("reflection.get sample.host.random NotAllowed");
             if (denied.Frame?.Status?.Ok == false) checks.Add("object-denied");
             else failures.Add("Non-whitelisted reflected member was not denied.");
 
-            await CheckCommand($"bp.enable {DynamicBreakpoint}", "breakpoint-enable");
-            if (await WaitForCommandAsync("bp.snapshot", frame => IsWaiting(frame, DynamicBreakpoint), TimeSpan.FromSeconds(5)))
+            await CheckCommand($"breakpoint.enable {DynamicBreakpoint}", "breakpoint-enable");
+            if (await WaitForCommandAsync("breakpoint.list", frame => IsWaiting(frame, DynamicBreakpoint), TimeSpan.FromSeconds(5)))
                 checks.Add("breakpoint-dynamic-hit");
             else
                 failures.Add("Dynamically enabled breakpoint did not hit.");
-            await CheckCommand($"bp.disable {DynamicBreakpoint}", "breakpoint-disable");
+            await CheckCommand($"breakpoint.disable {DynamicBreakpoint}", "breakpoint-disable");
 
-            await CheckCommand($"bp.setNumericThreshold {NumericBreakpoint} gt 0", "numeric-threshold-set");
-            await CheckCommand($"bp.enable {NumericBreakpoint}", "numeric-enable");
-            if (await WaitForCommandAsync("bp.snapshot", frame => IsWaiting(frame, NumericBreakpoint), TimeSpan.FromSeconds(5)))
+            await CheckCommand($"breakpoint.set-numeric-threshold {NumericBreakpoint} gt 0", "numeric-threshold-set");
+            await CheckCommand($"breakpoint.enable {NumericBreakpoint}", "numeric-enable");
+            if (await WaitForCommandAsync("breakpoint.list", frame => IsWaiting(frame, NumericBreakpoint), TimeSpan.FromSeconds(5)))
                 checks.Add("numeric-threshold-hit");
             else
                 failures.Add("Numeric breakpoint did not hit.");
-            await CheckCommand($"bp.resume {NumericBreakpoint}", "numeric-resume");
-            await CheckCommand($"bp.clearNumeric {NumericBreakpoint}", "numeric-clear");
-            await CheckCommand($"bp.disable {NumericBreakpoint}", "numeric-disable");
-
-            await CheckCommand("sw.point.enable hook.fired.sample.host.random-updated", "hook-point-enable");
-            await CheckCommand("hook.enable sample.host.random-updated", "hook-enable");
-            await Task.Delay(1200);
-            var hookSnapshot = await RunCliAsync("sw.list");
-            var hookSwitchboard = hookSnapshot.Frame?.Data?.Deserialize<DiagnosticSwitchboardSnapshot>(JsonDefaults.Options);
-            if (hookSnapshot.ExitCode == 0 && hookSwitchboard?.Statements.Any(statement =>
-                    statement.OutputPointId?.Equals("hook.fired.sample.host.random-updated", StringComparison.OrdinalIgnoreCase) == true &&
-                    statement.Seen > 0) == true)
-                checks.Add("hook-event-fired");
-            else
-                failures.Add($"Enabled random update hook did not fire: {hookSnapshot.Stdout.Trim()}");
-            await CheckCommand("hook.disable sample.host.random-updated", "hook-disable");
-            await CheckCommand("sw.point.disable hook.fired.sample.host.random-updated", "hook-point-disable");
-
-            await CheckCommand("file.record.status", "file-status");
-            await CheckCommand("file.record.on sample.host.random", "file-on");
-            await Task.Delay(1200);
-            await CheckCommand("root.paths", "file-path-query");
-            await CheckCommand("file.record.off", "file-off");
-            var absoluteFilePath = string.IsNullOrWhiteSpace(resolvedFilePath)
-                ? null
-                : Path.GetFullPath(resolvedFilePath, root);
-            if (absoluteFilePath != null && File.Exists(absoluteFilePath) && new FileInfo(absoluteFilePath).Length > 0)
-                checks.Add("file-created-with-content");
-            else
-                failures.Add($"Configured diagnostic file was not created with content: '{absoluteFilePath}'.");
-
-            await CheckCommand("bp.resume-all", "breakpoint-resume-all");
-            await CheckCommand("sw.file false", "switchboard-file-restored");
-            await CheckCommand("sw.pipe false", "switchboard-pipe-restored");
-            await CheckCommand("sw.disable hooks", "switchboard-hooks-restored");
-            await CheckCommand("sw.disable sample-host", "switchboard-sample-host-restored");
-            await CheckCommand("sw.disable", "diagnostics-restored-quiet");
-            var shutdown = await RunCliAsync("safe-shutdown");
-            if (shutdown.ExitCode == 0) checks.Add("safe-shutdown-command");
-            else failures.Add($"safe-shutdown CLI exit={shutdown.ExitCode}: {shutdown.Stderr}");
+            await CheckCommand($"breakpoint.resume {NumericBreakpoint}", "numeric-resume");
+            await CheckCommand($"breakpoint.clear-numeric {NumericBreakpoint}", "numeric-clear");
+            await CheckCommand($"breakpoint.disable {NumericBreakpoint}", "numeric-disable");
+            await CheckCommand("switchboard.disable sample-host", "switchboard-sample-host-restored");
+            await CheckCommand("switchboard.disable", "diagnostics-restored-quiet");
+            var shutdown = await RunCliAsync("lifecycle.shutdown true");
+            if (shutdown.ExitCode == 0) checks.Add("lifecycle-shutdown-command");
+            else failures.Add($"lifecycle.shutdown CLI exit={shutdown.ExitCode}: {shutdown.Stderr}");
 
             if (await WaitForExitAsync(host, TimeSpan.FromSeconds(10)) && host.ExitCode == 0)
                 checks.Add("sample-host-exit-code-zero");
             else
-                failures.Add("SampleHost did not exit cleanly after safe-shutdown.");
+                failures.Add("SampleHost did not exit cleanly after lifecycle.shutdown.");
         }
         catch (Exception ex)
         {
@@ -178,8 +142,8 @@ internal static class SampleHostCliFullScenario
         {
             if (!host.HasExited)
             {
-                await RunCliAsync("bp.resume-all");
-                await RunCliAsync("safe-shutdown");
+                await RunCliAsync($"breakpoint.resume {InitialBreakpoint}");
+                await RunCliAsync("lifecycle.shutdown true");
                 if (!await WaitForExitAsync(host, TimeSpan.FromSeconds(5)))
                     host.Kill(entireProcessTree: true);
             }
@@ -252,7 +216,7 @@ internal static class SampleHostCliFullScenario
 
         async Task<long> ReadLongAsync(string target, string member)
         {
-            var result = await RunCliAsync($"ref.get {target} {member}");
+            var result = await RunCliAsync($"reflection.get {target} {member}");
             var data = result.Frame?.Data ?? default;
             return data.ValueKind == JsonValueKind.Number && data.TryGetInt64(out var value) ? value : -1;
         }
@@ -272,8 +236,12 @@ internal static class SampleHostCliFullScenario
     private static bool IsWaiting(RuntimeDiagnosticFrame? frame, string id)
     {
         var data = frame?.Data ?? default;
-        if (data.ValueKind != JsonValueKind.Array) return false;
-        return data.EnumerateArray().Any(item =>
+        var items = data.ValueKind == JsonValueKind.Object &&
+            (data.TryGetProperty("Items", out var pageItems) || data.TryGetProperty("items", out pageItems))
+            ? pageItems
+            : data;
+        if (items.ValueKind != JsonValueKind.Array) return false;
+        return items.EnumerateArray().Any(item =>
             (item.TryGetProperty("Id", out var idNode) || item.TryGetProperty("id", out idNode))
             && string.Equals(idNode.GetString(), id, StringComparison.OrdinalIgnoreCase)
             && (item.TryGetProperty("IsWaiting", out var waiting) || item.TryGetProperty("isWaiting", out waiting))

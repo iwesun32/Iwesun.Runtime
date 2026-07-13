@@ -2,6 +2,8 @@
 
 ## Replacement matrix
 
+`RuntimeInjector.Thread` and `RuntimeInjector.Task` only create descriptive records. They do not create or own execution. `RThread`/`RTask` and the `CreateThread`/`CreateTask` factories are managed execution. `BackgroundService.ExecuteAsync` remains Generic Host-owned.
+
 | Existing creation | Runtime creation | Returned type |
 | --- | --- | --- |
 | `Process.Start(...)` | `RuntimeInjector.CreateProcess(...)` | `RProcess` |
@@ -57,6 +59,20 @@ await task;
 ```
 
 `RTask` wraps a Task and supports await through `GetAwaiter`; it is not a Task subclass or `Task<T>`. Prefer the token-aware overload so FIFO Stop can request cancellation. Dispose while running defers cleanup and deregistration until completion.
+
+Use `WaitForWakeupAsync` for long waits that must react immediately to FIFO Wakeup. A Wakeup ends only the current wait; it does not request Stop.
+
+Infrastructure tasks that coordinate shutdown but must not wait for themselves use:
+
+```csharp
+using RTask shutdownWatch = RuntimeInjector.CreateTask(
+    token => WatchShutdown(token),
+    unitId: "product.task.shutdown-watch",
+    cancellationToken: cancellationToken,
+    blocksShutdown: false);
+```
+
+Business tasks keep the default `blocksShutdown: true`.
 
 ## Do not mechanically replace
 

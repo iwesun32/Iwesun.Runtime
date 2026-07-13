@@ -42,10 +42,21 @@ Make cleanup idempotent because both paths may trigger nearly simultaneously.
 
 1. Publish global Stop and an exit deadline.
 2. Enumerate registrations and send FIFO Stop plus Wakeup to each unit.
-3. Let each guardian clean business resources and transition itself to Stop.
-4. Deregister handlers, leases, reflection targets, and the unit only after actual completion.
-5. Wait until process/thread/task registrations and relevant DLIST containers are empty; return 0.
-6. If the deadline expires with pending units, return 124.
+3. Each flat Root registration transitions through Requested and Draining while all CleanupRequested handlers run; no handlers means immediate completion.
+4. Transition to Completed and release the lightweight exit signal after cleanup, or transition to Timeout at the single controller deadline.
+5. The managed entry point reads the shared state, returns 0 or 124, and deregisters only after actual completion.
+6. Wait until process/thread/task registrations and relevant DLIST containers are empty; return 0. If the deadline expires with pending units, return 124.
+
+Only registrations with `BlocksShutdown=true` participate in the exit barrier. Shutdown watchers and dispatch infrastructure must register with `blocksShutdown: false`; they remain observable but cannot create a wait-for-self cycle.
+
+Use the same async cleanup hook on `RProcess`, `RThread`, and `RTask`:
+
+```csharp
+unit.CleanupRequested += async (_, _, cancellationToken) =>
+    await FlushBusinessStateAsync(cancellationToken);
+```
+
+The hook returns `ValueTask`; never use `async void`. With no handlers, cleanup completes immediately. The shared RuntimeState code is authoritative and the lightweight exit signal only wakes the managed entry point.
 
 ```csharp
 var coordinator = services.GetRequiredService<RuntimeShutdownCoordinator>();

@@ -35,15 +35,13 @@ ILogger / RuntimeOutput.TracePoint()
 
 ## 开关配置
 
-配置文件：`diagnostic-switchboard.json`
+Runtime 不读取、创建或写回 `diagnostic-switchboard.json`。主管道、主记录路径、格式和写入模式由源码声明，`--diag-pipe` 与 `--diag-file` 只做本次启动的临时覆盖。
 
-- DDNS Snap 中位于 `C:\ProgramData\DdnsSnap\diagnostic-switchboard.json`
-- 存储开关和输出点元数据，不是日志文件
-- 首次启动时从编译的监控目录生成，后续启动时修复（添加新监控点）
-- Schema 版本 4 默认静默启动：`globalEnabled`、管道输出、文件输出、每个 section、每个编译输出点均生成为 `false`
-- 保留用户对已知点 ID 的 `enabled` 更改，同时自动添加新编译的点 ID
-- 输出点是稳定的诊断采样入口；默认通过 `SetOutputPoint()` 控制启用/禁用
-- 逻辑断点与数值断点都支持编译期反射加载；数值断点使用 `DiagnosticNumericBreakpointAttribute`
+- 默认静默启动：全局、管道输出、文件输出、每个 section 和每个编译输出点均为 `false`；
+- CLI 动态开关只修改当前进程内存状态，重启后恢复源码默认值；
+- 编译输出点和运行期首次发现的动态输出点均可通过 point 级命令控制；
+- 动态输出点首次登记时默认禁用；
+- 逻辑断点与数值断点支持编译期反射加载；数值断点使用 `DiagnosticNumericBreakpointAttribute`。
 
 每个 `outputPoints[]` 条目是一个稳定监控点：
 
@@ -57,7 +55,7 @@ ILogger / RuntimeOutput.TracePoint()
 }
 ```
 
-配置还包含 `runtimeDiagnosticsPipeName`，同一机器上运行多个 DDNS Snap 构建或服务时保持唯一。
+主管道名不属于运行配置。每个宿主必须在 `Services.Start(...)` 中声明唯一固定名称，测试时可使用 `--diag-pipe` 临时覆盖。
 
 ## TracePoint / Watch / Break API
 
@@ -82,7 +80,7 @@ RuntimeOutput.TracePoint("pipeline.stage", "DnsUpdateStage",
 
 ## 诊断管道
 
-Service 和 Agent 主机从 `diagnostic-switchboard.json` 启动专用运行时诊断管道（默认名：`DdnsSnap.Runtime.Diagnostics`）。
+每个宿主从源码声明启动独立的运行时诊断管道；旧 JSON 即使存在也不会影响最终管道身份。
 
 管道接受 4 字节小端长度前缀的 `RuntimeDiagnosticFrame` JSON 消息，并返回 `RuntimeDiagnosticFrame` 响应（`frameType=response`）。`rtdiag/2.0` 保留单命令兼容；`rtdiag/3.0` 提供服务端原生 batch，一次连接可完成多个有序功能步骤。
 

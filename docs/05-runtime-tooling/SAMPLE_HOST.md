@@ -71,13 +71,17 @@ dotnet run --project Iwesun.Runtime.SampleHost/Iwesun.Runtime.SampleHost.csproj 
 
 `Iwesun.Runtime.SampleHost` 发布目录会附带以下集成资产：
 
-- `templates/RuntimeHost.Startup.Template.cs.txt`
+- `templates/RuntimeHost.Startup.Minimal.Template.cs.txt`
+- `templates/RuntimeHost.DiagnosticsExamples.Template.cs.txt`
+- `templates/RuntimeHost.ManagedWorker.Template.cs.txt`
 - `templates/RuntimeHost.Shutdown.Template.cs.txt`
 - `templates/RuntimeIntegration.Interface.Template.json`
 - `templates/Iwesun.Runtime.Cli.commands.custom.sample.json`
 - `docs/RUNTIME_INTEGRATION_GUIDE.md`
 - `docs/IWESUN_RUNTIME_CLI.md`
-- `cli/Iwesun.Runtime.Cli.commands.v2.json`
+- `config/RuntimeCliSystemConfig.json`
+- `config/RuntimeCliSystemMetadata.json`
+- `config/RuntimeCliUserConfig.example.json`
 
 ## 当前完成情况
 

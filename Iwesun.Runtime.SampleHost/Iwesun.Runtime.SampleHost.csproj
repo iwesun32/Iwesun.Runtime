@@ -8,9 +8,11 @@
     <RootNamespace>Iwesun.Runtime.SampleHost</RootNamespace>
     <AssemblyName>Iwesun.Runtime.SampleHost</AssemblyName>
     <Platforms>AnyCPU;x64</Platforms>
+    <DefaultItemExcludes>$(DefaultItemExcludes);installed\**;template-validation\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" />
     <ProjectReference Include="..\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" />
   </ItemGroup>
 
@@ -28,8 +30,8 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Include="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.commands.json">
-      <Link>cli\Iwesun.Runtime.Cli.commands.json</Link>
+    <Content Include="..\Iwesun.Runtime.Cli\RuntimeCliSystemConfig.json">
+      <Link>cli\RuntimeCliSystemConfig.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

@@ -5,6 +5,7 @@
     <Platform>x64</Platform>
     <OutputName>Iwesun.Runtime.Setup</OutputName>
     <OutputPath>..\artifacts\setup\</OutputPath>
-    <DefineConstants>ReleaseAppRoot=$(MSBuildThisFileDirectory)..\artifacts\release\Iwesun.Runtime\app;ReleaseDataRoot=$(MSBuildThisFileDirectory)..\artifacts\release\Iwesun.Runtime\data</DefineConstants>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">1.0.19</ProductVersion>
+    <DefineConstants>ReleaseAppRoot=$(MSBuildThisFileDirectory)..\artifacts\release\Iwesun.Runtime\app;ReleaseDataRoot=$(MSBuildThisFileDirectory)..\artifacts\release\Iwesun.Runtime\data;ProductVersion=$(ProductVersion)</DefineConstants>
   </PropertyGroup>
 </Project>

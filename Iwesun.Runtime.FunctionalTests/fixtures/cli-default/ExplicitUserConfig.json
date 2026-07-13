@@ -1,0 +1,13 @@
+{
+  "schema": "iwesun.runtime.cli/3.0",
+  "application": { "name": "explicit fixture", "description": "explicit fixture" },
+  "endpoints": {},
+  "commands": [],
+  "composites": [],
+  "extensions": {
+    "add": [],
+    "extend": [ { "name": "host.info", "aliases": ["explicit.host"] } ],
+    "replace": [],
+    "disable": []
+  }
+}

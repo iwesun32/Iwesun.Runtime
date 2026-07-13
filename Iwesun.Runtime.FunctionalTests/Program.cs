@@ -10,6 +10,7 @@ using Iwesun.Runtime.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 [assembly: DiagnosticWatchPoint("tree.root", "tree", "watch", "Tree root snapshot.", "Iwesun.Runtime.FunctionalTests.TreeScenarioModel")]
 [assembly: DiagnosticWatchPoint("tree.branches", "tree", "watch", "Tree branch snapshot.", "Iwesun.Runtime.FunctionalTests.TreeScenarioModel")]
@@ -89,10 +90,14 @@ internal static class JsonDefaults
 }
 
 internal sealed record CommandConfig(
-    Dictionary<string, string> Pipes,
-    List<CommandConfigEntry> BaseCommands);
+    string Schema,
+    Dictionary<string, JsonElement> Endpoints,
+    List<CommandConfigEntry> Commands,
+    List<CompositeConfigEntry> Composites);
 
-internal sealed record CommandConfigEntry(string Name);
+internal sealed record CommandConfigEntry(string Name, string Summary, string Risk, string Capability);
+internal sealed record CompositeConfigEntry(string Name, string Summary, List<CompositeStepConfigEntry> Steps);
+internal sealed record CompositeStepConfigEntry(string Command);
 
 internal sealed record FunctionalScenarioResult(
     string Scenario,
@@ -129,7 +134,7 @@ static class FunctionalParentRunner
 {
     public static async Task<int> RunAsync(string[] args)
     {
-        var scenarios = new[] { "diagnostics", "managed", "thread", "task", "process", "tree", "root-safety", "sharedfifo-protocol", "numeric-breakpoint", "pipe-registry", "tree-process", "cli", "cli-numeric-breakpoint", "file-output-filter", "file-registry", "file-output-e2e", "switchboard-config", "file-output-format-variants", "bp-process-cli", "sample-host-random-state", "sample-host-cli-full" };
+        var scenarios = new[] { "diagnostics", "managed", "thread", "task", "process", "tree", "root-safety", "sharedfifo-protocol", "numeric-breakpoint", "pipe-registry", "tree-process", "cli", "cli-context-shell", "cli-transport-failure", "cli-numeric-breakpoint", "file-output-filter", "file-registry", "file-output-e2e", "switchboard-config", "file-output-format-variants", "bp-process-cli", "sample-host-random-state", "sample-host-cli-full" };
         var results = new List<FunctionalScenarioResult>(scenarios.Length);
         var executions = new List<ChildScenarioExecution>(scenarios.Length);
         var failures = new List<string>();
@@ -302,6 +307,8 @@ static class FunctionalChildRunner
                 "thread" => RunThreadScenario(provider),
                 "task" => RunTaskScenario(provider),
                 "process" => RunProcessScenario(provider),
+				"host-uniqueness" => RunHostUniquenessScenario(provider),
+				"windows-service" => RunWindowsServiceRegistrationScenario(),
 				#if DEBUG
                 "tree" => RunTreeScenario(provider),
 				#endif
@@ -313,6 +320,8 @@ static class FunctionalChildRunner
                 "pipe-registry" => RunPipeRegistryScenario(provider, diagnosticsPipeName),
                 "tree-process" => RunTreeProcessScenario(provider),
                 "cli" => RunCliScenario(provider, diagnosticsPipeName),
+                "cli-context-shell" => CliContextShellScenario.RunAsync(),
+                "cli-transport-failure" => CliTransportFailureScenario.RunAsync(),
 				#if DEBUG
                 "cli-numeric-breakpoint" => RunCliNumericBreakpointScenario(provider, diagnosticsPipeName),
 				#endif
@@ -346,18 +355,10 @@ static class FunctionalChildRunner
     {
         Directory.CreateDirectory(runtimeDirectory);
 
-        if (!string.IsNullOrWhiteSpace(diagnosticsPipeName))
-        {
-            var configStore = new DiagnosticSwitchboardConfigStore(runtimeDirectory);
-            var config = DiagnosticSwitchboardCompiledConfig.CreateDefaults();
-            config.RuntimeDiagnosticsPipeName = diagnosticsPipeName;
-            configStore.Save(config);
-        }
-
         var builder = Host.CreateApplicationBuilder();
         builder.Logging.ClearProviders();
         builder.Logging.SetMinimumLevel(LogLevel.None);
-        builder.Services.Start(runtimeDirectory);
+        builder.Services.Start(runtimeDirectory, startupRuntimeDiagnosticsPipeName: diagnosticsPipeName);
         var host = builder.Build();
         host.Services.Activate(Assembly.GetExecutingAssembly());
         var execution = host.Services.GetRequiredService<RuntimeExecutionManager>();
@@ -371,6 +372,114 @@ static class FunctionalChildRunner
             sourceLocation: nameof(FunctionalChildRunner));
         return host;
     }
+
+	private static Task<FunctionalScenarioResult> RunWindowsServiceRegistrationScenario()
+	{
+		var checks = new List<string>();
+		var failures = new List<string>();
+
+		var ordinaryServices = new ServiceCollection();
+		ordinaryServices.Start();
+		if (ordinaryServices.Any(x => x.ServiceType == typeof(IHostLifetime)))
+			failures.Add("ordinary Start registered a Windows Service lifetime.");
+		else
+			checks.Add("ordinary-start-lifetime-unchanged");
+
+		var serviceServices = new ServiceCollection();
+		serviceServices.AddLogging();
+		serviceServices.StartWindowsService(
+			new RuntimeWindowsServiceOptions
+			{
+				ServiceName = "Iwesun.Runtime.FunctionalService",
+				DisplayName = "Iwesun Runtime Functional Service",
+				Description = "Functional Windows Service metadata.",
+				ShutdownTimeout = TimeSpan.FromSeconds(17)
+			},
+			startupRuntimeDiagnosticsPipeName: "functional.windows-service");
+		using var provider = serviceServices.BuildServiceProvider();
+		var options = provider.GetRequiredService<IOptions<RuntimeWindowsServiceOptions>>().Value;
+		if (options.ServiceName != "Iwesun.Runtime.FunctionalService"
+			|| options.DisplayName != "Iwesun Runtime Functional Service"
+			|| options.Description != "Functional Windows Service metadata."
+			|| options.ShutdownTimeout != TimeSpan.FromSeconds(17))
+			failures.Add("StartWindowsService did not preserve the service name and shutdown timeout.");
+		else
+			checks.Add("windows-service-options-configured");
+
+		var apiServices = new ServiceCollection();
+		apiServices.AddLogging();
+		apiServices.ConfigureRuntimeWindowsService(options =>
+		{
+			options.ServiceName = "Iwesun.Runtime.ApiConfiguredService";
+			options.DisplayName = "API Configured Service";
+			options.Description = "Configured outside Program.cs.";
+			options.ShutdownTimeout = TimeSpan.FromSeconds(23);
+		});
+		apiServices.StartConfiguredWindowsService(startupRuntimeDiagnosticsPipeName: "functional.windows-service.api");
+		using var apiProvider = apiServices.BuildServiceProvider();
+		var apiOptions = apiProvider.GetRequiredService<IOptions<RuntimeWindowsServiceOptions>>().Value;
+		var lifetimeOptions = apiProvider.GetRequiredService<IOptions<WindowsServiceLifetimeOptions>>().Value;
+		if (apiOptions.ServiceName != "Iwesun.Runtime.ApiConfiguredService"
+			|| apiOptions.DisplayName != "API Configured Service"
+			|| apiOptions.Description != "Configured outside Program.cs."
+			|| apiOptions.ShutdownTimeout != TimeSpan.FromSeconds(23)
+			|| lifetimeOptions.ServiceName != apiOptions.ServiceName)
+			failures.Add("business API configuration did not flow into the Windows Service lifetime.");
+		else
+			checks.Add("windows-service-business-api-configured");
+
+		if (!Microsoft.Extensions.Hosting.WindowsServices.WindowsServiceHelpers.IsWindowsService()
+			&& serviceServices.Any(x => x.ImplementationType?.Name == "RuntimeWindowsServiceLifetime"))
+			failures.Add("Windows Service lifetime activated while running as an ordinary console process.");
+		else
+			checks.Add("windows-service-context-aware");
+
+		return Task.FromResult(failures.Count == 0
+			? FunctionalScenarioResult.Pass("windows-service", checks.ToArray())
+			: FunctionalScenarioResult.Fail("windows-service", checks, failures));
+	}
+
+	private static Task<FunctionalScenarioResult> RunHostUniquenessScenario(IServiceProvider activeProvider)
+	{
+		var checks = new List<string>();
+		var failures = new List<string>();
+
+		var services = new ServiceCollection();
+		services.Start(startupRuntimeDiagnosticsPipeName: "functional.same");
+		services.Start(startupRuntimeDiagnosticsPipeName: "functional.same");
+		checks.Add("start-identical-idempotent");
+
+		try
+		{
+			services.Start(startupRuntimeDiagnosticsPipeName: "functional.conflict");
+			failures.Add("conflicting Start did not throw RuntimeHostConfigurationException.");
+		}
+		catch (RuntimeHostConfigurationException)
+		{
+			checks.Add("start-conflict-rejected");
+		}
+
+		activeProvider.Activate(Assembly.GetExecutingAssembly());
+		checks.Add("activate-same-provider-idempotent");
+
+		var otherServices = new ServiceCollection();
+		otherServices.AddLogging();
+		otherServices.Start(startupRuntimeDiagnosticsPipeName: "functional.other");
+		using var otherProvider = otherServices.BuildServiceProvider();
+		try
+		{
+			otherProvider.Activate(Assembly.GetExecutingAssembly());
+			failures.Add("a second provider silently replaced the active Runtime host.");
+		}
+		catch (RuntimeHostConfigurationException)
+		{
+			checks.Add("activate-second-provider-rejected");
+		}
+
+		return Task.FromResult(failures.Count == 0
+			? FunctionalScenarioResult.Pass("host-uniqueness", checks.ToArray())
+			: FunctionalScenarioResult.Fail("host-uniqueness", checks, failures));
+	}
 
     private static async Task<FunctionalScenarioResult> RunScenarioWithTaskPointAsync(
         IServiceProvider provider,
@@ -667,7 +776,11 @@ static class FunctionalChildRunner
             checks.Add("enqueue-ok");
         }
 
-        if (!managed.TryDequeueCommand(unitId, out var command) || command is null || command.TargetUnitId != unitId || command.Kind != RuntimeManagedCommandKind.Snapshot)
+		RuntimeManagedCommand? command = null;
+		var dequeued = SpinWait.SpinUntil(
+			() => managed.TryDequeueCommand(unitId, out command),
+			TimeSpan.FromSeconds(2));
+		if (!dequeued || command is null || command.TargetUnitId != unitId || command.Kind != RuntimeManagedCommandKind.Snapshot)
         {
             failures.Add("registry did not expose the enqueued command by UnitId.");
         }
@@ -1509,6 +1622,62 @@ static class FunctionalChildRunner
             checks.Add("thread-unregistered");
         }
 
+		var cleanupUnitId = $"functional.thread.cleanup.{Guid.NewGuid():N}";
+		var cleanupEntered = new ManualResetEventSlim(false);
+		var cleanupHookCount = 0;
+		using (var cleanupThread = new RThread(() =>
+		{
+			cleanupEntered.Set();
+			Thread.Sleep(Timeout.Infinite);
+		}, cleanupUnitId))
+		{
+			cleanupThread.CleanupRequested += async (_, _, token) =>
+			{
+				await Task.Delay(40, token);
+				Interlocked.Increment(ref cleanupHookCount);
+			};
+			cleanupThread.Start();
+			cleanupEntered.Wait(TimeSpan.FromSeconds(2));
+			managed.TryEnqueueCommand(cleanupUnitId, RuntimeManagedCommandKind.Stop,
+				RuntimeManagedPayloadInterpreter.ToJson(new { deadlineUtc = DateTimeOffset.UtcNow.AddSeconds(2) }));
+			managed.TryEnqueueCommand(cleanupUnitId, RuntimeManagedCommandKind.Stop,
+				RuntimeManagedPayloadInterpreter.ToJson(new { deadlineUtc = DateTimeOffset.UtcNow.AddSeconds(2) }));
+			cleanupThread.Join(TimeSpan.FromSeconds(3));
+			if (cleanupHookCount != 1 || cleanupThread.ExitCode != RuntimeShutdownExitCodes.Success
+				|| managed.SnapshotRegistrations().Any(x => x.UnitId == cleanupUnitId))
+				failures.Add("cleanup hook did not complete before normal managed thread exit.");
+			else
+				checks.Add("cleanup-hook-completed-exit-0");
+		}
+
+		var cleanupTimeoutUnitId = $"functional.thread.cleanup-timeout.{Guid.NewGuid():N}";
+		var cleanupTimeoutEntered = new ManualResetEventSlim(false);
+		var cleanupTimeoutSecondHookStarted = false;
+		using (var cleanupTimeoutThread = new RThread(() =>
+		{
+			cleanupTimeoutEntered.Set();
+			Thread.Sleep(Timeout.Infinite);
+		}, cleanupTimeoutUnitId))
+		{
+			cleanupTimeoutThread.CleanupRequested += async (_, _, token) =>
+				await Task.Delay(Timeout.InfiniteTimeSpan, token);
+			cleanupTimeoutThread.CleanupRequested += (_, _, _) =>
+			{
+				cleanupTimeoutSecondHookStarted = true;
+				return ValueTask.CompletedTask;
+			};
+			cleanupTimeoutThread.Start();
+			cleanupTimeoutEntered.Wait(TimeSpan.FromSeconds(2));
+			managed.TryEnqueueCommand(cleanupTimeoutUnitId, RuntimeManagedCommandKind.Stop,
+				RuntimeManagedPayloadInterpreter.ToJson(new { deadlineUtc = DateTimeOffset.UtcNow.AddMilliseconds(120) }));
+			cleanupTimeoutThread.Join(TimeSpan.FromSeconds(2));
+			if (!cleanupTimeoutSecondHookStarted || cleanupTimeoutThread.ExitCode != RuntimeShutdownExitCodes.Timeout
+				|| managed.SnapshotRegistrations().Any(x => x.UnitId == cleanupTimeoutUnitId))
+				failures.Add("cleanup deadline did not produce exit code 124 and unregister the thread.");
+			else
+				checks.Add("cleanup-timeout-exit-124");
+		}
+
 		var stubbornUnitId = $"functional.thread.stubborn.{Guid.NewGuid():N}";
 		var stubbornEntered = new ManualResetEventSlim(false);
 		var stubbornRelease = new ManualResetEventSlim(false);
@@ -1522,15 +1691,42 @@ static class FunctionalChildRunner
 		stubbornEntered.Wait(TimeSpan.FromSeconds(2));
 		stubbornThread.Dispose();
 		if (!managed.SnapshotRegistrations().Any(x => x.UnitId == stubbornUnitId))
-			failures.Add("live thread was unregistered after its stop timeout.");
+			failures.Add("live thread was unregistered before its managed entry point returned.");
 		else
-			checks.Add("thread-timeout-keeps-live-registration");
+			checks.Add("thread-stop-keeps-live-registration");
 		stubbornRelease.Set();
 		stubbornThread.Join(TimeSpan.FromSeconds(2));
 		if (managed.SnapshotRegistrations().Any(x => x.UnitId == stubbornUnitId))
 			failures.Add("thread registration remained after actual exit.");
 		else
 			checks.Add("thread-unregisters-after-actual-exit");
+
+		var zeroHookUnitId = $"functional.thread.zero-hook.{Guid.NewGuid():N}";
+		var zeroHookEntered = new ManualResetEventSlim(false);
+		using var zeroHookThread = new RThread(() =>
+		{
+			zeroHookEntered.Set();
+			Thread.Sleep(Timeout.Infinite);
+		}, zeroHookUnitId, "Zero Hook Functional Thread", RuntimeExecutionLifetime.Dynamic,
+			RuntimeThreadKind.Worker, "FunctionalTests", nameof(FunctionalChildRunner));
+		zeroHookThread.Start();
+		if (!zeroHookEntered.Wait(TimeSpan.FromSeconds(2)))
+		{
+			failures.Add("zero-hook thread did not start.");
+		}
+		else
+		{
+			var shutdown = await provider.GetRequiredService<RuntimeShutdownCoordinator>()
+				.ShutdownAsync(TimeSpan.FromSeconds(5), "functional-zero-hook");
+			if (shutdown.ExitCode != RuntimeShutdownExitCodes.Success || shutdown.TimedOut)
+				failures.Add($"zero-hook shutdown returned exit={shutdown.ExitCode}, timedOut={shutdown.TimedOut}.");
+			else if (zeroHookThread.IsAlive)
+				failures.Add("zero-hook thread remained alive after successful shutdown.");
+			else if (managed.SnapshotRegistrations().Any(x => x.BlocksShutdown))
+				failures.Add("blocking registrations remained after zero-hook shutdown.");
+			else
+				checks.Add("zero-hook-shutdown-exit-0-and-drained");
+		}
 
         return failures.Count == 0
             ? FunctionalScenarioResult.Pass("thread", checks.ToArray())
@@ -1560,6 +1756,15 @@ static class FunctionalChildRunner
         }
 
         var snapshot = execution.Snapshot();
+        if (!snapshot.DynamicTasks.Any(x => x.Id == unitId && x.Origin == "Managed")
+            || !snapshot.StaticThreads.Any(x => x.Id == ScenarioRunnerThreadId && x.Origin == "Descriptive"))
+        {
+            failures.Add("execution snapshot did not distinguish managed and descriptive origins.");
+        }
+        else
+        {
+            checks.Add("execution-origin-managed-vs-descriptive");
+        }
         if (!snapshot.DynamicTasks.Any(x => x.Id == unitId && x.State == RuntimeTaskState.Completed))
         {
             failures.Add("task was not observed as completed.");
@@ -1580,12 +1785,18 @@ static class FunctionalChildRunner
 
 		var cancelableUnitId = $"functional.task.cancelable.{Guid.NewGuid():N}";
 		var cancelableEntered = new ManualResetEventSlim(false);
+		var cancelableCleanupCompleted = false;
 		var cancelableTask = new RTask((CancellationToken token) =>
 		{
 			cancelableEntered.Set();
 			token.WaitHandle.WaitOne();
 			token.ThrowIfCancellationRequested();
 		}, cancelableUnitId, "functional", threadId: "functional.thread", lifetime: RuntimeExecutionLifetime.Dynamic, sourceLocation: nameof(FunctionalChildRunner));
+		cancelableTask.CleanupRequested += async (_, _, token) =>
+		{
+			await Task.Delay(30, token);
+			cancelableCleanupCompleted = true;
+		};
 		cancelableTask.Start();
 		if (!cancelableEntered.Wait(TimeSpan.FromSeconds(2)))
 			failures.Add("cancelable task did not start.");
@@ -1593,10 +1804,40 @@ static class FunctionalChildRunner
 		if (!stopResult.Sent)
 			failures.Add($"cancelable task Stop command was not sent: {stopResult.Status}.");
 		try { await cancelableTask; } catch (OperationCanceledException) { }
-		if (!cancelableTask.IsCanceled || managed.SnapshotRegistrations().Any(x => x.UnitId == cancelableUnitId))
+		if (!cancelableTask.IsCanceled || !cancelableCleanupCompleted || cancelableTask.ExitCode != RuntimeShutdownExitCodes.Success
+			|| managed.SnapshotRegistrations().Any(x => x.UnitId == cancelableUnitId))
 			failures.Add("cancelable task did not cancel and unregister after Stop.");
 		else
 			checks.Add("task-stop-cooperative-cancel");
+
+		var wakeupUnitId = $"functional.task.wakeup.{Guid.NewGuid():N}";
+		var wakeupEntered = new ManualResetEventSlim(false);
+		var wakeupObserved = new ManualResetEventSlim(false);
+		RTask? wakeupTask = null;
+		wakeupTask = new RTask((CancellationToken token) =>
+		{
+			wakeupEntered.Set();
+			if (wakeupTask!.WaitForWakeupAsync(TimeSpan.FromSeconds(5), token).AsTask().GetAwaiter().GetResult())
+				wakeupObserved.Set();
+			token.WaitHandle.WaitOne();
+			token.ThrowIfCancellationRequested();
+		}, wakeupUnitId, "functional", threadId: "functional.thread", lifetime: RuntimeExecutionLifetime.Dynamic, sourceLocation: nameof(FunctionalChildRunner));
+		wakeupTask.Start();
+		if (!wakeupEntered.Wait(TimeSpan.FromSeconds(2)))
+			failures.Add("wakeup task did not enter its long wait.");
+		var wakeupResult = managed.TryEnqueueCommand(wakeupUnitId, RuntimeManagedCommandKind.Wakeup);
+		if (!wakeupResult.Sent || !wakeupObserved.Wait(TimeSpan.FromSeconds(2)))
+			failures.Add("FIFO Wakeup did not immediately release the RTask wait.");
+		else if (!managed.SnapshotRegistrations().Any(x => x.UnitId == wakeupUnitId))
+			failures.Add("Wakeup incorrectly stopped or unregistered the task.");
+		else
+			checks.Add("task-wakeup-continues-without-stop");
+		managed.TryEnqueueCommand(wakeupUnitId, RuntimeManagedCommandKind.Stop);
+		try { await wakeupTask; } catch (OperationCanceledException) { }
+		if (managed.SnapshotRegistrations().Any(x => x.UnitId == wakeupUnitId))
+			failures.Add("wakeup task remained registered after explicit Stop.");
+		else
+			checks.Add("task-wakeup-then-stop-unregisters");
 
 		var disposeUnitId = $"functional.task.dispose.{Guid.NewGuid():N}";
 		var disposeEntered = new ManualResetEventSlim(false);
@@ -1689,19 +1930,15 @@ static class FunctionalChildRunner
 			}
 		};
 		disposeProcess.Start();
-		var disposeProcessId = disposeProcess.Id;
 		disposeProcess.Dispose();
-		var osProcessAlive = false;
-		try
-		{
-			using var osProcess = Process.GetProcessById(disposeProcessId);
-			osProcessAlive = !osProcess.HasExited;
-		}
-		catch (ArgumentException) { }
-		if (osProcessAlive || managed.SnapshotRegistrations().Any(x => x.UnitId == disposeProcessUnitId))
-			failures.Add("RProcess.Dispose returned while the owned child or its registration remained alive.");
+		if (!managed.SnapshotRegistrations().Any(x => x.UnitId == disposeProcessUnitId))
+			failures.Add("RProcess.Dispose unregistered the child before its managed program exit.");
+		else if (!disposeProcess.WaitForExit(10_000))
+			failures.Add("RProcess.Dispose Stop did not reach the child's managed program exit.");
+		else if (managed.SnapshotRegistrations().Any(x => x.UnitId == disposeProcessUnitId))
+			failures.Add("RProcess registration remained after its managed program exit.");
 		else
-			checks.Add("process-dispose-stops-before-unregister");
+			checks.Add("process-dispose-defers-unregister-until-managed-exit");
 
         using var process = new RProcess($"functional.process.{Guid.NewGuid():N}")
         {
@@ -2183,7 +2420,8 @@ static class FunctionalChildRunner
 
         var rootDirectory = ResolveRepositoryRoot();
         var cliProjectPath = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "Iwesun.Runtime.Cli.csproj");
-        var cliConfigPath = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "Iwesun.Runtime.Cli.commands.v2.json");
+        var cliConfigPath = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "RuntimeCliSystemConfig.json");
+        var cliMetadataPath = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "RuntimeCliSystemMetadata.json");
         if (!File.Exists(cliProjectPath))
         {
             failures.Add($"CLI project not found: {cliProjectPath}");
@@ -2203,35 +2441,37 @@ static class FunctionalChildRunner
             return FunctionalScenarioResult.Fail("cli", checks, failures);
         }
 
-        if (!cliConfig.Pipes.TryGetValue("diagnostics", out var diagnosticsPipeFromConfig)
-            || string.IsNullOrWhiteSpace(diagnosticsPipeFromConfig))
+        if (cliConfig.Schema != "iwesun.runtime.cli/3.0")
         {
-            failures.Add("CLI config missing pipes.diagnostics (first pipe slot).");
+            failures.Add($"CLI config schema was '{cliConfig.Schema}', expected iwesun.runtime.cli/3.0.");
             return FunctionalScenarioResult.Fail("cli", checks, failures);
         }
-        checks.Add("cli-diagnostics-pipe-slot-present");
+		if (!File.Exists(cliMetadataPath))
+		{
+			failures.Add($"CLI metadata not found: {cliMetadataPath}");
+			return FunctionalScenarioResult.Fail("cli", checks, failures);
+		}
+        checks.Add("cli-v3-schema-present");
 
-        var commandNames = cliConfig.BaseCommands.Select(command => command.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!cliConfig.Endpoints.ContainsKey("diagnostics"))
+        {
+            failures.Add("CLI config missing endpoints.diagnostics.");
+            return FunctionalScenarioResult.Fail("cli", checks, failures);
+        }
+        checks.Add("cli-diagnostics-endpoint-present");
+
+        var commandNames = cliConfig.Commands.Select(command => command.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var requiredCommands = new[]
         {
-            "bp.listNumeric",
-            "bp.setNumeric",
-            "bp.setNumericThreshold",
-            "bp.clearNumeric",
+            "host.info",
+            "lifecycle.status",
+            "lifecycle.shutdown",
             "process.list",
-            "process.mem.set",
             "thread.list",
             "task.list",
-            "lifecycle.broadcast",
-            "unit.state.trytransition",
-            "unit.state.subtask.tryappend",
-            "web.runtime.pipe.acquire",
-            "web.runtime.invoke",
-            "web.runtime.capabilities",
-            "web.runtime.navigate",
-            "web.runtime.cookie.get",
-            "web.runtime.cookie.set",
-            "web.runtime.cookie.clear"
+            "pipe.list",
+            "reflection.get",
+            "reflection.invoke"
         };
         foreach (var requiredCommand in requiredCommands)
         {
@@ -2244,7 +2484,26 @@ static class FunctionalChildRunner
         {
             return FunctionalScenarioResult.Fail("cli", checks, failures);
         }
-        checks.Add("cli-numeric-command-definitions-present");
+        checks.Add("cli-server-command-definitions-present");
+
+        using (var metadataDocument = JsonDocument.Parse(await File.ReadAllTextAsync(cliMetadataPath)))
+        {
+            var metadataCommands = metadataDocument.RootElement.GetProperty("commands");
+            if (metadataCommands.EnumerateObject().Count() != cliConfig.Commands.Count
+                || metadataCommands.EnumerateObject().Any(item => string.IsNullOrWhiteSpace(item.Value.GetProperty("summary").GetString())
+                    || string.IsNullOrWhiteSpace(item.Value.GetProperty("risk").GetString())
+                    || string.IsNullOrWhiteSpace(item.Value.GetProperty("capability").GetString())
+                    || item.Value.GetProperty("examples").GetArrayLength() == 0))
+                failures.Add("One or more standard CLI commands have incomplete explicit metadata.");
+            else
+                checks.Add("cli-command-metadata-explicit");
+        }
+
+        var inspect = cliConfig.Composites.SingleOrDefault(x => x.Name == "runtime.inspect");
+        if (inspect == null || inspect.Steps.Count != 5)
+            failures.Add("runtime.inspect is missing or does not contain the five standard read-only steps.");
+        else
+            checks.Add("runtime-inspect-catalog-present");
 
         checks.Add($"diagnostics-pipe:{diagnosticsPipeName}");
 		var cliBuild = new ProcessStartInfo("dotnet", $"build \"{cliProjectPath}\" -c Debug --nologo")
@@ -2331,7 +2590,26 @@ static class FunctionalChildRunner
             }
         }
 
-        var batchPsi = new ProcessStartInfo("dotnet", $"\"{cliDllPath}\" --config=\"{cliConfigPath}\" --pipe={diagnosticsPipeName} status")
+        var helpPsi = new ProcessStartInfo("dotnet", $"\"{cliDllPath}\" --config=\"{cliConfigPath}\" lifecycle.shutdown --help")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            WorkingDirectory = rootDirectory
+        };
+        using (var helpProcess = Process.Start(helpPsi) ?? throw new InvalidOperationException("Failed to start CLI help process."))
+        {
+            var helpOutputTask = helpProcess.StandardOutput.ReadToEndAsync();
+            await helpProcess.WaitForExitAsync();
+            var helpOutput = await helpOutputTask;
+            if (helpProcess.ExitCode != 0 || !helpOutput.Contains("Risk: destructive", StringComparison.Ordinal) || !helpOutput.Contains("Endpoint: diagnostics", StringComparison.Ordinal))
+                failures.Add($"Command-level help did not expose endpoint and risk. stdout={helpOutput.Trim()}");
+            else
+                checks.Add("cli-command-help-metadata");
+        }
+
+        var batchPsi = new ProcessStartInfo("dotnet", $"\"{cliDllPath}\" --config=\"{cliConfigPath}\" --pipe={diagnosticsPipeName} runtime.inspect")
         {
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -2356,10 +2634,13 @@ static class FunctionalChildRunner
         }
         if (batchProcess.ExitCode != 0
             || cliBatchFrame?.Header.Schema != RuntimeDiagnosticProtocol.V3Schema
-            || cliBatchFrame.BatchResult?.Steps.Count != 3
-            || cliBatchFrame.BatchResult.Steps.Any(x => !x.Ok))
+            || cliBatchFrame.BatchResult?.Steps.Count != 5
+            || cliBatchFrame.BatchResult.Steps.Any(x => !x.Ok)
+            || cliBatchFrame.BatchResult.TotalSteps != 5
+            || cliBatchFrame.BatchResult.SuccessfulSteps != 5
+            || cliBatchFrame.BatchResult.FailedSteps != 0)
         {
-            failures.Add($"CLI composite did not execute as one native three-step batch. stdout={batchStdout.Trim()} stderr={batchStderr.Trim()}");
+            failures.Add($"CLI composite did not execute as one native five-step batch with an in-frame summary. stdout={batchStdout.Trim()} stderr={batchStderr.Trim()}");
         }
         else
         {
@@ -2486,7 +2767,7 @@ static class FunctionalChildRunner
 
         var rootDirectory  = ResolveRepositoryRoot();
         var cliProjectPath = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "Iwesun.Runtime.Cli.csproj");
-        var cliConfigPath  = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "Iwesun.Runtime.Cli.commands.v2.json");
+        var cliConfigPath  = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "RuntimeCliSystemConfig.json");
 
         if (!File.Exists(cliProjectPath) || !File.Exists(cliConfigPath))
         {
@@ -2517,11 +2798,11 @@ static class FunctionalChildRunner
         }
 
         // ── 1. CLI: set predicate gt with threshold 10 ─────────────────────────
-        if (!await Cli($"bp.setNumericThreshold {bpId} gt 10", "setNumericThreshold-gt-10"))
+        if (!await Cli($"breakpoint.set-numeric-threshold {bpId} gt 10", "setNumericThreshold-gt-10"))
             return FunctionalScenarioResult.Fail("cli-numeric-breakpoint", checks, failures);
 
         // ── 2. CLI: enable breakpoint ──────────────────────────────────────────
-        if (!await Cli($"bp.enable {bpId}", "enable"))
+        if (!await Cli($"breakpoint.enable {bpId}", "enable"))
             return FunctionalScenarioResult.Fail("cli-numeric-breakpoint", checks, failures);
 
         // ── 3. Host: trigger BreakIfNumbers in background (15 > 10 → HIT) ──────
@@ -2559,7 +2840,7 @@ static class FunctionalChildRunner
         }
 
         // ── 5. CLI: resume the waiting breakpoint ─────────────────────────────
-        if (!await Cli($"bp.resume {bpId}", "resume"))
+        if (!await Cli($"breakpoint.resume {bpId}", "resume"))
         {
             // Safety: ensure breakTask can exit via hub
             await hub.ExecuteAsync(new RuntimeDiagnosticAction
@@ -2579,7 +2860,7 @@ static class FunctionalChildRunner
             checks.Add("cli-resume-unblocked");
 
         // ── 6. CLI: switch predicate to lt with threshold 5 ───────────────────
-        if (!await Cli($"bp.setNumericThreshold {bpId} lt 5", "setNumericThreshold-lt-5"))
+        if (!await Cli($"breakpoint.set-numeric-threshold {bpId} lt 5", "setNumericThreshold-lt-5"))
             return FunctionalScenarioResult.Fail("cli-numeric-breakpoint", checks, failures);
 
         // Re-enable; 15 < 5 is false → MISS (should pass through immediately)
@@ -2600,7 +2881,7 @@ static class FunctionalChildRunner
             checks.Add("cli-switch-miss");
 
         // Value 3 < 5 → HIT after switch
-        if (!await Cli($"bp.enable {bpId}", "enable-for-lt-hit"))
+        if (!await Cli($"breakpoint.enable {bpId}", "enable-for-lt-hit"))
             return FunctionalScenarioResult.Fail("cli-numeric-breakpoint", checks, failures);
 
         var ltHitSw   = System.Diagnostics.Stopwatch.StartNew();
@@ -2622,7 +2903,7 @@ static class FunctionalChildRunner
             {
                 checks.Add("cli-lt-hit-waiting");
                 // Resume via CLI
-                await Cli($"bp.resume {bpId}", "resume-lt-hit");
+                await Cli($"breakpoint.resume {bpId}", "resume-lt-hit");
             }
             else
             {
@@ -2645,7 +2926,7 @@ static class FunctionalChildRunner
         // ── 7. CLI: listNumeric — verify binding reflects lt operator ─────────
         {
             var (exitCode, stdout, stderr) = await RunCliCommandAsync(
-                cliProjectPath, cliConfigPath, rootDirectory, diagnosticsPipeName, "bp.listNumeric");
+                cliProjectPath, cliConfigPath, rootDirectory, diagnosticsPipeName, "breakpoint.list-numeric");
             if (exitCode != 0)
                 failures.Add($"listNumeric exit {exitCode}. stderr={stderr.Trim()}");
             else
@@ -2680,7 +2961,7 @@ static class FunctionalChildRunner
         }
 
         // ── CLI disable: matching values must no longer block ─────────────────
-        if (await Cli($"bp.disable {bpId}", "disable"))
+        if (await Cli($"breakpoint.disable {bpId}", "disable"))
         {
             var disabledWatch = Stopwatch.StartNew();
             await RuntimeOutput.BreakIfNumbers(bpId, 3, 0, 0, new { phase = "cli-disabled-match" });
@@ -2706,7 +2987,7 @@ static class FunctionalChildRunner
         string rootDirectory)
     {
         var cliProjectPath = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "Iwesun.Runtime.Cli.csproj");
-        var cliConfigPath  = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "Iwesun.Runtime.Cli.commands.v2.json");
+        var cliConfigPath  = Path.Combine(rootDirectory, "Iwesun.Runtime.Cli", "RuntimeCliSystemConfig.json");
 
         if (!File.Exists(cliProjectPath))
             return ("", "", $"CLI project not found: {cliProjectPath}");
@@ -2737,7 +3018,7 @@ static class FunctionalChildRunner
             return ("", "", $"CLI dll not found after build: {dllPath}");
 
         // Copy config to output dir so dotnet <dll> can find it relative to its base directory.
-        var outConfigPath = Path.Combine(outputDir, "Iwesun.Runtime.Cli.commands.v2.json");
+        var outConfigPath = Path.Combine(outputDir, "RuntimeCliSystemConfig.json");
         if (!File.Exists(outConfigPath))
             File.Copy(cliConfigPath, outConfigPath, overwrite: false);
 
@@ -2872,7 +3153,7 @@ static class FunctionalChildRunner
             else
             {
                 // Exercise idempotent runtime enable for the remaining breakpoints.
-                if (!await CliOk($"bp.enable {bpId}", $"enable:{bpId}"))
+                if (!await CliOk($"breakpoint.enable {bpId}", $"enable:{bpId}"))
                     continue;
             }
 
@@ -2883,7 +3164,7 @@ static class FunctionalChildRunner
             {
                 await Task.Delay(200);
                 var (snapExit, snapOut, snapErr) = await RunCliDllCommandAsync(
-                    cliDll, cliCfg, childPipeName, "bp.snapshot");
+                    cliDll, cliCfg, childPipeName, "breakpoint.list");
                 if (snapExit != 0)
                 {
                     pollDiag ??= $"poll[{i}] exit={snapExit} err={snapErr.Trim()}";
@@ -2892,8 +3173,11 @@ static class FunctionalChildRunner
                 RuntimeDiagnosticFrame? snapFrame;
                 try { snapFrame = JsonSerializer.Deserialize<RuntimeDiagnosticFrame>(snapOut, JsonDefaults.Options); }
                 catch (Exception ex) { pollDiag ??= $"poll[{i}] parse err: {ex.Message}"; continue; }
-                // Data is a JSON array of BreakpointSnapshot objects
+                // Data is a bounded page of BreakpointSnapshot objects.
                 var snapData = snapFrame?.Data ?? default;
+                if (snapData.ValueKind == JsonValueKind.Object &&
+                    (snapData.TryGetProperty("Items", out var pageItems) || snapData.TryGetProperty("items", out pageItems)))
+                    snapData = pageItems;
                 if (snapData.ValueKind != JsonValueKind.Array)
                 {
                     pollDiag ??= $"poll[{i}] data kind={snapData.ValueKind} raw={snapOut.Trim()[..Math.Min(200,snapOut.Length)]}";
@@ -2916,7 +3200,7 @@ static class FunctionalChildRunner
             {
                 failures.Add($"{bpId}: never entered IsWaiting state.");
                 // Still try to resume so child can proceed
-                await RunCliDllCommandAsync(cliDll, cliCfg, childPipeName, $"bp.resume {bpId}");
+                await RunCliDllCommandAsync(cliDll, cliCfg, childPipeName, $"breakpoint.resume {bpId}");
                 continue;
             }
             checks.Add($"{bpId}-is-waiting");
@@ -2925,7 +3209,7 @@ static class FunctionalChildRunner
             // connection closes. Only an explicit resume command may release it.
             await Task.Delay(200);
             var (verifyExit, verifyOut, verifyErr) = await RunCliDllCommandAsync(
-                cliDll, cliCfg, childPipeName, "bp.snapshot");
+                cliDll, cliCfg, childPipeName, "breakpoint.list");
             var stillWaiting = false;
             if (verifyExit == 0)
             {
@@ -2933,6 +3217,9 @@ static class FunctionalChildRunner
                 {
                     var verifyFrame = JsonSerializer.Deserialize<RuntimeDiagnosticFrame>(verifyOut, JsonDefaults.Options);
                     var verifyData = verifyFrame?.Data ?? default;
+                    if (verifyData.ValueKind == JsonValueKind.Object &&
+                        (verifyData.TryGetProperty("Items", out var pageItems) || verifyData.TryGetProperty("items", out pageItems)))
+                        verifyData = pageItems;
                     if (verifyData.ValueKind == JsonValueKind.Array)
                     {
                         stillWaiting = verifyData.EnumerateArray().Any(item =>
@@ -2947,13 +3234,13 @@ static class FunctionalChildRunner
 
             if (!stillWaiting)
             {
-                failures.Add($"{bpId}: bp.snapshot disconnect released the breakpoint. stderr={verifyErr.Trim()}");
+                failures.Add($"{bpId}: breakpoint.list disconnect released the breakpoint. stderr={verifyErr.Trim()}");
                 return FunctionalScenarioResult.Fail("bp-process-cli", checks, failures);
             }
             checks.Add($"{bpId}-still-waiting-after-snapshot-disconnect");
 
             // Resume via CLI
-            if (await CliOk($"bp.resume {bpId}", $"resume:{bpId}"))
+            if (await CliOk($"breakpoint.resume {bpId}", $"resume:{bpId}"))
                 checks.Add($"{bpId}-resumed");
         }
 
@@ -4088,6 +4375,6 @@ internal static class FunctionalHelp
         Console.WriteLine("Iwesun.Runtime.FunctionalTests");
         Console.WriteLine("Usage:");
         Console.WriteLine("  dotnet run --project Iwesun.Runtime.FunctionalTests");
-        Console.WriteLine("  dotnet run --project Iwesun.Runtime.FunctionalTests -- --child --scenario diagnostics|managed|thread|task|process|tree|root-safety|sharedfifo-protocol|numeric-breakpoint|pipe-registry|tree-process|cli|cli-numeric-breakpoint|bp-process|bp-process-cli|probe");
+        Console.WriteLine("  dotnet run --project Iwesun.Runtime.FunctionalTests -- --child --scenario diagnostics|managed|thread|task|process|host-uniqueness|windows-service|tree|root-safety|sharedfifo-protocol|numeric-breakpoint|pipe-registry|tree-process|cli|cli-numeric-breakpoint|bp-process|bp-process-cli|probe");
     }
 }

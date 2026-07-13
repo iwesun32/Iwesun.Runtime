@@ -12,11 +12,25 @@ public sealed class RTask : IDisposable
 	private readonly string _category;
 	private readonly string _threadId;
 	private readonly string _sourceLocation;
+	private readonly bool _blocksShutdown;
+	private readonly RuntimeManagedCleanup _cleanup;
 	private readonly Task _task;
 	private readonly CancellationTokenSource? _ownedStopCts;
+	private readonly SemaphoreSlim _wakeupSignal = new(0, 1);
 	private IDisposable? _commandRegistration;
 	private int _registered;
 	private int _disposed;
+	private int _managedExitCode;
+	private int _completionCleaned;
+
+	/// <summary>Waits until a FIFO Wakeup command arrives or the timeout elapses.</summary>
+	/// <returns><see langword="true"/> when explicitly awakened; otherwise <see langword="false"/>.</returns>
+	public async ValueTask<bool> WaitForWakeupAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+	{
+		if (timeout < Timeout.InfiniteTimeSpan)
+			throw new ArgumentOutOfRangeException(nameof(timeout));
+		return await _wakeupSignal.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+	}
 
 	public RTask(
 		Action action,
@@ -24,8 +38,9 @@ public sealed class RTask : IDisposable
 		string category = "task",
 		string threadId = "",
 		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
-		string sourceLocation = "")
-		: this(action, CancellationToken.None, unitId, category, threadId, lifetime, sourceLocation)
+		string sourceLocation = "",
+		bool blocksShutdown = true)
+		: this(action, CancellationToken.None, unitId, category, threadId, lifetime, sourceLocation, blocksShutdown)
 	{
 	}
 
@@ -36,13 +51,16 @@ public sealed class RTask : IDisposable
 		string category = "task",
 		string threadId = "",
 		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
-		string sourceLocation = "")
+		string sourceLocation = "",
+		bool blocksShutdown = true)
 	{
 		ArgumentNullException.ThrowIfNull(action);
 		_task = new Task(action, cancellationToken);
 		(UnitId, _unit, _execution, _managed, _lifetime, _category, _threadId, _sourceLocation) =
 			Initialize(unitId, category, threadId, lifetime, sourceLocation);
+		_blocksShutdown = blocksShutdown;
 		State = _unit.State;
+		_cleanup = new RuntimeManagedCleanup(this, State);
 		AttachCompletion();
 		AttachCommandHandler();
 	}
@@ -54,14 +72,17 @@ public sealed class RTask : IDisposable
 		string threadId = "",
 		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
 		string sourceLocation = "",
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		bool blocksShutdown = true)
 	{
 		ArgumentNullException.ThrowIfNull(action);
 		_ownedStopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		_task = new Task(() => action(_ownedStopCts.Token), _ownedStopCts.Token);
 		(UnitId, _unit, _execution, _managed, _lifetime, _category, _threadId, _sourceLocation) =
 			Initialize(unitId, category, threadId, lifetime, sourceLocation);
+		_blocksShutdown = blocksShutdown;
 		State = _unit.State;
+		_cleanup = new RuntimeManagedCleanup(this, State);
 		AttachCompletion();
 		AttachCommandHandler();
 	}
@@ -73,8 +94,9 @@ public sealed class RTask : IDisposable
 		string category = "task",
 		string threadId = "",
 		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
-		string sourceLocation = "")
-		: this(action, state, CancellationToken.None, unitId, category, threadId, lifetime, sourceLocation)
+		string sourceLocation = "",
+		bool blocksShutdown = true)
+		: this(action, state, CancellationToken.None, unitId, category, threadId, lifetime, sourceLocation, blocksShutdown)
 	{
 	}
 
@@ -86,13 +108,16 @@ public sealed class RTask : IDisposable
 		string category = "task",
 		string threadId = "",
 		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
-		string sourceLocation = "")
+		string sourceLocation = "",
+		bool blocksShutdown = true)
 	{
 		ArgumentNullException.ThrowIfNull(action);
 		_task = new Task(action, state, cancellationToken);
 		(UnitId, _unit, _execution, _managed, _lifetime, _category, _threadId, _sourceLocation) =
 			Initialize(unitId, category, threadId, lifetime, sourceLocation);
+		_blocksShutdown = blocksShutdown;
 		State = _unit.State;
+		_cleanup = new RuntimeManagedCleanup(this, State);
 		AttachCompletion();
 		AttachCommandHandler();
 	}
@@ -104,6 +129,13 @@ public sealed class RTask : IDisposable
 	public bool IsCanceled => _task.IsCanceled;
 	public bool IsFaulted => _task.IsFaulted;
 	public AggregateException? Exception => _task.Exception;
+	public int ExitCode => _cleanup.ExitCode;
+	public bool IsCleanupCompleted => _cleanup.IsCompleted;
+	public event RuntimeManagedCleanupHandler CleanupRequested
+	{
+		add => _cleanup.Requested += value;
+		remove => _cleanup.Requested -= value;
+	}
 
 	public TaskAwaiter GetAwaiter() => _task.GetAwaiter();
 	public bool Wait(TimeSpan timeout) => _task.Wait(timeout);
@@ -171,7 +203,7 @@ public sealed class RTask : IDisposable
 			parentTaskId: "",
 			step: "registered",
 			payload: State.Snapshot());
-		_managed?.Register(UnitId, "task", "InternalManaged", State.Snapshot());
+		_managed?.Register(UnitId, "task", "InternalManaged", State.Snapshot(), _blocksShutdown);
 	}
 
 	private void MarkRunning()
@@ -185,19 +217,35 @@ public sealed class RTask : IDisposable
 	{
 		_commandRegistration = _managed?.RegisterCommandHandler(UnitId, command =>
 		{
-			if (command.Kind != RuntimeManagedCommandKind.Stop)
+			if (command.Kind == RuntimeManagedCommandKind.Wakeup)
+			{
+				if (_wakeupSignal.CurrentCount == 0)
+					_wakeupSignal.Release();
+				_managed?.PublishEvent(UnitId, "task-wakeup-command", "Wakeup command received.", new { command.Sequence, command.Payload });
 				return;
-			State.SetDetail("stopRequested", DateTimeOffset.UtcNow.ToString("O"));
-			if (_ownedStopCts != null)
-			{
-				_ownedStopCts.Cancel();
-				_managed?.PublishEvent(UnitId, "task-stop-cancelled", "Task Stop command signalled its cancellation token.", new { command.Sequence });
 			}
-			else
+			if (command.Kind == RuntimeManagedCommandKind.Stop)
 			{
-				_managed?.PublishEvent(UnitId, "task-stop-pending", "Task Stop command is waiting for non-token-aware work to finish.", new { command.Sequence });
+				State.SetDetail("stopRequested", DateTimeOffset.UtcNow.ToString("O"));
+				_cleanup.Begin(command);
+				_ = SignalManagedTaskExitAsync(command.Sequence);
 			}
 		});
+	}
+
+	private async Task SignalManagedTaskExitAsync(long commandSequence)
+	{
+		await _cleanup.WaitForExitSignalAsync().ConfigureAwait(false);
+		Interlocked.Exchange(ref _managedExitCode, _cleanup.ExitCode);
+		if (_ownedStopCts != null)
+		{
+			_ownedStopCts.Cancel();
+			_managed?.PublishEvent(UnitId, "task-stop-cancelled", "Cleanup completed or reached the controller deadline; the managed cancellation token was signalled.", new { commandSequence, exitCode = _cleanup.ExitCode });
+		}
+		else
+		{
+			_managed?.PublishEvent(UnitId, "task-stop-pending", "Cleanup completed, but non-token-aware work must return through its managed entry point.", new { commandSequence, exitCode = _cleanup.ExitCode });
+		}
 	}
 
 	private void AttachCompletion()
@@ -249,10 +297,16 @@ public sealed class RTask : IDisposable
 
 	private void CompleteRegistration()
 	{
+		if (Interlocked.Exchange(ref _completionCleaned, 1) == 1)
+			return;
+		if (_cleanup.HasStarted)
+			State.TransitionTo(Volatile.Read(ref _managedExitCode) == RuntimeShutdownExitCodes.Timeout ? "Timeout" : "Completed");
 		_managed?.Unregister(UnitId);
 		_commandRegistration?.Dispose();
 		_commandRegistration = null;
 		_ownedStopCts?.Dispose();
+		_wakeupSignal.Dispose();
+		_cleanup.Dispose();
 	}
 
 	public void Dispose()

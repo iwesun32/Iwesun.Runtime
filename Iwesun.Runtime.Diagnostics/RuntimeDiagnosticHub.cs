@@ -241,7 +241,7 @@ public sealed class RuntimeDiagnosticHub
 			{
 				Id = step.Id,
 				Ok = actionResult.Success,
-				Code = actionResult.Success ? "OK" : "ERROR",
+				Code = actionResult.Success ? "OK" : (actionResult.ErrorCode ?? "ERROR"),
 				Error = actionResult.Error,
 				Data = actionResult.Value == null ? null : JsonSerializer.SerializeToElement(actionResult.Value),
 				DurationMs = (long)Stopwatch.GetElapsedTime(stepStarted).TotalMilliseconds
@@ -260,7 +260,12 @@ public sealed class RuntimeDiagnosticHub
 		{
 			Steps = results,
 			StoppedOnError = stoppedOnError,
-			DurationMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds
+			DurationMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+			TotalSteps = results.Count,
+			SuccessfulSteps = results.Count(x => x.Ok && !x.Skipped),
+			FailedSteps = results.Count(x => !x.Ok),
+			SkippedSteps = results.Count(x => x.Skipped),
+			FirstFailureCode = results.FirstOrDefault(x => !x.Ok)?.Code
 		};
 		var ok = results.All(x => x.Ok);
 		return BuildBatchFrameResponse(request, batchResult, ok);
@@ -441,7 +446,7 @@ public sealed class RuntimeDiagnosticHub
 			Status = new RuntimeDiagnosticFrameStatus
 			{
 				Ok = result.Success,
-				Code = result.Success ? "OK" : "ERROR",
+				Code = result.Success ? "OK" : (result.ErrorCode ?? "ERROR"),
 				Message = result.Success ? "success" : (result.Error ?? "failed"),
 				Retryable = false
 			},
@@ -585,7 +590,8 @@ public sealed class RuntimeDiagnosticHub
 		{
 			case "list":
 			case "snapshot":
-				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action, _breakpoints.Snapshot());
+				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action,
+					RuntimePagedResult<BreakpointSnapshot>.Create(_breakpoints.Snapshot(), ReadPageOffset(command), ReadPageLimit(command)));
 
 			case "enable":
 				var enableId = ReadString(command, "id") ?? ReadString(command, "breakpointId");
@@ -678,14 +684,15 @@ public sealed class RuntimeDiagnosticHub
 		{
 			case "list":
 			case "available":
+				var availableHooks = _hooks.AvailableHooks().Select(hook => new
+				{
+					hook.Id,
+					hook.EventName,
+					TargetTypeName = hook.TargetType.FullName ?? hook.TargetType.Name
+				}).OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase).ToArray();
 				return RuntimeDiagnosticActionResult.Ok("diagnostics.hooks", action, new
 				{
-					available = _hooks.AvailableHooks().Select(hook => new
-					{
-						hook.Id,
-						hook.EventName,
-						TargetTypeName = hook.TargetType.FullName ?? hook.TargetType.Name
-					}),
+					available = RuntimePagedResult<object>.Create(availableHooks.Cast<object>(), ReadPageOffset(command), ReadPageLimit(command)),
 					active = _hooks.ActiveHooks()
 				});
 
@@ -721,16 +728,33 @@ public sealed class RuntimeDiagnosticHub
 			Array.Empty<BreakpointEntry>(),
 			Array.Empty<HookEntry>());
 
+		var offset = ReadPageOffset(command);
+		var limit = ReadPageLimit(command);
 		object result = kind.ToLowerInvariant() switch
 		{
-			"watchpoints" => snapshot.WatchPoints,
-			"breakpoints" => snapshot.Breakpoints,
-			"hooks" => snapshot.Hooks,
-			"all" => snapshot,
+			"watchpoints" => RuntimePagedResult<WatchPointEntry>.Create(snapshot.WatchPoints, offset, limit),
+			"breakpoints" => RuntimePagedResult<BreakpointEntry>.Create(snapshot.Breakpoints, offset, limit),
+			"hooks" => RuntimePagedResult<HookEntry>.Create(snapshot.Hooks, offset, limit),
+			"all" => new
+			{
+				watchPoints = RuntimePagedResult<WatchPointEntry>.Create(snapshot.WatchPoints, offset, limit),
+				breakpoints = RuntimePagedResult<BreakpointEntry>.Create(snapshot.Breakpoints, offset, limit),
+				hooks = RuntimePagedResult<HookEntry>.Create(snapshot.Hooks, offset, limit)
+			},
 			_ => new { error = $"Unknown registry kind: {kind}. Supported: all, watchpoints, breakpoints, hooks" }
 		};
 
 		return RuntimeDiagnosticActionResult.Ok("diagnostics.registry", action, result);
+	}
+
+	private static int ReadPageOffset(RuntimeDiagnosticAction command) => ReadInteger(command, "offset") ?? 0;
+	private static int ReadPageLimit(RuntimeDiagnosticAction command) => ReadInteger(command, "limit") ?? 100;
+	private static int? ReadInteger(RuntimeDiagnosticAction command, string key)
+	{
+		if (command.Args != null && command.Args.TryGetValue(key, out var value) &&
+			value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number))
+			return number;
+		return null;
 	}
 }
 

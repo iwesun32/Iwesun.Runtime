@@ -18,7 +18,10 @@ public sealed class RuntimeFileRegistryTarget : RuntimeDiagnosticTargetBase
                 return Task.FromResult(RuntimeDiagnosticActionResult.Ok(
                     TargetId,
                     command.Action,
-                    RuntimeFileRegistry.Snapshot(ReadBool(command, "includeInactive") ?? true)));
+                    RuntimePagedResult<RuntimeFileLeaseSnapshot>.Create(
+                        RuntimeFileRegistry.Snapshot(ReadBool(command, "includeInactive") ?? true),
+                        ReadInt(command, "offset") ?? 0,
+                        ReadInt(command, "limit") ?? 100)));
 
             case "register":
                 var regName = ReadString(command, "name") ?? ReadString(command, "id");
@@ -65,6 +68,14 @@ public sealed class RuntimeFileRegistryTarget : RuntimeDiagnosticTargetBase
                     command.Action,
                     $"Unknown action '{command.Action}'. Supported: snapshot, list, register, release, unregister, resolve, purge."));
         }
+    }
+
+    private static int? ReadInt(RuntimeDiagnosticAction command, string key)
+    {
+        if (command.Args != null && command.Args.TryGetValue(key, out var value) &&
+            value.ValueKind == System.Text.Json.JsonValueKind.Number && value.TryGetInt32(out var number))
+            return number;
+        return null;
     }
 
     private static string? ReadString(RuntimeDiagnosticAction command, string key)

@@ -2,11 +2,110 @@ using System.Reflection;
 using System.Diagnostics;
 using System.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Extensions.Options;
+using System.Runtime.CompilerServices;
 
 namespace Iwesun.Runtime.Diagnostics;
 
 public static class RuntimeHostTemplate
 {
+	private static readonly object StartSync = new();
+	private static readonly ConditionalWeakTable<IServiceCollection, RuntimeHostStartRegistration> StartRegistrations = new();
+	private static readonly object ActivationSync = new();
+	private static IServiceProvider? _activeProvider;
+	private static Assembly? _activeHostAssembly;
+	private static bool _activationInProgress;
+
+	public static IServiceCollection ConfigureRuntimeWindowsService(
+		this IServiceCollection services,
+		Action<RuntimeWindowsServiceOptions> configure)
+	{
+		ArgumentNullException.ThrowIfNull(services);
+		ArgumentNullException.ThrowIfNull(configure);
+		services.Configure(configure);
+		return services;
+	}
+
+	public static IServiceCollection StartConfiguredWindowsService(
+		this IServiceCollection services,
+		string? runtimeDirectory = null,
+		RuntimeHostScanOptions? hostScanOptions = null,
+		string? startupRuntimeDiagnosticsPipeName = null,
+		string? startupRuntimeDiagnosticsFilePath = null)
+	{
+		ArgumentNullException.ThrowIfNull(services);
+		services.Start(
+			runtimeDirectory,
+			hostScanOptions,
+			startupRuntimeDiagnosticsPipeName,
+			startupRuntimeDiagnosticsFilePath);
+		services.AddWindowsService();
+		services.AddSingleton<IConfigureOptions<WindowsServiceLifetimeOptions>, RuntimeWindowsServiceOptionsSetup>();
+		if (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService())
+			services.AddSingleton<IHostLifetime, RuntimeWindowsServiceLifetime>();
+		return services;
+	}
+
+	public static IServiceCollection StartWindowsService(
+		this IServiceCollection services,
+		string serviceName,
+		string? runtimeDirectory = null,
+		TimeSpan? shutdownTimeout = null,
+		RuntimeHostScanOptions? hostScanOptions = null,
+		string? startupRuntimeDiagnosticsPipeName = null,
+		string? startupRuntimeDiagnosticsFilePath = null)
+	{
+		return services.StartWindowsService(
+			new RuntimeWindowsServiceOptions
+			{
+				ServiceName = serviceName,
+				DisplayName = serviceName,
+				ShutdownTimeout = shutdownTimeout ?? TimeSpan.FromSeconds(30)
+			},
+			runtimeDirectory,
+			hostScanOptions,
+			startupRuntimeDiagnosticsPipeName,
+			startupRuntimeDiagnosticsFilePath);
+	}
+
+	public static IServiceCollection StartWindowsService(
+		this IServiceCollection services,
+		RuntimeWindowsServiceOptions serviceOptions,
+		string? runtimeDirectory = null,
+		RuntimeHostScanOptions? hostScanOptions = null,
+		string? startupRuntimeDiagnosticsPipeName = null,
+		string? startupRuntimeDiagnosticsFilePath = null)
+	{
+		ArgumentNullException.ThrowIfNull(services);
+		ArgumentNullException.ThrowIfNull(serviceOptions);
+		ArgumentException.ThrowIfNullOrWhiteSpace(serviceOptions.ServiceName);
+		if (serviceOptions.ShutdownTimeout <= TimeSpan.Zero)
+			throw new ArgumentOutOfRangeException(nameof(serviceOptions.ShutdownTimeout));
+		var displayName = string.IsNullOrWhiteSpace(serviceOptions.DisplayName)
+			? serviceOptions.ServiceName
+			: serviceOptions.DisplayName;
+
+		services.Start(
+			runtimeDirectory,
+			hostScanOptions,
+			startupRuntimeDiagnosticsPipeName,
+			startupRuntimeDiagnosticsFilePath);
+		services.AddWindowsService(options => options.ServiceName = serviceOptions.ServiceName);
+		services.Configure<RuntimeWindowsServiceOptions>(options =>
+		{
+			options.ServiceName = serviceOptions.ServiceName;
+			options.DisplayName = displayName;
+			options.Description = serviceOptions.Description ?? "";
+			options.ShutdownTimeout = serviceOptions.ShutdownTimeout;
+		});
+		services.AddSingleton<IConfigureOptions<WindowsServiceLifetimeOptions>, RuntimeWindowsServiceOptionsSetup>();
+		if (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService())
+			services.AddSingleton<IHostLifetime, RuntimeWindowsServiceLifetime>();
+		return services;
+	}
+
 	public static IServiceCollection Start(
 		this IServiceCollection services,
 		string? runtimeDirectory = null,
@@ -15,6 +114,22 @@ public static class RuntimeHostTemplate
 		string? startupRuntimeDiagnosticsFilePath = null)
 	{
 		ArgumentNullException.ThrowIfNull(services);
+		var registration = new RuntimeHostStartRegistration(
+			NormalizeRuntimeDirectory(runtimeDirectory),
+			hostScanOptions,
+			startupRuntimeDiagnosticsPipeName ?? string.Empty,
+			startupRuntimeDiagnosticsFilePath ?? string.Empty);
+		lock (StartSync)
+		{
+			if (StartRegistrations.TryGetValue(services, out var existing))
+			{
+				if (existing.Equals(registration))
+					return services;
+				throw new RuntimeHostConfigurationException(
+					$"Runtime host services were already registered with different settings. Existing pipe='{existing.PipeName}', requested pipe='{registration.PipeName}'.");
+			}
+			StartRegistrations.Add(services, registration);
+		}
 		services.AddRuntimeDiagnostics(
 			runtimeDirectory,
 			hostScanOptions,
@@ -27,13 +142,54 @@ public static class RuntimeHostTemplate
 	{
 		ArgumentNullException.ThrowIfNull(provider);
 		ArgumentNullException.ThrowIfNull(hostAssembly);
-		provider.UseRuntimeDiagnostics();
-		provider.BuildDiagnosticRegistries(hostAssembly);
-		RuntimeInjectionContext.Configure(provider.GetService<RuntimeExecutionManager>());
-		RuntimeInjectionContext.ConfigureManaged(provider.GetService<RuntimeManagedRegistry>());
-		RuntimeInjectionContext.ConfigureHub(provider.GetService<RuntimeDiagnosticHub>());
-		return provider;
+		lock (ActivationSync)
+		{
+			if (ReferenceEquals(_activeProvider, provider))
+			{
+				if (!ReferenceEquals(_activeHostAssembly, hostAssembly))
+					throw new RuntimeHostConfigurationException("The active Runtime provider cannot be rebound to a different host assembly.");
+				return provider;
+			}
+			if (_activeProvider != null || _activationInProgress)
+				throw new RuntimeHostConfigurationException(
+					$"Only one Runtime host may be activated per process. Active host='{_activeHostAssembly?.GetName().Name ?? "activating"}', requested host='{hostAssembly.GetName().Name}'.");
+			_activationInProgress = true;
+		}
+
+		try
+		{
+			provider.UseRuntimeDiagnostics();
+			provider.BuildDiagnosticRegistries(hostAssembly);
+			var execution = provider.GetService<RuntimeExecutionManager>();
+			var managed = provider.GetService<RuntimeManagedRegistry>();
+			var hub = provider.GetService<RuntimeDiagnosticHub>();
+			lock (ActivationSync)
+			{
+				RuntimeInjectionContext.Configure(execution);
+				RuntimeInjectionContext.ConfigureManaged(managed);
+				RuntimeInjectionContext.ConfigureHub(hub);
+				_activeHostAssembly = hostAssembly;
+				_activeProvider = provider;
+				_activationInProgress = false;
+			}
+			return provider;
+		}
+		catch
+		{
+			lock (ActivationSync)
+				_activationInProgress = false;
+			throw;
+		}
 	}
+
+	private static string NormalizeRuntimeDirectory(string? runtimeDirectory) =>
+		string.IsNullOrWhiteSpace(runtimeDirectory) ? string.Empty : Path.GetFullPath(runtimeDirectory);
+
+	private sealed record RuntimeHostStartRegistration(
+		string RuntimeDirectory,
+		RuntimeHostScanOptions? HostScanOptions,
+		string PipeName,
+		string FilePath);
 
 }
 
@@ -103,7 +259,7 @@ public static class RuntimeInjector
 		object? payload = null)
 	{
 		ArgumentNullException.ThrowIfNull(execution);
-		return execution.RegisterThread(id, name, lifetime, kind, owner, sourceLocation, managedThreadId, nativeThreadId, tags, payload);
+		return execution.RegisterThread(id, name, lifetime, kind, owner, sourceLocation, managedThreadId, nativeThreadId, tags, payload, "Descriptive");
 	}
 
 	public static RuntimeTaskRecord Task(
@@ -120,7 +276,7 @@ public static class RuntimeInjector
 		object? payload = null)
 	{
 		ArgumentNullException.ThrowIfNull(execution);
-		return execution.RegisterTask(id, name, lifetime, category, threadId, sourceLocation, parentTaskId, step, tags, payload);
+		return execution.RegisterTask(id, name, lifetime, category, threadId, sourceLocation, parentTaskId, step, tags, payload, "Descriptive");
 	}
 
 	public static RProcess CreateProcess(
@@ -202,10 +358,11 @@ public static class RuntimeInjector
 		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
 		string sourceLocation = "",
 		CancellationToken cancellationToken = default,
-		bool startImmediately = true)
+		bool startImmediately = true,
+		bool blocksShutdown = true)
 	{
 		ArgumentNullException.ThrowIfNull(action);
-		var task = new RTask(action, unitId, category, threadId, lifetime, sourceLocation, cancellationToken);
+		var task = new RTask(action, unitId, category, threadId, lifetime, sourceLocation, cancellationToken, blocksShutdown);
 		if (startImmediately)
 			task.Start(TaskScheduler.Default);
 		return task;
@@ -219,10 +376,11 @@ public static class RuntimeInjector
 		RuntimeExecutionLifetime lifetime = RuntimeExecutionLifetime.Dynamic,
 		string sourceLocation = "",
 		CancellationToken cancellationToken = default,
-		bool startImmediately = true)
+		bool startImmediately = true,
+		bool blocksShutdown = true)
 	{
 		ArgumentNullException.ThrowIfNull(action);
-		var task = new RTask(action, cancellationToken, unitId, category, threadId, lifetime, sourceLocation);
+		var task = new RTask(action, cancellationToken, unitId, category, threadId, lifetime, sourceLocation, blocksShutdown);
 		if (startImmediately)
 		{
 			task.Start(TaskScheduler.Default);
