@@ -43,12 +43,7 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 		{
 			while (!stoppingToken.IsCancellationRequested)
 			{
-				var server = new NamedPipeServerStream(
-					_pipeName,
-					PipeDirection.InOut,
-					NamedPipeServerStream.MaxAllowedServerInstances,
-					PipeTransmissionMode.Byte,
-					PipeOptions.Asynchronous);
+				var server = RuntimeNamedPipeServerFactory.CreateDiagnosticsServer(_pipeName);
 				var pipeId = Interlocked.Increment(ref _nextPipeId);
 				_activePipes[pipeId] = server;
 

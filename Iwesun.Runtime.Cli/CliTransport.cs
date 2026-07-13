@@ -10,33 +10,32 @@ namespace Iwesun.Runtime.Cli;
 internal static class CliTransport
 {
     public static async Task<string> SendAsync(
-        string endpoint,
-        string pipeName,
-        string? targetAlias,
+        ResolvedRuntimeTarget target,
         RuntimeDiagnosticFrame frame,
-        int connectTimeoutMs,
-        int requestTimeoutMs,
-        int maxBytes,
         CancellationToken cancellationToken)
     {
         var payload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(frame));
-        await using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        await using var pipe = new NamedPipeClientStream(target.ServerName, target.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         var started = Stopwatch.GetTimestamp();
         using (var connect = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
-            connect.CancelAfter(connectTimeoutMs);
+            connect.CancelAfter(target.ConnectTimeoutMs);
             try
             {
                 await pipe.ConnectAsync(connect.Token);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && connect.IsCancellationRequested)
             {
-                throw Timeout("CLI_CONNECT_TIMEOUT", "Timed out connecting to named pipe.", "connect", connectTimeoutMs);
+                throw Timeout(target.ServerName == "." ? "CLI_CONNECT_TIMEOUT" : "CLI_REMOTE_CONNECT_TIMEOUT", "Timed out connecting to named pipe.", "connect", target.ConnectTimeoutMs);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw CliRemoteErrorClassifier.Classify(ex, target, "connect");
             }
         }
 
         using var request = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        request.CancelAfter(requestTimeoutMs);
+        request.CancelAfter(target.RequestTimeoutMs);
         var header = new byte[4];
         BinaryPrimitives.WriteInt32LittleEndian(header, payload.Length);
         await RunPhaseAsync("write", "CLI_WRITE_TIMEOUT", async () =>
@@ -47,7 +46,7 @@ internal static class CliTransport
         });
         await RunPhaseAsync("read-header", "CLI_RESPONSE_TIMEOUT", () => ReadExactAsync(pipe, header, request.Token));
         var length = BinaryPrimitives.ReadInt32LittleEndian(header);
-        if (length <= 0 || length > maxBytes)
+        if (length <= 0 || length > target.MaxResponseBytes)
             throw new CliException("CLI_PROTOCOL_RESPONSE_LENGTH", $"Invalid response length {length}.", 5);
         var response = new byte[length];
         await RunPhaseAsync("read-body", "CLI_RESPONSE_TIMEOUT", () => ReadExactAsync(pipe, response, request.Token));
@@ -57,9 +56,11 @@ internal static class CliTransport
             new(code, message, 4, data: new
             {
                 transport = "namedPipe",
-                endpoint,
-                pipeName,
-                targetAlias,
+                endpoint = target.EndpointName,
+                nodeAlias = target.NodeAlias,
+                serverName = target.ServerName,
+                pipeName = target.PipeName,
+                targetAlias = target.TargetAlias,
                 phase,
                 timeoutMs,
                 elapsedMs = Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds, 2),
@@ -74,7 +75,15 @@ internal static class CliTransport
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && request.IsCancellationRequested)
             {
-                throw Timeout(code, phase == "write" ? "Timed out writing named pipe request." : "Timed out waiting for named pipe response.", phase, requestTimeoutMs);
+                throw Timeout(code, phase == "write" ? "Timed out writing named pipe request." : "Timed out waiting for named pipe response.", phase, target.RequestTimeoutMs);
+            }
+            catch (CliException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw CliRemoteErrorClassifier.Classify(ex, target, phase);
             }
         }
     }

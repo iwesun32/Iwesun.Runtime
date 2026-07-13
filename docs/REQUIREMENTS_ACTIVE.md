@@ -519,3 +519,16 @@
 - 单 Target composite 保持不变；跨节点协调使用独立的只读 `MultiTargetCoordinator`。
 - 分阶段实施：Shell/远程只读、Windows 认证与 ACL、多节点只读协调。
 - 权威设计为 `docs/superpowers/specs/2026-07-13-runtime-cli-shell-remote-node-design.md`。
+
+## 实施状态
+
+- [x] Shell 变量在本地分派、路径和 `@target` 解析前统一展开。
+- [x] 虚拟路径与普通命令共享当前 Target，一次性 `@target` 不污染当前值。
+- [x] 配置支持 `nodes` 与 `targets[].node`，旧 Target 缺省绑定 `local`。
+- [x] 单次模式支持 `--target` 和 `--server/--pipe`，传输层分别传入服务器和管道。
+- [x] 远程错误包含稳定代码、Windows 错误码和非敏感目标上下文。
+- [x] Node/Target Shell 登记、查看、测试、认证和显式注销入口已接入。
+- [x] Runtime Operators ACL 规则已进入统一管道安全工厂；Authenticated Users 兼容规则暂时保留。
+- [x] 大于 1 MiB 的完整 Frame 收发通过功能测试。
+- [x] `multi.query` 提供有界并发只读多 Target 查询，并在连接前拒绝非只读命令。
+- [ ] Atlas 的 NetworkService、Runtime Operators 账户、Service/UI 四管道 ACL 和大 Frame 仍需真实远程环境验收。

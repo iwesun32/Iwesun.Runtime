@@ -30,7 +30,13 @@ Resolved duplicates use `_001`, `_002`, and so on. Do not claim uniqueness unles
 
 Use `RuntimeCliSystemConfig.json` for routes, `RuntimeCliSystemMetadata.json` for help metadata, and `RuntimeCliUserConfig.json` for current-directory user extensions. Explicit `--user-config` replaces the default user file. Use `iwrt shell` for client-only context, variables, and virtual paths. `exit` and `quit` only close the shell and never stop the host. Composite output remains one complete JSON Runtime Frame.
 
-For multiple hosts, use `target add/list/use/current/remove` or `@name command`. Never guess a similar pipe. Connection, write, response, and local-cancellation failures have distinct codes. Prefer `host.summary` and bounded list commands for routine inspection; use detailed snapshots only explicitly.
+For local and remote Windows nodes, configure `nodes` separately from `targets`. A target references a node and stores only its endpoint and plain pipe name; never put a UNC path in `pipeName`. Use `node add/list/show/test/remove`, `target add/list/show/test/use/current/remove`, or `@name command`. One-shot remote calls use `--target=alias` or `--server=Server --pipe=PipeName`.
+
+The Shell expands `$name` and `${name}` before local-command, path, and target dispatch. Variables therefore work in target registration, virtual paths, arguments, and `@target`. Ordinary commands and `get/ls` share the current target; `@target` changes only one command. `exit` and `quit` still close only the CLI.
+
+CLI reuses the current Windows SMB/IPC identity. Never place passwords in arguments, JSON, environment variables, history, Frames, or logs. Prepare credentials through Windows Credential Manager or an interactive `net use \\Server\IPC$ /user:User *`. Remote errors distinguish access denied, credential conflict, unreachable node, missing pipe, timeout, and protocol failure.
+
+Interactive operators may use `node auth <alias> --user <identity>`; redirected input is rejected and the command is excluded from history. `node logout <alias> --confirm` is explicit because it affects the whole Windows logon session. Use `multi.query <read-only-command> <target,target...> [concurrency]` for bounded read-only fan-out; never use it for shutdown, invoke, or state changes.
 
 CLI v3 is current. The standard catalog remains canonical and contains no product-specific aliases. Load process-local user extensions explicitly:
 

@@ -9,9 +9,14 @@
       "transport": "namedPipe",
       "pipeName": "unused",
       "connectTimeoutMs": 100,
-      "requestTimeoutMs": 500,
-      "maxResponseBytes": 1048576
+      "requestTimeoutMs": 5000,
+      "maxResponseBytes": 2097152
     }
+  },
+  "nodes": { "local": { "serverName": "." } },
+  "targets": {
+    "multi-a": { "node": "local", "endpoint": "diagnostics", "pipeName": "Iwesun.Runtime.Tests.MultiA" },
+    "multi-b": { "node": "local", "endpoint": "diagnostics", "pipeName": "Iwesun.Runtime.Tests.MultiB" }
   },
   "commands": [
     {
@@ -23,6 +28,17 @@
         "domain": "host",
         "target": "runtime.host",
         "action": "info"
+      }
+    },
+    {
+      "name": "lifecycle.shutdown",
+      "endpoint": "diagnostics",
+      "request": {
+        "category": "instruction",
+        "operation": "shutdown",
+        "domain": "lifecycle",
+        "target": "diagnostics.switchboard",
+        "action": "shutdown"
       }
     }
   ],

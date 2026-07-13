@@ -1,6 +1,7 @@
 {
   "schema": "iwesun.runtime.cli/3.0",
   "application": { "name": "Iwesun Runtime CLI v3", "description": "Runtime diagnostics command client" },
+  "nodes": { "local": { "serverName": "." } },
   "endpoints": {
     "diagnostics": { "transport": "namedPipe", "pipeName": "DdnsSnap.RuntimeDiagnostics", "connectTimeoutMs": 5000, "requestTimeoutMs": 60000, "maxResponseBytes": 16777216 }
   },

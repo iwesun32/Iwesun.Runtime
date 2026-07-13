@@ -2,9 +2,13 @@
   "schema": "iwesun.runtime.cli/3.0",
   "application": { "name": "Iwesun Runtime CLI user extensions", "description": "Example only" },
   "endpoints": {},
+  "nodes": {
+    "atlas": { "serverName": "Atlas", "credentialTarget": "Atlas" }
+  },
   "targets": {
     "service": { "endpoint": "diagnostics", "pipeName": "DdnsSnap.Service.RuntimeDiagnostics" },
-    "agent": { "endpoint": "diagnostics", "pipeName": "DdnsSnap.Agent.Server.RuntimeDiagnostics" }
+    "agent": { "endpoint": "diagnostics", "pipeName": "DdnsSnap.Agent.Server.RuntimeDiagnostics" },
+    "atlas-ui": { "node": "atlas", "endpoint": "diagnostics", "pipeName": "DdnsSnap.UI.RuntimeDiagnostics" }
   },
   "commands": [],
   "composites": [
@@ -27,4 +31,3 @@
     "disable": []
   }
 }
-

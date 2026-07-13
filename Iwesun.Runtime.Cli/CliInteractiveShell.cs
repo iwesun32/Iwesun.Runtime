@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Net;
+using System.Net.Sockets;
 
 namespace Iwesun.Runtime.Cli;
 
@@ -17,12 +19,13 @@ internal sealed class CliInteractiveShell
 
     public CliInteractiveShell(
         Func<string[], CancellationToken, Task<int>> execute,
+        IReadOnlyDictionary<string, CliNode>? nodes = null,
         IReadOnlyDictionary<string, CliTarget>? targets = null,
         IEnumerable<string>? destructiveCommands = null,
         bool hasStartupPipe = false)
     {
         _execute = execute;
-        _targets = new CliTargetContext(targets ?? new Dictionary<string, CliTarget>());
+        _targets = new CliTargetContext(nodes ?? new Dictionary<string, CliNode>(), targets ?? new Dictionary<string, CliTarget>());
         _destructiveCommands = new HashSet<string>(destructiveCommands ?? [], StringComparer.OrdinalIgnoreCase);
         _hasStartupPipe = hasStartupPipe;
     }
@@ -39,7 +42,8 @@ internal sealed class CliInteractiveShell
             line = line.Trim();
             if (line.Length == 0)
                 continue;
-            _history.Add(line);
+            if (!line.StartsWith("node auth ", StringComparison.OrdinalIgnoreCase))
+                _history.Add(line);
 
             string[] tokens;
             try { tokens = CliTokenizer.Tokenize(line); }
@@ -49,6 +53,7 @@ internal sealed class CliInteractiveShell
 
             try
             {
+                tokens = ExpandVariables(tokens);
                 var local = tokens[0].ToLowerInvariant();
                 if (local is "exit" or "quit")
                     return 0;
@@ -60,7 +65,7 @@ internal sealed class CliInteractiveShell
                 if (local == "get")
                 {
                     var path = tokens.Length == 1 ? _currentPath : RuntimeVirtualPathRouter.Resolve(_currentPath, tokens[1]);
-                    await _execute(RuntimeVirtualPathRouter.MapGet(path), cancellationToken);
+                    await ExecuteRemoteAsync(RuntimeVirtualPathRouter.MapGet(path), _targets.CurrentName, cancellationToken);
                     continue;
                 }
                 if (local == "ls")
@@ -68,14 +73,19 @@ internal sealed class CliInteractiveShell
                     var path = tokens.Length == 1 ? _currentPath : RuntimeVirtualPathRouter.Resolve(_currentPath, tokens[1]);
                     var children = RuntimeVirtualPathRouter.List(path);
                     if (children.Count == 0 || path.StartsWith("/reflection", StringComparison.OrdinalIgnoreCase))
-                        await _execute(RuntimeVirtualPathRouter.MapGet(path), cancellationToken);
+                        await ExecuteRemoteAsync(RuntimeVirtualPathRouter.MapGet(path), _targets.CurrentName, cancellationToken);
                     else
                         foreach (var child in children) Console.WriteLine(child);
                     continue;
                 }
                 if (local == "target")
                 {
-                    HandleTarget(tokens);
+                    await HandleTargetAsync(tokens, cancellationToken);
+                    continue;
+                }
+                if (local == "node")
+                {
+                    await HandleNodeAsync(tokens, cancellationToken);
                     continue;
                 }
                 if (HandleLocal(tokens))
@@ -92,15 +102,12 @@ internal sealed class CliInteractiveShell
                 {
                     targetAlias = _targets.CurrentName;
                 }
-                tokens = ExpandVariables(tokens);
                 if (targetAlias is null && !_hasStartupPipe && _targets.Targets.Count > 1 && _destructiveCommands.Contains(tokens[0]))
                     throw new CliException("CLI_TARGET_REQUIRED", $"Command '{tokens[0]}' requires an explicit target in a multi-target shell.", 2);
                 if (tokens.Length == 1 && _commandMemory.TryGetValue(tokens[0], out var remembered))
                     tokens = [tokens[0], .. remembered];
                 var rememberedCommand = tokens;
-                if (targetAlias is not null)
-                    tokens = [$"--pipe={_targets.Resolve(targetAlias).PipeName}", $"--target-alias={targetAlias}", .. tokens];
-                var exitCode = await _execute(tokens, cancellationToken);
+                var exitCode = await ExecuteRemoteAsync(tokens, targetAlias, cancellationToken);
                 if (exitCode == 0 && rememberedCommand.Length > 1 && !IsUnsafeToRemember(rememberedCommand[0], rememberedCommand.Skip(1)))
                     _commandMemory[rememberedCommand[0]] = rememberedCommand.Skip(1).ToArray();
             }
@@ -110,6 +117,15 @@ internal sealed class CliInteractiveShell
             }
         }
         return 0;
+    }
+
+    private Task<int> ExecuteRemoteAsync(string[] tokens, string? targetAlias, CancellationToken cancellationToken)
+    {
+        if (targetAlias is null)
+            return _execute(tokens, cancellationToken);
+        var target = _targets.Resolve(targetAlias);
+        var node = _targets.ResolveNode(target.Node);
+        return _execute([$"--server={node.ServerName}", $"--pipe={target.PipeName}", $"--target-alias={targetAlias}", .. tokens], cancellationToken);
     }
 
     private bool HandleLocal(string[] tokens)
@@ -147,7 +163,7 @@ internal sealed class CliInteractiveShell
         }
     }
 
-    private void HandleTarget(string[] tokens)
+    private async Task HandleTargetAsync(string[] tokens, CancellationToken cancellationToken)
     {
         if (tokens.Length < 2)
             throw new CliException("CLI_TARGET_USAGE", "Usage: target add|list|use|current|remove.", 2);
@@ -156,9 +172,17 @@ internal sealed class CliInteractiveShell
             case "add" when tokens.Length == 4:
                 _targets.Add(tokens[2], tokens[3]);
                 return;
+            case "add" when tokens.Length == 7 && tokens[5].Equals("--node", StringComparison.OrdinalIgnoreCase):
+                _targets.Add(tokens[2], tokens[4], tokens[6], tokens[3]);
+                return;
             case "list" when tokens.Length == 2:
                 foreach (var target in _targets.Targets.OrderBy(x => x.Key))
-                    Console.WriteLine($"{target.Key}{(target.Key.Equals(_targets.CurrentName, StringComparison.OrdinalIgnoreCase) ? "*" : "")}={target.Value.PipeName}");
+                {
+                    var value = target.Value.Node == "local" && target.Value.Endpoint == "diagnostics"
+                        ? target.Value.PipeName
+                        : $"{target.Value.Node}/{target.Value.Endpoint}/{target.Value.PipeName}";
+                    Console.WriteLine($"{target.Key}{(target.Key.Equals(_targets.CurrentName, StringComparison.OrdinalIgnoreCase) ? "*" : "")}={value}");
+                }
                 return;
             case "use" when tokens.Length == 3:
                 _targets.Use(tokens[2]);
@@ -170,8 +194,61 @@ internal sealed class CliInteractiveShell
             case "remove" when tokens.Length == 3:
                 _targets.Remove(tokens[2]);
                 return;
+            case "test" when tokens.Length == 3:
+                await ExecuteRemoteAsync(["host.summary"], tokens[2], cancellationToken);
+                return;
             default:
                 throw new CliException("CLI_TARGET_USAGE", "Usage: target add <name> <pipe> | target list | target use <name> | target current | target remove <name>.", 2);
+        }
+    }
+
+    private async Task HandleNodeAsync(string[] tokens, CancellationToken cancellationToken)
+    {
+        if (tokens.Length < 2)
+            throw new CliException("CLI_NODE_USAGE", "Usage: node add|list|show|remove.", 2);
+        switch (tokens[1].ToLowerInvariant())
+        {
+            case "add" when tokens.Length == 4:
+                _targets.AddNode(tokens[2], tokens[3]);
+                return;
+            case "list" when tokens.Length == 2:
+                foreach (var item in _targets.Nodes.OrderBy(x => x.Key)) Console.WriteLine($"{item.Key}={item.Value.ServerName}");
+                return;
+            case "show" when tokens.Length == 3:
+                var selectedNode = _targets.ResolveNode(tokens[2]);
+                Console.WriteLine($"{tokens[2]}={selectedNode.ServerName}");
+                return;
+            case "remove" when tokens.Length == 3:
+                _targets.RemoveNode(tokens[2]);
+                return;
+            case "auth" when tokens.Length == 5 && tokens[3].Equals("--user", StringComparison.OrdinalIgnoreCase):
+                var authNode = _targets.ResolveNode(tokens[2]);
+                CliWindowsNodeSession.Authenticate(authNode.ServerName, tokens[4]);
+                Console.WriteLine($"{tokens[2]}: authenticated Windows IPC session established");
+                return;
+            case "logout" when tokens.Length == 4 && tokens[3].Equals("--confirm", StringComparison.OrdinalIgnoreCase):
+                var logoutNode = _targets.ResolveNode(tokens[2]);
+                CliWindowsNodeSession.Logout(logoutNode.ServerName);
+                Console.WriteLine($"{tokens[2]}: Windows IPC session removed");
+                return;
+            case "test" when tokens.Length == 3:
+                var testedNode = _targets.ResolveNode(tokens[2]);
+                if (testedNode.ServerName == ".")
+                {
+                    Console.WriteLine($"{tokens[2]}: local ready");
+                    return;
+                }
+                var addresses = await Dns.GetHostAddressesAsync(testedNode.ServerName, cancellationToken);
+                using (var client = new TcpClient())
+                using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                {
+                    timeout.CancelAfter(testedNode.ConnectTimeoutMs ?? 5000);
+                    await client.ConnectAsync(testedNode.ServerName, 445, timeout.Token);
+                }
+                Console.WriteLine($"{tokens[2]}: resolved={string.Join(',', addresses.Select(x => x.ToString()))}; smb445=ready");
+                return;
+            default:
+                throw new CliException("CLI_NODE_USAGE", "Usage: node add <name> <server> | node list | node show <name> | node remove <name>.", 2);
         }
     }
 

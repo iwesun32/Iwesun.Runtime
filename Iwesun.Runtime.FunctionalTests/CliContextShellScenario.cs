@@ -43,6 +43,30 @@ internal static class CliContextShellScenario
         Check(targetShell.Stderr.Contains("CLI_TARGET_REQUIRED", StringComparison.Ordinal),
             "destructive-command-requires-target", $"Destructive target guard did not run: {targetShell.Stdout} {targetShell.Stderr}");
 
+        var expandedShell = await RunCliAsync(cliPath, fixtureDirectory, ["--interactive"],
+            "set pipe Sample.Variable.Pipe" + Environment.NewLine +
+            "set path /lifecycle" + Environment.NewLine +
+            "set destination gateway" + Environment.NewLine +
+            "target add gateway $pipe" + Environment.NewLine +
+            "target list" + Environment.NewLine +
+            "cd $path" + Environment.NewLine +
+            "pwd" + Environment.NewLine +
+            "@${destination} host.summary" + Environment.NewLine +
+            "quit" + Environment.NewLine);
+        Check(expandedShell.Stdout.Contains("gateway=Sample.Variable.Pipe", StringComparison.Ordinal),
+            "variables-expand-in-target-command", $"Target variable was not expanded: {expandedShell.Stdout} {expandedShell.Stderr}");
+        Check(expandedShell.Stdout.Contains("/lifecycle", StringComparison.Ordinal),
+            "variables-expand-in-virtual-path", $"Path variable was not expanded: {expandedShell.Stdout} {expandedShell.Stderr}");
+        Check(!expandedShell.Stderr.Contains("CLI_TARGET_NOT_FOUND", StringComparison.Ordinal),
+            "variables-expand-in-at-target", $"@target variable was not expanded: {expandedShell.Stdout} {expandedShell.Stderr}");
+        Check(expandedShell.Stderr.Contains("Sample.Variable.Pipe", StringComparison.Ordinal),
+            "expanded-target-selects-pipe", $"Expanded target did not select its pipe: {expandedShell.Stdout} {expandedShell.Stderr}");
+
+        var missingVariable = await RunCliAsync(cliPath, fixtureDirectory, ["--interactive"],
+            "cd $missing" + Environment.NewLine + "quit" + Environment.NewLine);
+        Check(missingVariable.Stderr.Contains("CLI_CONTEXT_VARIABLE_NOT_FOUND", StringComparison.Ordinal),
+            "undefined-variable-stays-local", $"Undefined variable was not rejected locally: {missingVariable.Stdout} {missingVariable.Stderr}");
+
         return failures.Count == 0
             ? FunctionalScenarioResult.Pass("cli-context-shell", checks.ToArray())
             : FunctionalScenarioResult.Fail("cli-context-shell", checks, failures);

@@ -34,6 +34,7 @@ internal static class CliApplication
             {
                 var shell = new CliInteractiveShell(
                     (command, ct) => RunAsync([.. options.GlobalArguments(), .. command], ct),
+                    config.Nodes,
                     config.Targets,
                     config.Commands.Where(x => x.Risk.Equals("destructive", StringComparison.OrdinalIgnoreCase)).Select(x => x.Name),
                     !string.IsNullOrWhiteSpace(options.PipeName));
@@ -54,6 +55,14 @@ internal static class CliApplication
             }
 
             var name = options.CommandArguments[0];
+            if (name.Equals("multi.query", StringComparison.OrdinalIgnoreCase))
+            {
+                if (options.CommandArguments.Count < 3)
+                    throw new CliException("CLI_MULTI_TARGET_USAGE", "Usage: multi.query <read-only-command> <target[,target...]> [concurrency].", 2);
+                var aliases = options.CommandArguments[2].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var concurrency = options.CommandArguments.Count >= 4 && int.TryParse(options.CommandArguments[3], out var parsedConcurrency) ? parsedConcurrency : 4;
+                return await CliMultiTargetCoordinator.RunAsync(config, options.CommandArguments[1], aliases, concurrency, cancellationToken);
+            }
             var command = config.Commands.SingleOrDefault(x => Matches(x.Name, x.Aliases, name));
             var composite = config.Composites.SingleOrDefault(x => Matches(x.Name, x.Aliases, name));
             if (command == null && composite == null)
@@ -61,16 +70,18 @@ internal static class CliApplication
 
             CliEndpoint endpoint;
             string endpointName;
+            ResolvedRuntimeTarget target;
             RuntimeDiagnosticFrame frame;
             if (command != null)
             {
                 endpointName = command.Endpoint;
                 endpoint = config.Endpoints.GetValueOrDefault(command.Endpoint)
                     ?? throw new CliException("CLI_ENDPOINT_UNKNOWN", $"Endpoint '{command.Endpoint}' is not defined.", 3, name);
+                target = CliRuntimeTargetResolver.Resolve(config, endpoint, endpointName, options.TargetName, options.ServerName, options.PipeName, options.TimeoutMs);
                 var bound = Bind(command, options.CommandArguments.Skip(1).ToArray());
                 frame = new RuntimeDiagnosticFrame
                 {
-                    Header = CreateHeader(RuntimeDiagnosticProtocol.V2Schema, command.Request.Category, command.Request.Operation, options.PipeName ?? endpoint.PipeName),
+                    Header = CreateHeader(RuntimeDiagnosticProtocol.V2Schema, command.Request.Category, command.Request.Operation, target.PipeName),
                     Command = CreateFrameCommand(command, bound)
                 };
             }
@@ -86,9 +97,10 @@ internal static class CliApplication
                 }).ToList();
                 endpoint = config.Endpoints[resolved[0].Command.Endpoint];
                 endpointName = resolved[0].Command.Endpoint;
+                target = CliRuntimeTargetResolver.Resolve(config, endpoint, endpointName, options.TargetName, options.ServerName, options.PipeName, options.TimeoutMs);
                 frame = new RuntimeDiagnosticFrame
                 {
-                    Header = CreateHeader(RuntimeDiagnosticProtocol.V3Schema, "batch", "execute", options.PipeName ?? endpoint.PipeName),
+                    Header = CreateHeader(RuntimeDiagnosticProtocol.V3Schema, "batch", "execute", target.PipeName),
                     Batch = new RuntimeDiagnosticBatchRequest
                     {
                         Options = new RuntimeDiagnosticBatchOptions { StopOnError = composite.StopOnError, DeadlineMs = composite.DeadlineMs },
@@ -100,9 +112,7 @@ internal static class CliApplication
                     }
                 };
             }
-            var pipe = options.PipeName ?? endpoint.PipeName;
-            var timeout = options.TimeoutMs ?? endpoint.RequestTimeoutMs;
-            var response = await CliTransport.SendAsync(endpointName, pipe, options.TargetAlias, frame, endpoint.ConnectTimeoutMs, timeout, endpoint.MaxResponseBytes, cancellationToken);
+            var response = await CliTransport.SendAsync(target, frame, cancellationToken);
             Console.WriteLine(response);
             using var document = JsonDocument.Parse(response);
             return document.RootElement.TryGetProperty("status", out var status)
@@ -133,7 +143,7 @@ internal static class CliApplication
     private static bool Matches(string name, string[] aliases, string value) =>
         name.Equals(value, StringComparison.OrdinalIgnoreCase) || aliases.Contains(value, StringComparer.OrdinalIgnoreCase);
 
-    private static RuntimeDiagnosticFrameHeader CreateHeader(string schema, string category, string operation, string destination) => new()
+    internal static RuntimeDiagnosticFrameHeader CreateHeader(string schema, string category, string operation, string destination) => new()
     {
         Schema = schema,
         FrameType = "request",
@@ -145,7 +155,7 @@ internal static class CliApplication
         Destination = destination
     };
 
-    private static RuntimeDiagnosticFrameCommand CreateFrameCommand(CliCommand command, Dictionary<string, JsonElement> args) => new()
+    internal static RuntimeDiagnosticFrameCommand CreateFrameCommand(CliCommand command, Dictionary<string, JsonElement> args) => new()
     {
         Domain = command.Request.Domain,
         Target = ResolveRouteTemplate(command.Request.Target, args, command.Name),
@@ -232,6 +242,9 @@ internal static class CliApplication
         var endpoints = new Dictionary<string, CliEndpoint>(catalog.Endpoints, StringComparer.OrdinalIgnoreCase);
         foreach (var endpoint in user.Endpoints)
             endpoints[endpoint.Key] = endpoint.Value;
+        var nodes = new Dictionary<string, CliNode>(catalog.Nodes, StringComparer.OrdinalIgnoreCase);
+        foreach (var node in user.Nodes)
+            nodes[node.Key] = node.Value;
         var targets = new Dictionary<string, CliTarget>(catalog.Targets, StringComparer.OrdinalIgnoreCase);
         foreach (var target in user.Targets)
             targets[target.Key] = target.Value;
@@ -271,6 +284,7 @@ internal static class CliApplication
             Schema = catalog.Schema,
             Application = catalog.Application,
             Endpoints = endpoints,
+            Nodes = nodes,
             Targets = targets,
             Commands = commands.Values.ToList(),
             Composites = catalog.Composites.Concat(user.Composites).ToList()
@@ -283,6 +297,9 @@ internal static class CliApplication
             throw new CliException("CLI_CONFIG_SCHEMA_UNSUPPORTED", $"Required schema is '{Schema}'.", 3);
         if (config.Endpoints.Count == 0 || config.Commands.Count == 0)
             throw new CliException("CLI_CONFIG_INCOMPLETE", "At least one endpoint and command are required.", 3);
+        foreach (var target in config.Targets)
+            if (!config.Nodes.ContainsKey(target.Value.Node))
+                throw new CliException("CLI_TARGET_NODE_NOT_FOUND", $"Target '{target.Key}' references unknown node '{target.Value.Node}'.", 3);
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pattern = new Regex("^[a-z0-9-]+(?:\\.[a-z0-9-]+)*$", RegexOptions.CultureInvariant);
         foreach (var command in config.Commands)
@@ -340,7 +357,7 @@ internal static class CliApplication
         }
     }
 
-    private static Dictionary<string, JsonElement> Bind(CliCommand command, string[] tokens)
+    internal static Dictionary<string, JsonElement> Bind(CliCommand command, string[] tokens)
     {
         var raw = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var position = 0;
@@ -470,20 +487,22 @@ internal static class CliApplication
     internal static void RenderShellFailure(CliException error) => RenderFailure(error);
 }
 
-internal sealed record CliOptions(string? ConfigPath, string? UserConfigPath, string? PipeName, string? TargetAlias, int? TimeoutMs, bool Help, bool Interactive, IReadOnlyList<string> CommandArguments)
+internal sealed record CliOptions(string? ConfigPath, string? UserConfigPath, string? ServerName, string? PipeName, string? TargetName, string? TargetAlias, int? TimeoutMs, bool Help, bool Interactive, IReadOnlyList<string> CommandArguments)
 {
     public IEnumerable<string> GlobalArguments()
     {
         if (!string.IsNullOrWhiteSpace(ConfigPath)) yield return $"--config={ConfigPath}";
         if (!string.IsNullOrWhiteSpace(UserConfigPath)) yield return $"--user-config={UserConfigPath}";
+        if (!string.IsNullOrWhiteSpace(ServerName)) yield return $"--server={ServerName}";
         if (!string.IsNullOrWhiteSpace(PipeName)) yield return $"--pipe={PipeName}";
+        if (!string.IsNullOrWhiteSpace(TargetName)) yield return $"--target={TargetName}";
         if (!string.IsNullOrWhiteSpace(TargetAlias)) yield return $"--target-alias={TargetAlias}";
         if (TimeoutMs.HasValue) yield return $"--timeout-ms={TimeoutMs.Value}";
     }
 
     public static CliOptions Parse(string[] args)
     {
-        string? config = null, userConfig = null, pipe = null, targetAlias = null;
+        string? config = null, userConfig = null, server = null, pipe = null, target = null, targetAlias = null;
         int? timeout = null;
         var help = false;
         var interactive = false;
@@ -494,13 +513,15 @@ internal sealed record CliOptions(string? ConfigPath, string? UserConfigPath, st
             else if (arg == "--interactive") interactive = true;
             else if (arg.StartsWith("--config=")) config = arg[9..].Trim('"');
             else if (arg.StartsWith("--user-config=")) userConfig = arg[14..].Trim('"');
+            else if (arg.StartsWith("--server=")) server = arg[9..].Trim('"');
             else if (arg.StartsWith("--pipe=")) pipe = arg[7..].Trim('"');
+            else if (arg.StartsWith("--target=")) target = arg[9..].Trim('"');
             else if (arg.StartsWith("--target-alias=")) targetAlias = arg[15..].Trim('"');
             else if (arg.StartsWith("--timeout-ms=") && int.TryParse(arg[13..], out var parsed) && parsed > 0) timeout = parsed;
             else if (arg.StartsWith("--")) throw new CliException("CLI_OPTION_UNKNOWN", $"Unknown option '{arg}'.", 2);
             else command.Add(arg);
         }
-        return new(config, userConfig, pipe, targetAlias, timeout, help, interactive, command);
+        return new(config, userConfig, server, pipe, target, targetAlias, timeout, help, interactive, command);
     }
 }
 
@@ -509,6 +530,7 @@ internal sealed class CliConfiguration
     public string Schema { get; init; } = "";
     public CliApplicationDescriptor Application { get; init; } = new();
     public Dictionary<string, CliEndpoint> Endpoints { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, CliNode> Nodes { get; init; } = new(StringComparer.OrdinalIgnoreCase) { ["local"] = new() };
     public Dictionary<string, CliTarget> Targets { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public List<CliCommand> Commands { get; init; } = [];
     public List<CliComposite> Composites { get; init; } = [];
@@ -517,7 +539,8 @@ internal sealed class CliConfiguration
 
 internal sealed class CliApplicationDescriptor { public string Name { get; init; } = ""; public string Description { get; init; } = ""; }
 internal sealed class CliEndpoint { public string Transport { get; init; } = ""; public string PipeName { get; init; } = ""; public int ConnectTimeoutMs { get; init; } = 5000; public int RequestTimeoutMs { get; init; } = 15000; public int MaxResponseBytes { get; init; } = 16777216; }
-internal sealed class CliTarget { public string Endpoint { get; init; } = "diagnostics"; public string PipeName { get; init; } = ""; }
+internal sealed class CliNode { public string ServerName { get; init; } = "."; public string? CredentialTarget { get; init; } public int? ConnectTimeoutMs { get; init; } }
+internal sealed class CliTarget { public string Node { get; init; } = "local"; public string Endpoint { get; init; } = "diagnostics"; public string PipeName { get; init; } = ""; public int? ConnectTimeoutMs { get; init; } public int? RequestTimeoutMs { get; init; } public int? MaxResponseBytes { get; init; } }
 internal sealed class CliCommand { public string Name { get; init; } = ""; public string[] Aliases { get; init; } = []; public string Summary { get; set; } = ""; public string Risk { get; set; } = ""; public string Capability { get; set; } = ""; public string[] Examples { get; set; } = []; public string Endpoint { get; init; } = ""; public CliRequest Request { get; init; } = new(); public List<CliParameter> Parameters { get; init; } = []; }
 internal sealed class CliRequest { public string Category { get; init; } = ""; public string Operation { get; init; } = ""; public string Domain { get; init; } = ""; public string Target { get; init; } = ""; public string Action { get; init; } = ""; public string? Member { get; init; } }
 internal sealed class CliParameter { public string Name { get; init; } = ""; public string Type { get; init; } = "string"; public int Position { get; init; } public bool Required { get; init; } public JsonElement? Default { get; init; } }

@@ -35,7 +35,7 @@ C:\ProgramData\Iwesun\Runtime\config\RuntimeCliSystemConfig.json
 ## 4. 调用格式
 
 ```powershell
-iwrt [--pipe=NAME] [--config=PATH] [--timeout-ms=15000] <command> [arguments]
+iwrt [--target=ALIAS | --server=SERVER --pipe=NAME] [--config=PATH] [--timeout-ms=15000] <command> [arguments]
 ```
 
 全局参数：
@@ -45,6 +45,8 @@ iwrt [--pipe=NAME] [--config=PATH] [--timeout-ms=15000] <command> [arguments]
 | `--help` / `-h` | 显示当前目录生成的帮助 |
 | `--config=PATH` | 显式指定 v3 命令 JSON |
 | `--pipe=NAME` | 覆盖 diagnostics endpoint 的 RuntimeDiagnostics 管道名 |
+| `--server=NAME` | 远程 Windows 节点名；必须与 `--pipe` 一起使用 |
+| `--target=ALIAS` | 使用配置中的 Node/Target 插槽；不得与 `--server/--pipe` 混用 |
 | `--timeout-ms=N` | 覆盖本次请求超时 |
 
 命令参数支持三种等价形式：
@@ -196,9 +198,32 @@ iwrt --user-config="C:\ProgramData\Iwesun\Runtime\config\Iwesun.Runtime.Cli.user
 
 使用 `iwrt shell` 或 `iwrt --interactive` 进入上下文模式。支持 `pwd/cd/ls/get/root` 统一 Runtime 虚拟路径，以及 `set/unset/vars/history/clear`。变量使用 `$name` 或 `${name}`。`exit`、`quit` 和 EOF 只退出 CLI Shell，不向宿主发送任何命令；停止宿主必须显式执行 `lifecycle.shutdown`。
 
-多宿主调试使用 `target add/list/use/current/remove` 管理当前 Shell 的目标，或用 `@name command` 临时选择一次目标。CLI 不会猜测相似管道。`RuntimeCliUserConfig.json` 可在 `targets` 中预置目标。
+多宿主和多节点调试使用 `node add/list/show/test/remove` 管理 Windows 节点，使用 `target add/list/show/test/use/current/remove` 管理节点上的管道插槽，或用 `@name command` 临时选择一次目标。CLI 不会猜测相似管道。`RuntimeCliUserConfig.json` 可通过 `nodes` 和 `targets[].node` 预置远程插槽。
 
-连接超时、写入超时、响应超时与本地取消分别返回 `CLI_CONNECT_TIMEOUT`、`CLI_WRITE_TIMEOUT`、`CLI_RESPONSE_TIMEOUT` 和 `CLI_LOCAL_CANCELLED`；只有本地取消使用退出码 130。错误数据包含实际管道、阶段、期限和可重试性。
+Shell 在分派命令前统一展开全部 `$name`/`${name}` token，因此变量可用于本地命令参数、虚拟路径、Target 登记和 `@target`。普通命令与 `get/ls` 使用同一个当前 Target；一次性 `@target` 不改变当前 Target。
+
+```text
+node add atlas Atlas
+target add atlas-ui diagnostics DdnsSnap.UI.RuntimeDiagnostics --node atlas
+target use atlas-ui
+host.summary
+get /host
+@atlas-ui runtime.inspect
+```
+
+本机连接超时、写入超时、响应超时与本地取消分别返回 `CLI_CONNECT_TIMEOUT`、`CLI_WRITE_TIMEOUT`、`CLI_RESPONSE_TIMEOUT` 和 `CLI_LOCAL_CANCELLED`。远程连接进一步区分 `CLI_REMOTE_ACCESS_DENIED`、`CLI_REMOTE_CREDENTIAL_CONFLICT`、`CLI_REMOTE_NODE_UNREACHABLE`、`CLI_REMOTE_PIPE_NOT_FOUND`、`CLI_REMOTE_CONNECT_TIMEOUT` 和 `CLI_REMOTE_PROTOCOL_ERROR`。错误数据包含 Node、serverName、实际管道、阶段、Windows 错误码和可重试性，不包含凭据。
+
+CLI 复用当前 Windows 登录会话的 SMB/IPC 身份，不保存密码，也不自动注销 IPC 会话。首次认证由管理员使用 Windows Credential Manager 或安全的 `net use \\Server\IPC$ /user:User *` 完成。
+
+交互式 Shell 也提供 `node auth atlas --user DOMAIN\\User`，密码仅通过不可回显终端读取；输入被重定向时该命令拒绝执行。`node logout atlas --confirm` 会影响当前 Windows 登录会话中访问同一服务器的其他程序，因此必须显式确认。
+
+只读多节点查询使用：
+
+```powershell
+iwrt --user-config=RuntimeCliUserConfig.json multi.query host.summary atlas-service,atlas-ui 4
+```
+
+并发数限制为 1–16；每个 Target 独立超时，结果保留各自完整 Frame。状态修改和破坏性命令在建立任何连接前返回 `CLI_MULTI_TARGET_READ_ONLY`。
 
 `runtime.inspect` 使用轻量 `host.summary`，不默认展开程序集类型。`process.list/thread.list/task.list/pipe.list/file.list/reflection.list` 等目录命令使用默认 100、最大 500 的分页结果。
 
