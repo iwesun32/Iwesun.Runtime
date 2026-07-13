@@ -507,3 +507,15 @@
 - [x] Debug/Release 全解决方案构建通过。
 - [x] WebView2 与 Diagnostics 文件版本同步为 1.0.19.0，三份 WebView2 文档齐全。
 - [x] 安装版 SampleHost Debug/Release 引用边界和 DLL 哈希验证通过。
+
+# 2026-07-13 CLI Shell 与远程节点统一改造
+
+- 采用 `Node -> Target -> ResolvedRuntimeTarget` 分层，公共名称使用 `node`，不与远端 Runtime `host.*` 命令域冲突。
+- 单次 CLI、Shell、虚拟路径、alias 和 composite 共用一个上下文与目标解析器。
+- 所有允许展开的 token 在本地分派和目标解析前统一展开；未定义变量不得发送请求。
+- 虚拟路径和普通远程命令必须继承同一个当前 Target；`@target` 仅覆盖当前命令。
+- 远程 Named Pipe 必须分别传入 `serverName` 与纯 `pipeName`，禁止用 UNC 代替管道名。
+- CLI 不保存密码、不实现密码协议、不自动注销 Windows IPC 会话；账户和组部署归安装器或管理员脚本。
+- 单 Target composite 保持不变；跨节点协调使用独立的只读 `MultiTargetCoordinator`。
+- 分阶段实施：Shell/远程只读、Windows 认证与 ACL、多节点只读协调。
+- 权威设计为 `docs/superpowers/specs/2026-07-13-runtime-cli-shell-remote-node-design.md`。
