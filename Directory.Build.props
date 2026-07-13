@@ -9,9 +9,9 @@
     <Company>DdnsSnap</Company>
     <Product>Iwesun Runtime</Product>
     <Copyright>Copyright © 2026 DdnsSnap</Copyright>
-    <Version>1.0.19</Version>
-    <AssemblyVersion>1.0.19.0</AssemblyVersion>
-    <FileVersion>1.0.19.0</FileVersion>
-    <InformationalVersion>1.0.19</InformationalVersion>
+    <Version>1.0.20</Version>
+    <AssemblyVersion>1.0.20.0</AssemblyVersion>
+    <FileVersion>1.0.20.0</FileVersion>
+    <InformationalVersion>1.0.20</InformationalVersion>
   </PropertyGroup>
 </Project>

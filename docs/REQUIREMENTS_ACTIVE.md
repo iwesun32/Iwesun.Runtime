@@ -532,3 +532,9 @@
 - [x] 大于 1 MiB 的完整 Frame 收发通过功能测试。
 - [x] `multi.query` 提供有界并发只读多 Target 查询，并在连接前拒绝非只读命令。
 - [ ] Atlas 的 NetworkService、Runtime Operators 账户、Service/UI 四管道 ACL 和大 Frame 仍需真实远程环境验收。
+
+## 1.0.20 发布状态
+
+- [x] Shell 上下文、远程 Node/Target、稳定错误码、Windows IPC 辅助和多 Target 只读协调完成本地回归。
+- [x] Atlas UI 完成远程 Frame 往返，Atlas Service 的拒绝访问准确分类为 `CLI_REMOTE_ACCESS_DENIED`。
+- [x] 版本统一升级到 1.0.20，进入 Debug/Release、全量 staging、内容验证和 MSI 构建。
