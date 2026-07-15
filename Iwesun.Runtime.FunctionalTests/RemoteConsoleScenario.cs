@@ -178,6 +178,66 @@ internal static class RemoteConsoleScenario
 		}
 	}
 
+	public static async Task<FunctionalScenarioResult> RunCommandAsync()
+	{
+		const string submitterSid = "S-1-5-21-100-200-300-3001";
+		var checks = new List<string>();
+		var failures = new List<string>();
+		var workspace = Path.Combine(Path.GetTempPath(), "iwesun-remote-console-command", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(workspace);
+		try
+		{
+			var options = new RemoteConsoleOptions
+			{
+				PowerShellPath = "pwsh.exe",
+				MaxOutputBytesPerJob = 1024 * 1024
+			};
+			var store = new RemoteConsoleJobStore();
+			var policy = new RemoteConsoleApprovalPolicy(RemoteConsoleApprovalMode.Automatic, [], []);
+			var submit = store.Submit(
+				new RemoteConsoleSubmitRequest(
+					"command-exit-7",
+					"powershell",
+					"Write-Output 'stdout-line'; [Console]::Error.WriteLine('stderr-line'); exit 7",
+					"workspace",
+					new Dictionary<string, string>(),
+					"test"),
+				submitterSid,
+				policy);
+			var executor = new RemoteConsoleCommandExecutor(options, store);
+			await executor.ExecuteAsync(submit.Job!.JobId, workspace, CancellationToken.None);
+
+			var status = store.Get(submit.Job.JobId).Job!;
+			Expect(status.State == RemoteConsoleJobState.Failed && status.ExitCode == 7, "nonzero-exit-recorded");
+			var follow = await executor.FollowAsync(submit.Job.JobId, 0, 100, 0, CancellationToken.None);
+			Expect(follow.Chunks.Any(static chunk => chunk.Stream == RemoteConsoleOutputStream.Stdout && chunk.Text.Contains("stdout-line", StringComparison.Ordinal)), "stdout-captured");
+			Expect(follow.Chunks.Any(static chunk => chunk.Stream == RemoteConsoleOutputStream.Stderr && chunk.Text.Contains("stderr-line", StringComparison.Ordinal)), "stderr-captured");
+			Expect(follow.Chunks.Select(static chunk => chunk.Sequence).SequenceEqual(follow.Chunks.Select(static chunk => chunk.Sequence).Order()), "output-sequence-ordered");
+
+			var smallBuffer = new RemoteConsoleOutputBuffer(12);
+			smallBuffer.Append(RemoteConsoleOutputStream.Stdout, "first-line");
+			smallBuffer.Append(RemoteConsoleOutputStream.Stdout, "second-line");
+			var truncated = await smallBuffer.ReadAsync(0, 10, 0, CancellationToken.None);
+			Expect(truncated.Truncated && truncated.EarliestAvailableSequence > 1, "bounded-output-truncated");
+		}
+		finally
+		{
+			Directory.Delete(workspace, recursive: true);
+		}
+
+		return failures.Count == 0
+			? FunctionalScenarioResult.Pass("remote-console-command", checks.ToArray())
+			: FunctionalScenarioResult.Fail("remote-console-command", checks, failures);
+
+		void Expect(bool condition, string name)
+		{
+			if (condition)
+				checks.Add(name);
+			else
+				failures.Add(name);
+		}
+	}
+
 	public static async Task<FunctionalScenarioResult> RunFrameCodecAsync()
 	{
 		var checks = new List<string>();

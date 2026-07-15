@@ -35,6 +35,11 @@ internal sealed class RemoteConsoleJob
 	public string? DecisionReason { get; set; }
 }
 
+internal sealed record RemoteConsoleExecutionDescriptor(
+	string JobId,
+	RemoteConsoleSubmitRequest Request,
+	RemoteConsoleJobState State);
+
 public sealed class RemoteConsoleJobStore
 {
 	private readonly ConcurrentDictionary<string, RemoteConsoleJob> _jobs = new(StringComparer.OrdinalIgnoreCase);
@@ -168,6 +173,25 @@ public sealed class RemoteConsoleJobStore
 			job.State = RemoteConsoleJobState.Interrupted;
 			job.CompletedAt = DateTimeOffset.UtcNow;
 			job.DecisionReason = reason;
+			return RemoteConsoleJobMutationResult.Success(Snapshot(job));
+		});
+
+	internal RemoteConsoleExecutionDescriptor? GetExecution(string jobId)
+	{
+		if (!_jobs.TryGetValue(jobId, out var job))
+			return null;
+		lock (job.SyncRoot)
+			return new RemoteConsoleExecutionDescriptor(job.JobId, job.Request, job.State);
+	}
+
+	internal RemoteConsoleJobMutationResult FailStart(string jobId, string message) =>
+		WithJob(jobId, job =>
+		{
+			if (job.State != RemoteConsoleJobState.Starting)
+				return Conflict(job, "Only a starting job may report a launch failure.");
+			job.State = RemoteConsoleJobState.Failed;
+			job.CompletedAt = DateTimeOffset.UtcNow;
+			job.DecisionReason = message;
 			return RemoteConsoleJobMutationResult.Success(Snapshot(job));
 		});
 

@@ -30,6 +30,8 @@ builder.Services.AddSingleton(static provider =>
 });
 builder.Services.AddSingleton<RemoteConsoleJobStore>();
 builder.Services.AddSingleton<RemoteConsoleCommandRouter>();
+builder.Services.AddSingleton<RemoteConsoleCommandExecutor>();
+builder.Services.AddHostedService(static provider => provider.GetRequiredService<RemoteConsoleCommandExecutor>());
 builder.Services.AddHostedService<RemoteConsolePipeServer>();
 
 await builder.Build().RunAsync();

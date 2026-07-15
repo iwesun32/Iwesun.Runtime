@@ -26,6 +26,12 @@ public sealed class RemoteConsoleOptions
 		"workspaces");
 
 	public int MaxRequestBytes { get; init; } = 16 * 1024 * 1024;
+
+	public string PowerShellPath { get; init; } = "pwsh.exe";
+
+	public string CommandPromptPath { get; init; } = "cmd.exe";
+
+	public int MaxOutputBytesPerJob { get; init; } = 4 * 1024 * 1024;
 }
 
 public sealed class RemoteConsoleConfigurationException : InvalidOperationException
