@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using Iwesun.Runtime.Diagnostics;
+using Iwesun.Runtime.RemoteConsole;
 using Iwesun.Runtime.RemoteConsole.Protocol;
 
 internal static class RemoteConsoleScenario
@@ -65,6 +66,42 @@ internal static class RemoteConsoleScenario
 		return Task.FromResult(failures.Count == 0
 			? FunctionalScenarioResult.Pass("remote-console-protocol", checks.ToArray())
 			: FunctionalScenarioResult.Fail("remote-console-protocol", checks, failures));
+	}
+
+	public static Task<FunctionalScenarioResult> RunAuthorizationAsync()
+	{
+		const string submitterSid = "S-1-5-21-100-200-300-1001";
+		const string approverSid = "S-1-5-21-100-200-300-1002";
+		const string unknownSid = "S-1-5-21-100-200-300-1003";
+		var checks = new List<string>();
+		var failures = new List<string>();
+		var authorization = new RemoteConsoleAuthorization([submitterSid], [approverSid]);
+
+		Check(authorization.Authorize(submitterSid, RemoteConsoleActions.JobSubmit), true, "submitter-can-submit");
+		Check(authorization.Authorize(submitterSid, RemoteConsoleActions.JobStatus, submitterSid), true, "submitter-can-read-own-job");
+		Check(authorization.Authorize(submitterSid, RemoteConsoleActions.JobApprove, submitterSid), false, "submitter-cannot-approve");
+		Check(authorization.Authorize(approverSid, RemoteConsoleActions.JobApprove, submitterSid), true, "approver-can-approve");
+		Check(authorization.Authorize(approverSid, RemoteConsoleActions.PolicySet), true, "approver-can-set-policy");
+		Check(authorization.Authorize(unknownSid, RemoteConsoleActions.JobSubmit), false, "unknown-identity-denied");
+
+		var selfApproval = new RemoteConsoleAuthorization([submitterSid], [submitterSid])
+			.Authorize(submitterSid, RemoteConsoleActions.JobApprove, submitterSid);
+		if (!selfApproval.Ok && selfApproval.Code == RemoteConsoleErrorCodes.SelfApprovalDenied)
+			checks.Add("self-approval-denied");
+		else
+			failures.Add("Self approval did not return RC_SELF_APPROVAL_DENIED.");
+
+		return Task.FromResult(failures.Count == 0
+			? FunctionalScenarioResult.Pass("remote-console-authorization", checks.ToArray())
+			: FunctionalScenarioResult.Fail("remote-console-authorization", checks, failures));
+
+		void Check(RemoteConsoleAuthorizationResult result, bool expected, string name)
+		{
+			if (result.Ok == expected)
+				checks.Add(name);
+			else
+				failures.Add($"{name}: expected Ok={expected}, actual Ok={result.Ok}, code={result.Code}.");
+		}
 	}
 
 	public static async Task<FunctionalScenarioResult> RunFrameCodecAsync()

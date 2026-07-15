@@ -15,6 +15,9 @@
   <Project Path="Iwesun.Runtime.RemoteConsole.Protocol/Iwesun.Runtime.RemoteConsole.Protocol.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
+  <Project Path="Iwesun.Runtime.RemoteConsole/Iwesun.Runtime.RemoteConsole.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
   <Project Path="Iwesun.Runtime.FunctionalTests/Iwesun.Runtime.FunctionalTests.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
