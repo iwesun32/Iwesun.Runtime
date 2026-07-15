@@ -104,6 +104,80 @@ internal static class RemoteConsoleScenario
 		}
 	}
 
+	public static async Task<FunctionalScenarioResult> RunApprovalAsync()
+	{
+		const string submitterSid = "S-1-5-21-100-200-300-2001";
+		const string approverSid = "S-1-5-21-100-200-300-2002";
+		var checks = new List<string>();
+		var failures = new List<string>();
+		var environment = new Dictionary<string, string> { ["MODE"] = "test" };
+		var request = new RemoteConsoleSubmitRequest(
+			"approval-manual",
+			"powershell",
+			"Get-Date",
+			"workspace",
+			environment,
+			"read-only");
+		var manualPolicy = new RemoteConsoleApprovalPolicy(RemoteConsoleApprovalMode.Manual, [], []);
+		var store = new RemoteConsoleJobStore();
+
+		var first = store.Submit(request, submitterSid, manualPolicy);
+		var duplicate = store.Submit(request, submitterSid, manualPolicy);
+		Expect(first.Ok && first.Job?.State == RemoteConsoleJobState.AwaitingApproval, "manual-awaits-approval");
+		Expect(duplicate.Ok && duplicate.Job?.JobId == first.Job?.JobId, "duplicate-request-idempotent");
+
+		var originalHash = first.Job?.ContentHash;
+		environment["MODE"] = "mutated";
+		Expect(store.Get(first.Job!.JobId).Job?.ContentHash == originalHash, "content-hash-immutable");
+
+		var selfApproval = store.Approve(first.Job.JobId, submitterSid);
+		Expect(!selfApproval.Ok && selfApproval.Code == RemoteConsoleErrorCodes.SelfApprovalDenied, "self-approval-denied-by-store");
+
+		var raceRequest = request with { RequestId = "approval-race" };
+		var race = store.Submit(raceRequest, submitterSid, manualPolicy);
+		var decisions = await Task.WhenAll(
+			Task.Run(() => store.Approve(race.Job!.JobId, approverSid)),
+			Task.Run(() => store.Reject(race.Job!.JobId, approverSid, "not approved")));
+		Expect(decisions.Count(static result => result.Ok) == 1, "approval-race-single-winner");
+
+		var cancel = store.Submit(request with { RequestId = "approval-cancel" }, submitterSid, manualPolicy);
+		Expect(store.Cancel(cancel.Job!.JobId, submitterSid).Job?.State == RemoteConsoleJobState.Cancelled, "pending-cancelled");
+
+		var guardedPolicy = new RemoteConsoleApprovalPolicy(
+			RemoteConsoleApprovalMode.Guarded,
+			["^powershell\\nGet-Date\\n$"],
+			[]);
+		var guarded = store.Submit(request with { RequestId = "approval-guarded" }, submitterSid, guardedPolicy);
+		Expect(guarded.Job?.State == RemoteConsoleJobState.Starting, "guarded-rule-auto-approved");
+		var running = store.MarkRunning(guarded.Job!.JobId);
+		Expect(running.Job?.State == RemoteConsoleJobState.Running, "starting-transitions-running");
+		Expect(!store.Cancel(guarded.Job.JobId, submitterSid).Ok, "running-cancel-rejected");
+
+		var automaticPolicy = new RemoteConsoleApprovalPolicy(
+			RemoteConsoleApprovalMode.Automatic,
+			[],
+			["^.*Remove-Item.*$"]);
+		var denied = store.Submit(
+			request with { RequestId = "approval-denied", Command = "Remove-Item important.txt" },
+			submitterSid,
+			automaticPolicy);
+		Expect(denied.Job?.State == RemoteConsoleJobState.Rejected, "automatic-deny-rule-rejected");
+		var automatic = store.Submit(request with { RequestId = "approval-automatic" }, submitterSid, automaticPolicy);
+		Expect(automatic.Job?.State == RemoteConsoleJobState.Starting, "automatic-command-starting");
+
+		return failures.Count == 0
+			? FunctionalScenarioResult.Pass("remote-console-approval", checks.ToArray())
+			: FunctionalScenarioResult.Fail("remote-console-approval", checks, failures);
+
+		void Expect(bool condition, string name)
+		{
+			if (condition)
+				checks.Add(name);
+			else
+				failures.Add(name);
+		}
+	}
+
 	public static async Task<FunctionalScenarioResult> RunFrameCodecAsync()
 	{
 		var checks = new List<string>();

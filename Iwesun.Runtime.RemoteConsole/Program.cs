@@ -23,6 +23,13 @@ builder.Services.AddSingleton(static provider =>
 	var principals = provider.GetRequiredService<RemoteConsoleResolvedPrincipals>();
 	return new RemoteConsoleAuthorization(principals.SubmitterSids, principals.ApproverSids);
 });
+builder.Services.AddSingleton(static provider =>
+{
+	var options = provider.GetRequiredService<RemoteConsoleOptions>();
+	return new RemoteConsoleApprovalPolicy(options.ApprovalMode, options.AutoApprovePatterns, options.DenyPatterns);
+});
+builder.Services.AddSingleton<RemoteConsoleJobStore>();
+builder.Services.AddSingleton<RemoteConsoleCommandRouter>();
 builder.Services.AddHostedService<RemoteConsolePipeServer>();
 
 await builder.Build().RunAsync();

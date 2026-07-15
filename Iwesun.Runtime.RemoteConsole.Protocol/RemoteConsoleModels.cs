@@ -32,7 +32,8 @@ public sealed record RemoteConsoleSubmitRequest(
 	string Command,
 	string WorkspaceId,
 	IReadOnlyDictionary<string, string> Environment,
-	string RiskHint);
+	string RiskHint,
+	string WorkingDirectory = "");
 
 public sealed record RemoteConsoleJobRequest(string JobId);
 

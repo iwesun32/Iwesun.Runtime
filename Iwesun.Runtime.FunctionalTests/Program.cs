@@ -325,6 +325,7 @@ static class FunctionalChildRunner
 				"remote-console-frame-codec" => RemoteConsoleScenario.RunFrameCodecAsync(),
 				"remote-console-protocol" => RemoteConsoleScenario.RunProtocolAsync(),
 				"remote-console-authorization" => RemoteConsoleScenario.RunAuthorizationAsync(),
+				"remote-console-approval" => RemoteConsoleScenario.RunApprovalAsync(),
 				#if DEBUG
                 "cli-numeric-breakpoint" => RunCliNumericBreakpointScenario(provider, diagnosticsPipeName),
 				#endif

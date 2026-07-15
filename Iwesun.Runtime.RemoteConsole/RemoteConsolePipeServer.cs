@@ -3,9 +3,7 @@ using System.IO.Pipes;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
-using System.Text.Json;
 using Iwesun.Runtime.Diagnostics;
-using Iwesun.Runtime.RemoteConsole.Protocol;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -19,7 +17,7 @@ internal sealed class RemoteConsolePipeServer : BackgroundService
 {
 	private readonly RemoteConsoleOptions _options;
 	private readonly RemoteConsoleResolvedPrincipals _principals;
-	private readonly RemoteConsoleAuthorization _authorization;
+	private readonly RemoteConsoleCommandRouter _router;
 	private readonly ILogger<RemoteConsolePipeServer> _logger;
 	private readonly ConcurrentDictionary<int, NamedPipeServerStream> _activePipes = new();
 	private int _nextPipeId;
@@ -27,12 +25,12 @@ internal sealed class RemoteConsolePipeServer : BackgroundService
 	public RemoteConsolePipeServer(
 		RemoteConsoleOptions options,
 		RemoteConsoleResolvedPrincipals principals,
-		RemoteConsoleAuthorization authorization,
+		RemoteConsoleCommandRouter router,
 		ILogger<RemoteConsolePipeServer> logger)
 	{
 		_options = options ?? throw new ArgumentNullException(nameof(options));
 		_principals = principals ?? throw new ArgumentNullException(nameof(principals));
-		_authorization = authorization ?? throw new ArgumentNullException(nameof(authorization));
+		_router = router ?? throw new ArgumentNullException(nameof(router));
 		_logger = logger ?? throw new ArgumentNullException(nameof(logger));
 	}
 
@@ -95,7 +93,7 @@ internal sealed class RemoteConsolePipeServer : BackgroundService
 				pipe,
 				_options.MaxRequestBytes,
 				cancellationToken).ConfigureAwait(false);
-			var response = Dispatch(identity, request);
+			var response = _router.Dispatch(identity, request);
 			await RuntimeFramePipeCodec.WriteAsync(pipe, response, cancellationToken).ConfigureAwait(false);
 		}
 		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -120,31 +118,6 @@ internal sealed class RemoteConsolePipeServer : BackgroundService
 			}
 			await pipe.DisposeAsync().ConfigureAwait(false);
 		}
-	}
-
-	private RuntimeDiagnosticFrame Dispatch(RemoteConsoleClientIdentity identity, RuntimeDiagnosticFrame request)
-	{
-		var action = request.Command?.Action ?? "";
-		var authorization = _authorization.Authorize(identity.UserSid, identity.PrincipalSids, action);
-		if (!authorization.Ok)
-			return CreateResponse(request, false, authorization.Code, authorization.Message, null);
-
-		if (string.Equals(action, RemoteConsoleActions.ServerInfo, StringComparison.OrdinalIgnoreCase))
-		{
-			return CreateResponse(request, true, "OK", "", new
-			{
-				pipeName = _options.PipeName,
-				approvalMode = _options.ApprovalMode.ToString(),
-				serviceIdentity = WindowsIdentity.GetCurrent().User?.Value
-			});
-		}
-
-		return CreateResponse(
-			request,
-			false,
-			RemoteConsoleErrorCodes.InvalidRequest,
-			$"RemoteConsole action '{action}' is not implemented by the current service stage.",
-			null);
 	}
 
 	private NamedPipeServerStream CreateServer()
@@ -216,33 +189,4 @@ internal sealed class RemoteConsolePipeServer : BackgroundService
 		return CaptureWindowsClientIdentity(pipe);
 	}
 
-	private static RuntimeDiagnosticFrame CreateResponse(
-		RuntimeDiagnosticFrame request,
-		bool ok,
-		string code,
-		string message,
-		object? data)
-	{
-		return new RuntimeDiagnosticFrame
-		{
-			Header = new RuntimeDiagnosticFrameHeader
-			{
-				Schema = RuntimeDiagnosticProtocol.V2Schema,
-				FrameType = "response",
-				Category = request.Header.Category,
-				Operation = request.Header.Operation,
-				RequestId = request.Header.RequestId,
-				CorrelationId = request.Header.RequestId ?? request.Header.CorrelationId,
-				Source = RemoteConsoleProtocol.ServerTarget,
-				Destination = request.Header.Source
-			},
-			Status = new RuntimeDiagnosticFrameStatus
-			{
-				Ok = ok,
-				Code = code,
-				Message = message
-			},
-			Data = data is null ? null : JsonSerializer.SerializeToElement(data)
-		};
-	}
 }

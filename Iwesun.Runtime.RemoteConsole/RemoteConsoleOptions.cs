@@ -15,6 +15,10 @@ public sealed class RemoteConsoleOptions
 
 	public RemoteConsoleApprovalMode ApprovalMode { get; init; } = RemoteConsoleApprovalMode.Manual;
 
+	public IReadOnlyList<string> AutoApprovePatterns { get; init; } = [];
+
+	public IReadOnlyList<string> DenyPatterns { get; init; } = [];
+
 	public string WorkspaceRoot { get; init; } = Path.Combine(
 		Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
 		"Iwesun",
