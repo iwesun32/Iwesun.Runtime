@@ -16,6 +16,8 @@ Read only the references needed for the request:
 - Add output, watch, breakpoint, numeric breakpoint, event, or reflection injection: [references/diagnostic-injection.md](references/diagnostic-injection.md)
 - Implement state, events, guardians, or shutdown: [references/state-shutdown-events.md](references/state-shutdown-events.md)
 - Work with frames, named pipes, or CLI: [references/json-cli.md](references/json-cli.md)
+- Install or operate the approved remote command service: [references/remote-console.md](references/remote-console.md)
+- Work with WebView2 script evaluation, audit, network rules, filters, or XPath evidence: [references/webview2-runtime.md](references/webview2-runtime.md)
 
 For a full host migration, read the references in the order listed above.
 

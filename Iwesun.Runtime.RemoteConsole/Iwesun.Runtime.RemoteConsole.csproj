@@ -6,6 +6,7 @@
     <RootNamespace>Iwesun.Runtime.RemoteConsole</RootNamespace>
     <AssemblyName>Iwesun.Runtime.RemoteConsole</AssemblyName>
     <Platforms>AnyCPU;x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
 

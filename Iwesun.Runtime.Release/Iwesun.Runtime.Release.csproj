@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" />
     <ProjectReference Include="..\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" />
     <ProjectReference Include="..\Iwesun.Runtime.SampleHost\Iwesun.Runtime.SampleHost.csproj" />
+    <ProjectReference Include="..\Iwesun.Runtime.RemoteConsole\Iwesun.Runtime.RemoteConsole.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -32,6 +33,7 @@
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_QUICK_START.md" />
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_WINDOWS_SERVICE.md" />
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_REMOTE_ACCESS.md" />
+    <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_REMOTE_CONSOLE.md" />
     <ReleaseDocs Include="..\docs\RUNTIME_DIAGNOSTICS.md" />
     <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_CLI.md" />
     <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\WEBVIEW2_JSON_PIPE_CLI_PLAN.md" />
@@ -62,6 +64,7 @@
     <MakeDir Directories="$(ReleaseLibRoot)Iwesun.Runtime.Diagnostics" />
     <MakeDir Directories="$(ReleaseLibRoot)Iwesun.Runtime.Data" />
     <MakeDir Directories="$(ReleaseLibRoot)Iwesun.Runtime.WebView2" />
+    <MakeDir Directories="$(ReleaseBinRoot)Iwesun.Runtime.RemoteConsole" />
     <MakeDir Directories="$(ReleaseBinRoot)Iwesun.Runtime.SampleHost" />
     <MakeDir Directories="$(ReleaseDocsRoot)" />
     <MakeDir Directories="$(ReleaseConfigRoot)" />
@@ -73,6 +76,9 @@
     <MakeDir Directories="$(ReleaseSamplesRoot)source" />
     <MakeDir Directories="$(ReleaseSamplesRoot)source\Iwesun.Runtime.SampleHost\installed" />
 
+    <MSBuild Projects="..\Iwesun.Runtime.RemoteConsole\Iwesun.Runtime.RemoteConsole.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64;PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.RemoteConsole\;SelfContained=false;UseAppHost=true" />
     <MSBuild Projects="..\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.csproj"
              Targets="Publish"
              Properties="Configuration=$(Configuration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.Cli\;SelfContained=false;UseAppHost=true" />

@@ -13,6 +13,7 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | **[IWESUN_RUNTIME_USER_GUIDE.md](IWESUN_RUNTIME_USER_GUIDE.md)** | 业务接入权威手册：主程序、受管执行、单点注入、状态退出、JSON/CLI |
 | **[IWESUN_RUNTIME_WINDOWS_SERVICE.md](IWESUN_RUNTIME_WINDOWS_SERVICE.md)** | Windows Service 专项手册：SCM 生命周期、业务边界、清理状态与退出码 |
 | **[IWESUN_RUNTIME_REMOTE_ACCESS.md](IWESUN_RUNTIME_REMOTE_ACCESS.md)** | 远程管道专项手册：AI 账号、Program.cs ACL、本地兼容与 CLI 登录 |
+| **[IWESUN_RUNTIME_REMOTE_CONSOLE.md](IWESUN_RUNTIME_REMOTE_CONSOLE.md)** | 远程控制服务：账号授权、SCM 安装、Shell 插槽、上传、审批与输出跟随 |
 | [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | 项目总览：定位、结构、依赖关系、核心链路 |
 | [RUNTIME_DIAGNOSTICS.md](RUNTIME_DIAGNOSTICS.md) | 运行时诊断核心机制、协议与输出控制 |
 | [RUNTIME_ROOT_DATA_STRUCTURE.md](RUNTIME_ROOT_DATA_STRUCTURE.md) | RuntimeRoot 单根挂载的数据结构总览（T01~T10） |
@@ -35,6 +36,7 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 - `docs/IWESUN_RUNTIME_CLI.md`：CLI 配置、命令、管道与 WebRuntime 桥接说明。
 - `docs/IWESUN_RUNTIME_WINDOWS_SERVICE.md`：Windows Service 平台入口和业务接入边界。
 - `docs/IWESUN_RUNTIME_REMOTE_ACCESS.md`：远端 AI 账号、源码固定授权与 CLI IPC 登录边界。
+- `docs/IWESUN_RUNTIME_REMOTE_CONSOLE.md`：独立远程控制服务、管理员安装和 CLI 审批执行边界。
 
 ### 专题文档
 - `docs/05-runtime-tooling/`：状态、线程/任务、样板宿主、注入器标准化等专题。

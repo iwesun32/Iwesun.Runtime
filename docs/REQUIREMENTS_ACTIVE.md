@@ -3,6 +3,16 @@
 > 状态：ACTIVE  
 > 最后更新：2026-07-12
 
+## 2026-07-15 RemoteConsole 快速适配发布要求
+
+- RemoteConsole 必须作为独立 Windows 服务和独立管道发布，不得复用业务宿主 Diagnostics 管道。
+- 服务端授权由 `Program.cs` 集中声明提交者、审批者、默认管道和审批模式；Runtime 不创建账号、不保存密码。
+- CLI 必须分别维护 Diagnostics 当前目标与 RemoteConsole 当前目标；`exit`/`quit` 只退出 Shell。
+- 命令提交、审批、执行、stdout/stderr 序列、退出码、工作区和分块上传必须使用完整 Runtime Frame。
+- 现有诊断 `file.list` 不得被远程工作区命令覆盖；远程清单使用 `console.file.list`。
+- MSI 只安装 RemoteConsole 文件、文档和技能，不得注册/启动服务或变更服务账号。
+- 真实 SCM 指定账号测试必须交互执行；权限或凭据不具备时标记环境受限，不得伪报通过。
+
 ## 2026-07-12 安装目录修订
 
 - 完整只读套件必须形成在 `C:\Program Files\Iwesun\Runtime`：`bin`、`lib`、`docs`、`samples`、`scripts`、`skills`。
