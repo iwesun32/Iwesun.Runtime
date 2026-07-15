@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -10,7 +9,7 @@ namespace Iwesun.Runtime.Diagnostics;
 
 public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 {
-	private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+	private const int MaxCommandBytes = 1024 * 1024;
 	private readonly RuntimeDiagnosticHub _hub;
 	private readonly DiagnosticSwitchboardConfigStore _configStore;
 	private readonly RuntimeNamedPipeAccessPolicy _accessPolicy;
@@ -114,31 +113,14 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 	{
 		try
 		{
-			var lengthBuffer = new byte[4];
 			while (!ct.IsCancellationRequested)
 			{
-				if (!await ReadExactAsync(pipe, lengthBuffer, ct))
-					break;
-
-				var length = BitConverter.ToInt32(lengthBuffer, 0);
-				if (length <= 0 || length > 1024 * 1024)
-				{
-					await WriteFrameAsync(pipe, BuildFrameErrorResponse(null, new InvalidOperationException($"Invalid command length: {length}")), ct);
-					break;
-				}
-
-				var buffer = new byte[length];
-				if (!await ReadExactAsync(pipe, buffer, ct))
-					break;
-
-				var json = Encoding.UTF8.GetString(buffer);
 				RuntimeDiagnosticFrame? requestFrame = null;
 				RuntimeDiagnosticFrame responseFrame;
 				var stopwatch = Stopwatch.StartNew();
 				try
 				{
-					requestFrame = JsonSerializer.Deserialize<RuntimeDiagnosticFrame>(json, JsonOptions)
-						?? throw new InvalidOperationException("Invalid frame payload: frame is null.");
+					requestFrame = await RuntimeFramePipeCodec.ReadAsync(pipe, MaxCommandBytes, ct);
 
 					if (!string.Equals(requestFrame.Header.Schema, RuntimeDiagnosticProtocol.V2Schema, StringComparison.OrdinalIgnoreCase)
 						&& !string.Equals(requestFrame.Header.Schema, RuntimeDiagnosticProtocol.V3Schema, StringComparison.OrdinalIgnoreCase))
@@ -155,7 +137,7 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 				}
 				stopwatch.Stop();
 
-				await WriteFrameAsync(pipe, responseFrame, ct);
+				await RuntimeFramePipeCodec.WriteAsync(pipe, responseFrame, ct);
 				break;
 			}
 		}
@@ -170,7 +152,7 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 			_logger.LogWarning(ex, "Runtime diagnostics monitor handler failed on {PipeName}", _pipeName);
 			try
 			{
-				await WriteFrameAsync(pipe, BuildFrameErrorResponse(null, ex), CancellationToken.None);
+				await RuntimeFramePipeCodec.WriteAsync(pipe, BuildFrameErrorResponse(null, ex), CancellationToken.None);
 			}
 			catch
 			{
@@ -184,30 +166,6 @@ public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 			try { pipe.Disconnect(); } catch { }
 			await pipe.DisposeAsync();
 		}
-	}
-
-	private static async Task<bool> ReadExactAsync(Stream stream, byte[] buffer, CancellationToken ct)
-	{
-		var totalRead = 0;
-		while (totalRead < buffer.Length)
-		{
-			var read = await stream.ReadAsync(buffer, totalRead, buffer.Length - totalRead, ct);
-			if (read == 0)
-				return false;
-			totalRead += read;
-		}
-
-		return true;
-	}
-
-	private static async Task WriteFrameAsync(NamedPipeServerStream pipe, RuntimeDiagnosticFrame frame, CancellationToken ct)
-	{
-		var json = JsonSerializer.Serialize(frame, JsonOptions);
-		var bytes = Encoding.UTF8.GetBytes(json);
-		var length = BitConverter.GetBytes(bytes.Length);
-		await pipe.WriteAsync(length, 0, length.Length, ct);
-		await pipe.WriteAsync(bytes, 0, bytes.Length, ct);
-		await pipe.FlushAsync(ct);
 	}
 
 	private static RuntimeDiagnosticFrame BuildFrameErrorResponse(RuntimeDiagnosticFrame? request, Exception ex)

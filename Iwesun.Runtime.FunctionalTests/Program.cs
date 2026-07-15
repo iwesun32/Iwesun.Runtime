@@ -322,6 +322,7 @@ static class FunctionalChildRunner
                 "cli" => RunCliScenario(provider, diagnosticsPipeName),
                 "cli-context-shell" => CliContextShellScenario.RunAsync(),
                 "cli-transport-failure" => CliTransportFailureScenario.RunAsync(),
+				"remote-console-frame-codec" => RemoteConsoleScenario.RunFrameCodecAsync(),
 				#if DEBUG
                 "cli-numeric-breakpoint" => RunCliNumericBreakpointScenario(provider, diagnosticsPipeName),
 				#endif
