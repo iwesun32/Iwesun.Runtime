@@ -5,7 +5,7 @@
 ## 边界
 
 - 页面自身 JavaScript 继续由 WebView2 页面运行。
-- Runtime/WebRuntime 控制面不接受 JavaScript 文本，不提供 `eval` 或 `script` 回退。
+- Runtime/WebRuntime 控制面仅在显式 `script.evaluate`/`eval` 动作下接受脚本文本；普通 DOM 和输入动作不会隐式回退到脚本。
 - 业务方可实现 `IWebRuntimeBusinessProgram`，随宿主编译为二进制后注册。
 - 管理层负责登记、JSON 命令转接、超时、取消、状态、历史和指标，不理解业务动作。
 - C# 截获可以逐动作启用；强制截获时，未登记程序或未声明动作必须失败。
@@ -136,7 +136,7 @@ Runtime Hub 目标：`webruntime.programs`。
 ## 禁止事项
 
 - 禁止 WebRuntime 私有 Envelope。
-- 禁止 `Script` 请求字段和外部 `eval`。
+- 禁止未声明动作隐式回退到 JavaScript；脚本只允许通过 `script.evaluate`/`eval` 入口，并受长度、审计和专用管道约束。
 - 禁止未声明动作回退到 JavaScript。
 - 禁止由业务宿主自行维护另一套程序注册表或管道租约。
 - 禁止字符串 JSON 隐藏 Status、Data 或事件数据。

@@ -33,4 +33,7 @@
   <Project Path="Iwesun.Runtime.WebView2/Iwesun.Runtime.WebView2.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
+  <Project Path="Iwesun.Runtime.WebView2.SampleHost/Iwesun.Runtime.WebView2.SampleHost.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
 </Solution>

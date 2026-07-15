@@ -238,7 +238,7 @@ WebView2 运行时控制面属于 Service 正式功能。Tester、外部脚本�
 | DOM | `resolveXPath`, `readXPath`, `resolveXPathTree`, `eval` |
 | 输入 | `clickXPath`, `mouseMove`, `mouseClick`, `mouseCheck` |
 | Cookie | `cookieGet`, `cookieSet`, `cookieClear` |
-| 网页脚本监管与接管 | `monitorStart`, `events` |
+| 网页脚本监管与受控评估 | `monitorStart`, `events`, `scriptEvaluate`, `eval` |
 | 证据 | `screenshot` |
 | 元信息 | `capabilities` |
 
@@ -250,14 +250,14 @@ WebView2 运行时控制面属于 Service 正式功能。Tester、外部脚本�
 | ---- | ---- | ---- |
 | 运行时能力自描述 | 高 | 程序应返回当前支持的 action 分类，防止文档和代码分叉 |
 | 虚拟键盘运行时动作 | 高 | 当前发送路径有虚拟键盘能力，但 WebRuntime 控制面还未标准化暴露 |
-| 元素截图和高亮 | 中 | 有助于人工确认 XPath |
+| 元素截图和高亮 | 中 | `WebRuntimeEvidenceScripts` 已提供 XPath 高亮脚本；区域截图仍由宿主截图接口执行 |
 | 结构化网络协议事件 | 高 | 需要把 request/response 解析成可复用 HTTP 发送格式 |
-| 动态 monitor 配置 | 中 | 需要支持追加 filter、查看已挂 filter、清空事件缓冲 |
-| JS 接口屏蔽/替换规则 | 高 | 在监管清楚后，支持按 URL/接口/后端添加阻断或替换规则 |
+| 动态 monitor 配置 | 中 | `WebRuntimeMonitorFilterRegistry` 已提供追加、删除、清空和匹配；宿主负责将过滤结果接入事件缓冲 |
+| JS 接口屏蔽/替换规则 | 高 | `WebRuntimeNetworkRuleRegistry` 已提供规则和决策；宿主仍需接入 WebView2 网络事件来实际应用 |
 
 ## 5. 实施顺序
 
 1. 先补 `capabilities` 动作，让程序可返回当前 WebRuntime 能力分类。
 2. 把 `WEB_RUNTIME_CONTROL.md` 按本文分类重排，保留命令示例。
-3. 后续再补虚拟键盘、元素截图、高亮、结构化协议事件和 JS 接口屏蔽/替换。
-4. 每次新增能力必须同时更新本文和 `capabilities` 返回。
+3. 虚拟键盘、元素高亮、脚本审计、网络规则和监控过滤已纳入公共 API；区域截图和原生网络事件应用由宿主适配器完成。
+4. 每次新增能力必须同时更新本文、CLI 配置和发布技能。

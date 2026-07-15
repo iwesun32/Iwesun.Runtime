@@ -84,6 +84,7 @@ Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_JSON_PIPE_CLI_PLA
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEB_RUNTIME_CONTROL.md") -Label "WebView2 control guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_RUNTIME_CAPABILITIES.md") -Label "WebView2 capability status"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_RELEASE_STATUS.md") -Label "WebView2 release status"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_SAMPLE_HOST.md") -Label "WebView2 sample host guide"
 $publishedDocs = @(Get-ChildItem -LiteralPath (Join-Path $InstallRoot "docs") -Filter "*.md" -File)
 if ($publishedDocs.Count -lt 12) {
     throw "Published documentation set is incomplete. Expected at least 12 Markdown files, found $($publishedDocs.Count)."
@@ -95,6 +96,9 @@ Assert-PathExists -Path (Join-Path $InstallRoot "samples\templates\RuntimeHost.S
 Assert-PathExists -Path (Join-Path $InstallRoot "samples\templates\RuntimeHost.DiagnosticsExamples.Template.cs.txt") -Label "Diagnostics examples template"
 Assert-PathExists -Path (Join-Path $InstallRoot "samples\templates\RuntimeHost.ManagedWorker.Template.cs.txt") -Label "Managed Worker template"
 Assert-PathExists -Path (Join-Path $InstallRoot "samples\source\Iwesun.Runtime.SampleHost\Program.cs") -Label "SampleHost source"
+Assert-PathExists -Path (Join-Path $InstallRoot "samples\source\Iwesun.Runtime.WebView2.SampleHost\Iwesun.Runtime.WebView2.SampleHost.csproj") -Label "WebView2 SampleHost project source"
+Assert-PathExists -Path (Join-Path $InstallRoot "samples\source\Iwesun.Runtime.WebView2.SampleHost\MainWindow.xaml.cs") -Label "WebView2 SampleHost window source"
+Assert-PathExists -Path (Join-Path $InstallRoot "bin\Iwesun.Runtime.WebView2.SampleHost\Iwesun.Runtime.WebView2.SampleHost.exe") -Label "Published WebView2 SampleHost"
 Assert-PathExists -Path (Join-Path $InstallRoot "skills\iwesun-runtime-integration\SKILL.md") -Label "Integration skill"
 Assert-PathExists -Path (Join-Path $InstallRoot "skills\iwesun-runtime-integration\references\webview2-runtime.md") -Label "WebView2 integration skill reference"
 Assert-PathExists -Path (Join-Path $InstallRoot "skills\iwesun-runtime-integration\references\remote-console.md") -Label "RemoteConsole integration skill reference"
@@ -103,6 +107,14 @@ Assert-PathExists -Path (Join-Path $InstallRoot "scripts\verify-runtime-install.
 # ProgramData mutable payload
 Assert-PathExists -Path (Join-Path $DataRoot "config\RuntimeCliSystemConfig.json") -Label "CLI v3 system config"
 Assert-PathExists -Path (Join-Path $DataRoot "config\RuntimeCliSystemMetadata.json") -Label "CLI v3 system metadata"
+$cliConfigPath = Join-Path $DataRoot "config\RuntimeCliSystemConfig.json"
+$cliConfigText = Get-Content -LiteralPath $cliConfigPath -Raw
+foreach ($requiredCommand in @("web.script.evaluate", "web.script.audit", "web.network.rule.add", "web.monitor.filter.add", "web.highlight")) {
+    if ($cliConfigText -notmatch [regex]::Escape($requiredCommand)) {
+        throw "CLI system config is missing required WebView2 command: $requiredCommand"
+    }
+}
+Write-Host "[OK] WebView2 CLI command set"
 
 $cliExe = Join-Path $InstallRoot "bin\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.exe"
 $helpOutput = & $cliExe --help 2>&1

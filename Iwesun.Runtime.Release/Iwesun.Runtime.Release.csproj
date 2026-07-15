@@ -44,12 +44,16 @@
     <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\安全审计报告.md" />
     <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\安全审计答复报告.md" />
     <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\完整整改方案.md" />
+    <ReleaseDocs Include="..\WebRuntime公共能力与CLI配置总说明.md" />
+    <ReleaseDocs Include="..\docs\IWESUN_RUNTIME_WEBVIEW2_CLI_INTEGRATION.md" />
+    <ReleaseDocs Include="..\Iwesun.Runtime.WebView2\docs\WEBVIEW2_SAMPLE_HOST.md" />
     <ReleaseConfig Include="..\Iwesun.Runtime.Cli\RuntimeCliSystemConfig.json" />
     <ReleaseConfig Include="..\Iwesun.Runtime.Cli\RuntimeCliSystemMetadata.json" />
     <ReleaseConfig Include="..\Iwesun.Runtime.Cli\RuntimeCliUserConfig.example.json" />
     <ReleaseSamples Include="..\Iwesun.Runtime.SampleHost\templates\RuntimeHost.*.Template.cs.txt" />
     <ReleaseSamples Include="..\Iwesun.Runtime.SampleHost\templates\RuntimeCreation.*.Template.txt" />
     <ReleaseSampleHostSources Include="..\Iwesun.Runtime.SampleHost\*.cs" />
+    <ReleaseWebViewSampleSources Include="..\Iwesun.Runtime.WebView2.SampleHost\**\*" Exclude="..\Iwesun.Runtime.WebView2.SampleHost\bin\**;..\Iwesun.Runtime.WebView2.SampleHost\obj\**" />
     <ReleaseInstalledSampleProject Include="..\Iwesun.Runtime.SampleHost\installed\Iwesun.Runtime.SampleHost.Installed.csproj" />
     <ReleaseSources Include="..\Iwesun.Runtime.Diagnostics\RuntimeHostTemplate.cs" />
     <ReleaseSkills Include="..\skills\iwesun-runtime-integration\**\*.*" />
@@ -66,6 +70,7 @@
     <MakeDir Directories="$(ReleaseLibRoot)Iwesun.Runtime.WebView2" />
     <MakeDir Directories="$(ReleaseBinRoot)Iwesun.Runtime.RemoteConsole" />
     <MakeDir Directories="$(ReleaseBinRoot)Iwesun.Runtime.SampleHost" />
+    <MakeDir Directories="$(ReleaseBinRoot)Iwesun.Runtime.WebView2.SampleHost" />
     <MakeDir Directories="$(ReleaseDocsRoot)" />
     <MakeDir Directories="$(ReleaseConfigRoot)" />
     <MakeDir Directories="$(ReleaseSamplesRoot)templates" />
@@ -85,6 +90,9 @@
     <MSBuild Projects="..\Iwesun.Runtime.SampleHost\Iwesun.Runtime.SampleHost.csproj"
              Targets="Publish"
              Properties="Configuration=$(Configuration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.SampleHost\;SelfContained=false;UseAppHost=true" />
+    <MSBuild Projects="..\Iwesun.Runtime.WebView2.SampleHost\Iwesun.Runtime.WebView2.SampleHost.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.WebView2.SampleHost\;SelfContained=false;UseAppHost=true" />
     <MSBuild Projects="..\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj"
              Targets="Publish"
              Properties="Configuration=$(Configuration);PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Diagnostics\;SelfContained=false" />
@@ -118,6 +126,10 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ReleaseSampleHostSources)"
           DestinationFiles="@(ReleaseSampleHostSources->'$(ReleaseSamplesRoot)source\Iwesun.Runtime.SampleHost\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <MakeDir Directories="$(ReleaseSamplesRoot)source\Iwesun.Runtime.WebView2.SampleHost" />
+    <Copy SourceFiles="@(ReleaseWebViewSampleSources)"
+          DestinationFiles="@(ReleaseWebViewSampleSources->'$(ReleaseSamplesRoot)source\Iwesun.Runtime.WebView2.SampleHost\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ReleaseInstalledSampleProject)"
           DestinationFiles="@(ReleaseInstalledSampleProject->'$(ReleaseSamplesRoot)source\Iwesun.Runtime.SampleHost\installed\%(Filename)%(Extension)')"

@@ -45,8 +45,8 @@
 - 旧 `Iwesun.Runtime.WebView2.WebRuntimePipeClient` 必须由统一帧客户端完全取代，AIGateway Service、Desktop、Tester 同步一次性迁移。
 - 唯一允许的兼容面位于 CLI v3 用户 JSON 配置：用户可定义别名、自定义命令和结构化组合命令；线协议和公共客户端不提供旧格式兼容。
 - `Iwesun.Runtime.WebView2` 必须提供与业务无关的脚本会话、输入会话、虚拟鼠标和虚拟键盘公共能力；业务宿主只保留站点选择器、业务流程和具体 WebView2 会话适配，不得复制一套私有虚拟输入框架。
-- WebRuntime 控制面不得接受或回退执行调用方提供的 JavaScript；所有业务扩展必须注册为编译期 C# 程序，由 Runtime 负责程序登记、统一 JSON 命令转接、超时、执行状态监控和结果返回。页面自身脚本不属于该控制面限制。
-- WebRuntime 不得维护私有 `schema/module/success/error` Envelope；请求与响应必须完整纳入 `RuntimeDiagnosticFrame` 的 Header/Command/Status/Data/Meta，公共请求模型不得包含 `Script`，客户端必须保留 RequestId/CorrelationId、错误 Code 和 Retryable。
+- WebRuntime 业务扩展不得隐式回退执行调用方 JavaScript；业务扩展仍必须注册为编译期 C# 程序。调试取证允许通过显式 `script.evaluate`/`eval` 入口执行受控脚本，页面自身脚本继续运行。
+- WebRuntime 不得维护私有 `schema/module/success/error` Envelope；请求与响应必须完整纳入 `RuntimeDiagnosticFrame` 的 Header/Command/Status/Data/Meta，`Script` 只能作为显式脚本动作的 typed Arg，客户端必须保留 RequestId/CorrelationId、错误 Code 和 Retryable。
 
 ## 当前任务（WebView2 JSON 协议与 CLI 重规划）
 
@@ -279,7 +279,7 @@
 - 发布包必须携带速查手册、启动模板、替换清单和可编译的安装版 SampleHost 项目。
 - 安装版 SampleHost 必须分别引用 Debug/Release Diagnostics DLL，并在两种配置下完成编译和真实 CLI 验证。
 - 速查手册必须完整纳入当前 Runtime 新架构，除宿主启动和受管执行外，还必须覆盖：统一 `RuntimeDiagnosticFrame`、4 字节小端帧、RuntimeDiagnostics 与业务专用管道边界、`RuntimePipeRegistry` 租约与名称解析、CLI v3 用户配置和 `composites`、WebRuntime 预编译 C# Program 截获、诊断/断点安全规则、Stop/Wakeup 与实际完成后释放、分层验证和迁移完成清单。
-- `WebRuntimeControlRequest` 只能描述 Command typed Args，不得重新成为私有线协议 Envelope；速查手册不得出现旧 `schema/module/success/error` WebRuntime DTO 或调用方 JavaScript 执行入口。
+- `WebRuntimeControlRequest` 只能描述 Command typed Args，不得重新成为私有线协议 Envelope；速查手册不得出现旧 `schema/module/success/error` WebRuntime DTO。脚本只能通过显式受控 `script.evaluate`/`eval` 动作调用。
 - 源码 Quick Start 与 `C:\Program Files\Iwesun\Runtime\docs` 发布副本必须保持字节级一致。
 
 # 2026-07-12 CLI 用户增量配置
@@ -547,7 +547,11 @@
 
 - [x] Shell 上下文、远程 Node/Target、稳定错误码、Windows IPC 辅助和多 Target 只读协调完成本地回归。
 - [x] Atlas UI 完成远程 Frame 往返，Atlas Service 的拒绝访问准确分类为 `CLI_REMOTE_ACCESS_DENIED`。
-- [x] 版本统一升级到 1.0.21，进入 Debug/Release、全量 staging、内容验证和 MSI 构建。
+- [x] 版本统一升级到 1.0.21，Debug/Release、全量 staging、内容验证和 MSI 构建全部完成。
+- [x] Runtime 1.0.21 MSI 已生成，SHA-256 为 `4B1195A5F29224FFAF59E7370CAE29E5BB696A3339F17914E1E7DB051DF8C9E4`。
+- [x] DDNS Snap Server/UI 已使用严格 `RuntimeNamedPipeAccessOptions`，直接授权预先存在的本机 `IwesunAiDiag` 账号；安装器不管理账号。
+- [x] DDNS Snap 1.0.50 Server MSI 已生成，载荷内 Runtime Diagnostics 文件版本为 1.0.21.0。
+- [ ] Atlas 安装新 Server MSI 后，使用 AI 账号完成 `node auth`、Service/UI `target test`、Root 快照及大 Frame 实机验收。
 
 ## 远程 AI 账号与管道 ACL 源码声明
 
@@ -558,3 +562,26 @@
 - Windows 用户或域账号必须预先存在；Runtime 不创建操作系统账号，也不把密码、令牌或可逆凭据编译进业务程序。
 - 远端 CLI 使用对应 AI 账号凭据建立 Windows IPC 会话；服务端源码只负责身份授权，客户端只负责凭据登录。
 - SampleHost、主程序模板、CLI 手册、Server 手册和集成技能必须提供可照搬的严格授权示例。
+
+# 2026-07-14 远程控制台快速适配版
+
+- [x] 需求边界和第一版架构已确认；权威设计为 `docs/superpowers/specs/2026-07-14-runtime-remote-console-design.md`。
+- [x] 新建独立 RemoteConsole Windows Service，不把任意终端执行并入业务 Diagnostics 管道。
+- [x] 管理员手工安装服务并指定 Windows AI 账号；服务继承该账号权限，程序内部不提权、不切换 SYSTEM。
+- [x] AI 通过现有 CLI Shell 连接 RemoteConsole，提交原样非交互命令并增量接收 stdout、stderr 和退出码。
+- [x] Server 是审批权威；支持 Manual、Guarded、Automatic 三级策略，UI 只通过受权接口批准、拒绝或撤回未执行命令。
+- [x] AI 提交账号与审批账号分离；审批账号由服务主程序源码登记，AI 不能批准自己的任务。
+- [x] 提供独立临时工作区和分块文件上传；限定相对路径、校验长度/SHA-256、默认保留 24 小时。
+- [x] 第一版不代理 Setup/安装流程、不自动续跑或重放、不支持交互式密码/向导、不停止已经运行的进程树。
+- [ ] 新建简单 WPF 管理 UI 骨架，首版实现节点连接、审批队列、任务状态和输出监视；复杂终端管理以后升级。
+- [x] 代码、CLI JSON、服务样例、文档、技能和 WebView2 状态已同步进入 1.0.22 发布源。
+- [ ] 1.0.22 全量 staging、自检和 MSI 生成完成后记录最终哈希。
+
+## 2026-07-13 1.0.21 全量发布与 DDNS Snap Server 严格远程授权
+
+- Runtime 全量构建、功能测试、staging 内容验证和 MSI 必须统一为 1.0.21，禁止复用旧 staging。
+- DDNS Snap Service 主程序必须通过 `RuntimeNamedPipeAccessOptions` 固定声明严格远程授权：保留本机交互用户，关闭 Authenticated Users，直接授权本机 `IwesunAiDiag` 账号。
+- 安装器不得创建、修改、删除账号或设置账号权限；管理员预先创建 `IwesunAiDiag`，程序启动创建管道时只设置该管道对象的 ACL。
+- Runtime 和 DDNS Snap 不读取、保存或处理 AI 账号密码；密码不得进入 MSI、命令行、配置文件、日志或 Runtime Frame。
+- DDNS Snap Server 安装包必须消费当前 Runtime 1.0.21，完成 Release 构建、安装内容检查和 MSI 生成。
+- 发布前必须验证 Runtime CLI 的远程 Node/Target、`node auth/test`、主管道 ACL 和大 Frame；无法在本机完成的 Atlas 实机项必须明确标记为待部署验证，不得冒充通过。

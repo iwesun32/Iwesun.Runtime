@@ -224,10 +224,47 @@ internal static class RemoteConsoleScenario
 			smallBuffer.Append(RemoteConsoleOutputStream.Stdout, "second-line");
 			var truncated = await smallBuffer.ReadAsync(0, 10, 0, CancellationToken.None);
 			Expect(truncated.Truncated && truncated.EarliestAvailableSequence > 1, "bounded-output-truncated");
+
+			var stoppingStore = new RemoteConsoleJobStore();
+			var stoppingSubmit = stoppingStore.Submit(
+				new RemoteConsoleSubmitRequest(
+					"command-service-stop",
+					"powershell",
+					"Start-Sleep -Milliseconds 500; [IO.File]::WriteAllText('child-finished.marker', 'done'); exit 0",
+					"workspace",
+					new Dictionary<string, string>(),
+					"test"),
+				submitterSid,
+				policy);
+			using var stoppingExecutor = new RemoteConsoleCommandExecutor(options, stoppingStore);
+			var execution = stoppingExecutor.ExecuteAsync(stoppingSubmit.Job!.JobId, workspace, CancellationToken.None);
+			var runningDeadline = DateTimeOffset.UtcNow.AddSeconds(5);
+			while (stoppingStore.Get(stoppingSubmit.Job.JobId).Job?.State == RemoteConsoleJobState.Starting
+				&& DateTimeOffset.UtcNow < runningDeadline)
+				await Task.Delay(10);
+			await stoppingExecutor.StopAsync(CancellationToken.None);
+			await execution.WaitAsync(TimeSpan.FromSeconds(2));
+			Expect(stoppingStore.Get(stoppingSubmit.Job.JobId).Job?.State == RemoteConsoleJobState.Interrupted, "service-stop-marks-interrupted-without-kill");
+			var childMarker = Path.Combine(workspace, "child-finished.marker");
+			var childDeadline = DateTimeOffset.UtcNow.AddSeconds(5);
+			while (!File.Exists(childMarker) && DateTimeOffset.UtcNow < childDeadline)
+				await Task.Delay(25);
+			Expect(File.Exists(childMarker), "service-stop-does-not-kill-approved-child");
 		}
 		finally
 		{
-			Directory.Delete(workspace, recursive: true);
+			for (var attempt = 0; ; attempt++)
+			{
+				try
+				{
+					Directory.Delete(workspace, recursive: true);
+					break;
+				}
+				catch (IOException) when (attempt < 40)
+				{
+					await Task.Delay(50);
+				}
+			}
 		}
 
 		return failures.Count == 0

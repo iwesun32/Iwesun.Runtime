@@ -134,7 +134,7 @@ static class FunctionalParentRunner
 {
     public static async Task<int> RunAsync(string[] args)
     {
-        var scenarios = new[] { "diagnostics", "managed", "thread", "task", "process", "tree", "root-safety", "sharedfifo-protocol", "numeric-breakpoint", "pipe-registry", "tree-process", "cli", "cli-context-shell", "cli-transport-failure", "cli-numeric-breakpoint", "file-output-filter", "file-registry", "file-output-e2e", "switchboard-config", "file-output-format-variants", "bp-process-cli", "sample-host-random-state", "sample-host-cli-full" };
+        var scenarios = new[] { "diagnostics", "managed", "thread", "task", "process", "tree", "root-safety", "sharedfifo-protocol", "numeric-breakpoint", "pipe-registry", "tree-process", "cli", "cli-context-shell", "cli-transport-failure", "cli-numeric-breakpoint", "file-output-filter", "file-registry", "file-output-e2e", "switchboard-config", "file-output-format-variants", "bp-process-cli", "sample-host-random-state", "sample-host-cli-full", "web-runtime-script" };
         var results = new List<FunctionalScenarioResult>(scenarios.Length);
         var executions = new List<ChildScenarioExecution>(scenarios.Length);
         var failures = new List<string>();
@@ -341,6 +341,7 @@ static class FunctionalChildRunner
                 "file-output-format-variants" => RunFileOutputFormatVariantsScenario(provider, runtimeDirectory),
                 "sample-host-random-state" => Task.FromResult(SampleHostRandomStateScenario.Run()),
                 "sample-host-cli-full" => SampleHostCliFullScenario.RunAsync(),
+				"web-runtime-script" => WebRuntimeScriptScenario.RunAsync(),
 				"probe" => RunProbeScenario(provider),
                 _ => Task.FromResult(FunctionalScenarioResult.Fail(options.Scenario, Array.Empty<string>(), new[] { $"Unknown scenario: {options.Scenario}" }))
             });

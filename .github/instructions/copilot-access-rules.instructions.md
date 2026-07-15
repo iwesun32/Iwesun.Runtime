@@ -21,7 +21,7 @@ Read only what is necessary for the current task. Prefer the smallest local code
    - Examples: `git reset --hard`, `git clean -f`, `Remove-Item -Force`, `del /s /q`, `rd /s /q`.
 3. **Search first, read second.** Use targeted search before opening files.
 4. **Build outputs are not source code.** Ignore generated artifacts, caches, and package outputs.
-5. **Ignore binaries and oversized files by default.** Do not read binary files or files larger than 200 KB unless the user explicitly requests it.
+5. **Ignore binaries and oversized files by default.** Do not read binary files. For miscellaneous or experimental non-source files larger than 10 KB (10240 bytes), read at most the first 20 lines unless the user explicitly requests deeper reading. Source files and `.md` documents are exempt from this threshold.
 
 ## Off-Limits Zones
 
@@ -60,8 +60,9 @@ Only these locations should normally be read without explicit user permission:
 
 1. **Read no more than 2-5 files by default.** Expand only when the current hypothesis cannot be tested locally.
 2. **Use minimal line ranges.** Read only the surrounding lines needed for the current task.
-3. **Prefer one nearby hop over broad exploration.** If the first file only forwards behavior, step once to the owning implementation.
-4. **Use subagents only for broad read-only exploration.**
+3. **For miscellaneous or experimental non-source files larger than 10 KB, preview only the first 20 lines by default.** Source files and `.md` documents are exempt from this threshold.
+4. **Prefer one nearby hop over broad exploration.** If the first file only forwards behavior, step once to the owning implementation.
+5. **Use subagents only for broad read-only exploration.**
 
 ## Requirements-First Workflow
 

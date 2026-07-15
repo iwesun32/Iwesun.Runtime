@@ -16,6 +16,13 @@ public static class WebRuntimeInputActions
 	public const string AmbientStatus = "input.ambient.status";
 }
 
+/// <summary>Standard script-supervision actions exposed by the public WebRuntime contract.</summary>
+public static class WebRuntimeScriptActions
+{
+	public const string Evaluate = "script.evaluate";
+	public const string EvalAlias = "eval";
+}
+
 public sealed class WebRuntimeControlRequest
 {
 	public string ProgramId { get; init; } = "";
@@ -24,6 +31,7 @@ public sealed class WebRuntimeControlRequest
 	public string? Url { get; init; }
 	public string? XPath { get; init; }
 	public string? Text { get; init; }
+	public string? Script { get; init; }
 	public int? X { get; init; }
 	public int? Y { get; init; }
 	public int? Width { get; init; }

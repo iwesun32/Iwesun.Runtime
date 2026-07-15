@@ -337,6 +337,48 @@
         "iwrt web.programs.capabilities"
       ]
     },
+    "web.script.evaluate": {
+      "summary": "Evaluate an explicit JavaScript payload in a registered WebRuntime target.",
+      "risk": "destructive",
+      "capability": "web-runtime",
+      "examples": [ "iwrt web.script.evaluate <targetId> \"document.title\"" ]
+    },
+    "web.script.audit": {
+      "summary": "List recent WebRuntime script execution audit records.",
+      "risk": "read-only",
+      "capability": "web-runtime",
+      "examples": [ "iwrt web.script.audit <targetId>" ]
+    },
+    "web.network.rule.add": {
+      "summary": "Add a WebRuntime request interception rule.",
+      "risk": "destructive",
+      "capability": "web-runtime",
+      "examples": [ "iwrt web.network.rule.add <targetId> <ruleId> Block https://example.test/*" ]
+    },
+    "web.network.rule.clear": {
+      "summary": "Clear WebRuntime request interception rules.",
+      "risk": "destructive",
+      "capability": "web-runtime",
+      "examples": [ "iwrt web.network.rule.clear <targetId>" ]
+    },
+    "web.monitor.filter.add": {
+      "summary": "Add a WebRuntime observation filter.",
+      "risk": "state-changing",
+      "capability": "web-runtime",
+      "examples": [ "iwrt web.monitor.filter.add <targetId> <filterId> response api" ]
+    },
+    "web.monitor.filter.clear": {
+      "summary": "Clear WebRuntime observation filters.",
+      "risk": "state-changing",
+      "capability": "web-runtime",
+      "examples": [ "iwrt web.monitor.filter.clear <targetId>" ]
+    },
+    "web.highlight": {
+      "summary": "Highlight a DOM element selected by XPath in WebRuntime.",
+      "risk": "state-changing",
+      "capability": "web-runtime",
+      "examples": [ "iwrt web.highlight <targetId> /html/body" ]
+    },
     "web.programs.status": {
       "summary": "Show WebRuntime program execution status.",
       "risk": "read-only",

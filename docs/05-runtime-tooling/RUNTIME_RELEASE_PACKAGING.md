@@ -5,7 +5,7 @@
 以后只使用下列脚本生成安装包：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtime-setup.ps1 -ProductVersion 1.0.19
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtime-setup.ps1 -ProductVersion 1.0.22
 ```
 
 脚本固定执行完整流程：Debug 全解决方案构建、Release 全解决方案构建、清空并重建完整 staging、发布目录自检、WiX 强制 Rebuild、输出 MSI 大小和 SHA-256。不得再把普通增量 `dotnet build` 生成的 MSI 当作发布包。
@@ -34,14 +34,14 @@ dotnet msbuild Iwesun.Runtime.Release\Iwesun.Runtime.Release.csproj /t:PublishRu
 
 ### 1.2 安装工程（MSI）
 
-- 项目：`setup/Iwesun.Runtime.Setup/Iwesun.Runtime.Setup.wixproj`
-- WiX 源：`setup/Iwesun.Runtime.Setup/Package.wxs`
+- 项目：`Iwesun.Runtime.Setup/Iwesun.Runtime.Setup.wixproj`
+- WiX 源：`Iwesun.Runtime.Setup/Package.wxs`
 - 安装类型：Windows MSI（标准安装 + 控制面板可卸载）
 
 执行：
 
 ```powershell
-dotnet build setup\Iwesun.Runtime.Setup\Iwesun.Runtime.Setup.wixproj -c Release
+dotnet build Iwesun.Runtime.Setup\Iwesun.Runtime.Setup.wixproj -c Release
 ```
 
 > 说明：安装工程直接打包 `artifacts/release/Iwesun.Runtime/` 产物，因此必须先执行发布总项目。

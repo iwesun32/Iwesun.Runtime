@@ -6,7 +6,7 @@
 1. **Never scan the entire repository.** Start from the smallest relevant file, symbol, or document.
 2. **Respect `.copilotignore` boundaries.** Build outputs, archives, large generated files, and caches are off-limits unless the user explicitly asks.
 3. **Prefer targeted reads.** Search first, then read only the smallest relevant ranges.
-4. **Ignore binaries and large files by default.** Do not read binary files or any file larger than 200 KB unless the user explicitly requests it.
+4. **Ignore binaries and large files by default.** Do not read binary files. For miscellaneous or experimental non-source files larger than 10 KB (10240 bytes), read at most the first 20 lines unless the user explicitly requests deeper reading. Source files and `.md` documents are exempt from this threshold.
 5. **Never write files from the terminal.**
    - Do not use `>`, `>>`, `Out-File`, `Set-Content`, `Add-Content`, or shell-invoked file APIs.
    - Use editor tools for all file edits and new files.

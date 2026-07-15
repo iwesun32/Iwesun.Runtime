@@ -13,7 +13,7 @@
 
 旧 preview 宿主可能在引用阶段编译成功，但运行时因程序集版本和 API 绑定不一致而崩溃。迁移前应统一升级相关 PackageReference，清理宿主 `bin/obj/publish`，再分别构建 Debug 和 Release。
 
-Runtime 正式发布 DLL 的 AssemblyVersion/FileVersion 与 MSI ProductVersion 同步，例如 `1.0.19.0` 对应安装包 `1.0.19`；InformationalVersion 用于显示发布标识。
+Runtime 正式发布 DLL 的 AssemblyVersion/FileVersion 与 MSI ProductVersion 同步，例如 `1.0.22.0` 对应安装包 `1.0.22`；InformationalVersion 用于显示发布标识。
 
 ## 1. 替换程序启动主程序
 
