@@ -107,6 +107,11 @@ public sealed record RemoteConsoleWorkspaceSnapshot(
 	DateTimeOffset LastAccessedAt,
 	long Bytes);
 
+public sealed record RemoteConsoleFileSnapshot(
+	string RelativePath,
+	long Length,
+	DateTimeOffset LastWriteTime);
+
 public sealed record RemoteConsoleUploadSessionSnapshot(
 	string UploadId,
 	string WorkspaceId,

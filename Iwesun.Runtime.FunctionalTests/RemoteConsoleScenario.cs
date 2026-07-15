@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
 using Iwesun.Runtime.Diagnostics;
 using Iwesun.Runtime.RemoteConsole;
 using Iwesun.Runtime.RemoteConsole.Protocol;
@@ -125,6 +127,7 @@ internal static class RemoteConsoleScenario
 		var duplicate = store.Submit(request, submitterSid, manualPolicy);
 		Expect(first.Ok && first.Job?.State == RemoteConsoleJobState.AwaitingApproval, "manual-awaits-approval");
 		Expect(duplicate.Ok && duplicate.Job?.JobId == first.Job?.JobId, "duplicate-request-idempotent");
+		Expect(!duplicate.Changed, "duplicate-request-does-not-relaunch");
 
 		var originalHash = first.Job?.ContentHash;
 		environment["MODE"] = "mutated";
@@ -228,6 +231,73 @@ internal static class RemoteConsoleScenario
 		return failures.Count == 0
 			? FunctionalScenarioResult.Pass("remote-console-command", checks.ToArray())
 			: FunctionalScenarioResult.Fail("remote-console-command", checks, failures);
+
+		void Expect(bool condition, string name)
+		{
+			if (condition)
+				checks.Add(name);
+			else
+				failures.Add(name);
+		}
+	}
+
+	public static async Task<FunctionalScenarioResult> RunWorkspaceAsync()
+	{
+		var checks = new List<string>();
+		var failures = new List<string>();
+		var root = Path.Combine(Path.GetTempPath(), "iwesun-remote-console-workspace", Guid.NewGuid().ToString("N"));
+		var options = new RemoteConsoleOptions
+		{
+			WorkspaceRoot = root,
+			MaxFileBytes = 2048,
+			MaxWorkspaceBytes = 2048,
+			MaxTotalWorkspaceBytes = 4096
+		};
+		var store = new RemoteConsoleWorkspaceStore(options, new RemoteConsoleJobStore());
+		try
+		{
+			var workspace = store.Create("functional test");
+			Expect(workspace.Ok && workspace.Data is not null, "workspace-created");
+			var workspaceId = workspace.Data!.WorkspaceId;
+			Expect(!store.BeginUpload(new RemoteConsoleUploadBeginRequest(workspaceId, "..\\escape.txt", 1, new string('0', 64))).Ok, "parent-path-rejected");
+			Expect(!store.BeginUpload(new RemoteConsoleUploadBeginRequest(workspaceId, "C:\\escape.txt", 1, new string('0', 64))).Ok, "drive-path-rejected");
+			Expect(!store.BeginUpload(new RemoteConsoleUploadBeginRequest(workspaceId, "\\\\server\\share\\escape.txt", 1, new string('0', 64))).Ok, "unc-path-rejected");
+			Expect(!store.BeginUpload(new RemoteConsoleUploadBeginRequest(workspaceId, "file.txt:stream", 1, new string('0', 64))).Ok, "alternate-stream-rejected");
+			Expect(!store.BeginUpload(new RemoteConsoleUploadBeginRequest(workspaceId, "large.bin", 4096, new string('0', 64))).Ok, "file-quota-rejected");
+
+			var content = Encoding.UTF8.GetBytes("remote-console-upload");
+			var sha256 = Convert.ToHexString(SHA256.HashData(content));
+			var begin = store.BeginUpload(new RemoteConsoleUploadBeginRequest(workspaceId, "nested\\payload.txt", content.Length, sha256));
+			Expect(begin.Ok && begin.Data is not null, "upload-begun");
+			var finalPath = Path.Combine(root, workspaceId, "nested", "payload.txt");
+			Expect(!File.Exists(finalPath), "final-file-hidden-before-commit");
+			var chunk = await store.AppendChunkAsync(
+				new RemoteConsoleUploadChunkRequest(begin.Data!.UploadId, 0, Convert.ToBase64String(content)),
+				CancellationToken.None);
+			Expect(chunk.Ok, "upload-chunk-accepted");
+			var outOfOrder = await store.AppendChunkAsync(
+				new RemoteConsoleUploadChunkRequest(begin.Data.UploadId, 2, Convert.ToBase64String([0])),
+				CancellationToken.None);
+			Expect(!outOfOrder.Ok && outOfOrder.Code == RemoteConsoleErrorCodes.UploadSequenceConflict, "upload-sequence-enforced");
+			var commit = await store.CommitUploadAsync(new RemoteConsoleUploadCommitRequest(begin.Data.UploadId), CancellationToken.None);
+			Expect(commit.Ok && File.Exists(finalPath) && await File.ReadAllTextAsync(finalPath) == "remote-console-upload", "upload-committed-atomically");
+			Expect(!store.BeginUpload(new RemoteConsoleUploadBeginRequest(workspaceId, "workspace-full.bin", 2040, new string('0', 64))).Ok, "workspace-quota-rejected");
+
+			var mismatch = store.BeginUpload(new RemoteConsoleUploadBeginRequest(workspaceId, "bad.txt", content.Length, new string('0', 64)));
+			await store.AppendChunkAsync(new RemoteConsoleUploadChunkRequest(mismatch.Data!.UploadId, 0, Convert.ToBase64String(content)), CancellationToken.None);
+			var mismatchCommit = await store.CommitUploadAsync(new RemoteConsoleUploadCommitRequest(mismatch.Data.UploadId), CancellationToken.None);
+			Expect(!mismatchCommit.Ok && mismatchCommit.Code == RemoteConsoleErrorCodes.UploadHashMismatch, "upload-hash-mismatch-rejected");
+		}
+		finally
+		{
+			store.Dispose();
+			if (Directory.Exists(root))
+				Directory.Delete(root, recursive: true);
+		}
+
+		return failures.Count == 0
+			? FunctionalScenarioResult.Pass("remote-console-workspace", checks.ToArray())
+			: FunctionalScenarioResult.Fail("remote-console-workspace", checks, failures);
 
 		void Expect(bool condition, string name)
 		{

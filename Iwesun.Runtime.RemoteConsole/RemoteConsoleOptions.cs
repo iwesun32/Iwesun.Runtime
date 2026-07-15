@@ -32,6 +32,14 @@ public sealed class RemoteConsoleOptions
 	public string CommandPromptPath { get; init; } = "cmd.exe";
 
 	public int MaxOutputBytesPerJob { get; init; } = 4 * 1024 * 1024;
+
+	public long MaxFileBytes { get; init; } = 64 * 1024 * 1024;
+
+	public long MaxWorkspaceBytes { get; init; } = 256 * 1024 * 1024;
+
+	public long MaxTotalWorkspaceBytes { get; init; } = 1024L * 1024 * 1024;
+
+	public TimeSpan WorkspaceRetention { get; init; } = TimeSpan.FromHours(24);
 }
 
 public sealed class RemoteConsoleConfigurationException : InvalidOperationException

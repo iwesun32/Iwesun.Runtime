@@ -40,7 +40,16 @@ public sealed class RemoteConsoleCommandExecutor : IHostedService, IDisposable
 			throw new InvalidOperationException($"RemoteConsole job '{jobId}' is not in Starting state.");
 
 		var output = _outputs.GetOrAdd(jobId, _ => new RemoteConsoleOutputBuffer(_options.MaxOutputBytesPerJob));
-		var startInfo = BuildStartInfo(descriptor.Request, workspacePath);
+		ProcessStartInfo startInfo;
+		try
+		{
+			startInfo = BuildStartInfo(descriptor.Request, workspacePath);
+		}
+		catch (Exception ex)
+		{
+			_jobs.FailStart(jobId, ex.Message);
+			return;
+		}
 		using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
 		try
 		{

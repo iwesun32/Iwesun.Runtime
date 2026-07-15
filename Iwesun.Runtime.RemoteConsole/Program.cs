@@ -29,9 +29,11 @@ builder.Services.AddSingleton(static provider =>
 	return new RemoteConsoleApprovalPolicy(options.ApprovalMode, options.AutoApprovePatterns, options.DenyPatterns);
 });
 builder.Services.AddSingleton<RemoteConsoleJobStore>();
+builder.Services.AddSingleton<RemoteConsoleWorkspaceStore>();
 builder.Services.AddSingleton<RemoteConsoleCommandRouter>();
 builder.Services.AddSingleton<RemoteConsoleCommandExecutor>();
 builder.Services.AddHostedService(static provider => provider.GetRequiredService<RemoteConsoleCommandExecutor>());
+builder.Services.AddHostedService<RemoteConsoleWorkspaceCleanupService>();
 builder.Services.AddHostedService<RemoteConsolePipeServer>();
 
 await builder.Build().RunAsync();

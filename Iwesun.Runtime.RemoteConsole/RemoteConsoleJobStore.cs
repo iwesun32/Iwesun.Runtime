@@ -10,13 +10,14 @@ public sealed record RemoteConsoleJobMutationResult(
 	bool Ok,
 	string Code,
 	string Message,
-	RemoteConsoleJobSnapshot? Job)
+	RemoteConsoleJobSnapshot? Job,
+	bool Changed)
 {
-	public static RemoteConsoleJobMutationResult Success(RemoteConsoleJobSnapshot job) =>
-		new(true, "OK", "", job);
+	public static RemoteConsoleJobMutationResult Success(RemoteConsoleJobSnapshot job, bool changed = true) =>
+		new(true, "OK", "", job, changed);
 
 	public static RemoteConsoleJobMutationResult Fail(string code, string message, RemoteConsoleJobSnapshot? job = null) =>
-		new(false, code, message, job);
+		new(false, code, message, job, false);
 }
 
 internal sealed class RemoteConsoleJob
@@ -69,7 +70,7 @@ public sealed class RemoteConsoleJobStore
 				{
 					return string.Equals(existing.ContentHash, contentHash, StringComparison.OrdinalIgnoreCase)
 						&& string.Equals(existing.SubmitterSid, submitterSid, StringComparison.OrdinalIgnoreCase)
-						? RemoteConsoleJobMutationResult.Success(Snapshot(existing))
+						? RemoteConsoleJobMutationResult.Success(Snapshot(existing), changed: false)
 						: Conflict(existing, "requestId is already bound to different immutable content.");
 				}
 			}
@@ -101,15 +102,25 @@ public sealed class RemoteConsoleJobStore
 	}
 
 	public RemoteConsoleJobMutationResult Get(string jobId) =>
-		WithJob(jobId, static job => RemoteConsoleJobMutationResult.Success(Snapshot(job)));
+		WithJob(jobId, static job => RemoteConsoleJobMutationResult.Success(Snapshot(job), changed: false));
 
 	public IReadOnlyList<RemoteConsoleJobSnapshot> GetPending() =>
 		_jobs.Values
-			.Select(job => WithJob(job.JobId, static value => RemoteConsoleJobMutationResult.Success(Snapshot(value))).Job)
+			.Select(job => WithJob(job.JobId, static value => RemoteConsoleJobMutationResult.Success(Snapshot(value), changed: false)).Job)
 			.Where(static job => job?.State == RemoteConsoleJobState.AwaitingApproval)
 			.Cast<RemoteConsoleJobSnapshot>()
 			.OrderBy(static job => job.SubmittedAt)
 			.ToArray();
+
+	internal bool HasActiveJobs(string workspaceId) =>
+		_jobs.Values.Any(job =>
+		{
+			lock (job.SyncRoot)
+			{
+				return string.Equals(job.Request.WorkspaceId, workspaceId, StringComparison.OrdinalIgnoreCase)
+					&& job.State is RemoteConsoleJobState.Starting or RemoteConsoleJobState.Running;
+			}
+		});
 
 	public RemoteConsoleJobMutationResult Approve(string jobId, string approverSid) =>
 		WithJob(jobId, job =>

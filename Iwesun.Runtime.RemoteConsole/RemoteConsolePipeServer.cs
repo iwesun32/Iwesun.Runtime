@@ -93,7 +93,7 @@ internal sealed class RemoteConsolePipeServer : BackgroundService
 				pipe,
 				_options.MaxRequestBytes,
 				cancellationToken).ConfigureAwait(false);
-			var response = _router.Dispatch(identity, request);
+			var response = await _router.DispatchAsync(identity, request, cancellationToken).ConfigureAwait(false);
 			await RuntimeFramePipeCodec.WriteAsync(pipe, response, cancellationToken).ConfigureAwait(false);
 		}
 		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
