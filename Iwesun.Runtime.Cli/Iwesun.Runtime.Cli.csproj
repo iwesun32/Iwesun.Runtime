@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" />
+    <ProjectReference Include="..\Iwesun.Runtime.RemoteConsole.Protocol\Iwesun.Runtime.RemoteConsole.Protocol.csproj" />
     <ProjectReference Include="..\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" />
   </ItemGroup>
 

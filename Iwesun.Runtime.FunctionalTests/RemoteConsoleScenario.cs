@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Iwesun.Runtime.Diagnostics;
 using Iwesun.Runtime.RemoteConsole;
 using Iwesun.Runtime.RemoteConsole.Protocol;
@@ -305,6 +307,177 @@ internal static class RemoteConsoleScenario
 				checks.Add(name);
 			else
 				failures.Add(name);
+		}
+	}
+
+	public static async Task<FunctionalScenarioResult> RunCliAsync()
+	{
+		var checks = new List<string>();
+		var failures = new List<string>();
+		var repositoryRoot = FindRepositoryRoot();
+		var cliProject = Path.Combine(repositoryRoot, "Iwesun.Runtime.Cli", "Iwesun.Runtime.Cli.csproj");
+		var info = await RunCliAsync(["--server=.", "--pipe=remote-console-not-running", "console.info"]);
+		Expect(!info.Error.Contains("CLI_COMMAND_UNKNOWN", StringComparison.Ordinal), "console-info-grammar-recognized");
+		var submit = await RunCliAsync([
+			"--server=.",
+			"--pipe=remote-console-not-running",
+			"console.submit",
+			"--workspace",
+			"workspace",
+			"--shell",
+			"powershell",
+			"--",
+			"Write-Output 'ok'"]);
+		Expect(!submit.Error.Contains("CLI_OPTION_UNKNOWN", StringComparison.Ordinal)
+			&& !submit.Error.Contains("CLI_COMMAND_UNKNOWN", StringComparison.Ordinal), "console-submit-flags-recognized");
+
+		var pipeName = $"Iwesun.Runtime.RemoteConsole.Functional.{Guid.NewGuid():N}";
+		var serviceProject = Path.Combine(repositoryRoot, "Iwesun.Runtime.RemoteConsole", "Iwesun.Runtime.RemoteConsole.csproj");
+		var serviceStart = new ProcessStartInfo("dotnet")
+		{
+			UseShellExecute = false,
+			RedirectStandardOutput = true,
+			RedirectStandardError = true,
+			CreateNoWindow = true,
+			WorkingDirectory = repositoryRoot
+		};
+		serviceStart.ArgumentList.Add("run");
+		serviceStart.ArgumentList.Add("--project");
+		serviceStart.ArgumentList.Add(serviceProject);
+		serviceStart.ArgumentList.Add("-c");
+		serviceStart.ArgumentList.Add("Debug");
+		serviceStart.ArgumentList.Add("--");
+		serviceStart.ArgumentList.Add("--console");
+		serviceStart.ArgumentList.Add("--test-current-user");
+		serviceStart.ArgumentList.Add($"--pipe={pipeName}");
+		using var service = Process.Start(serviceStart) ?? throw new InvalidOperationException("Failed to start RemoteConsole service test host.");
+		var serviceOutput = service.StandardOutput.ReadToEndAsync();
+		var serviceError = service.StandardError.ReadToEndAsync();
+		var tempFile = Path.Combine(Path.GetTempPath(), $"remote-console-cli-{Guid.NewGuid():N}.txt");
+		try
+		{
+			(int ExitCode, string Output, string Error) ready = default;
+			for (var attempt = 0; attempt < 20; attempt++)
+			{
+				ready = await RunCliAsync(["--server=.", $"--pipe={pipeName}", "console.info"]);
+				if (ready.ExitCode == 0)
+					break;
+				await Task.Delay(250);
+			}
+			Expect(ready.ExitCode == 0, "remote-console-service-connected");
+			if (ready.ExitCode == 0)
+			{
+				var shell = await RunCliAsync(
+					["--interactive"],
+					$"console target add service local {pipeName}{Environment.NewLine}" +
+					"console target use service" + Environment.NewLine +
+					"console target current" + Environment.NewLine +
+					"console.info" + Environment.NewLine +
+					"exit" + Environment.NewLine);
+				Expect(shell.ExitCode == 0
+					&& shell.Output.Contains("service=local/", StringComparison.Ordinal)
+					&& shell.Output.Contains(pipeName, StringComparison.Ordinal), "cli-shell-remote-target-context");
+				var afterShellExit = await RunCliAsync(["--server=.", $"--pipe={pipeName}", "console.info"]);
+				Expect(afterShellExit.ExitCode == 0, "cli-shell-exit-does-not-stop-service");
+				var create = await RunCliAsync(["--server=.", $"--pipe={pipeName}", "workspace.create", "cli-test"]);
+				var workspaceId = ReadDataString(create.Output, "workspaceId");
+				Expect(create.ExitCode == 0 && !string.IsNullOrWhiteSpace(workspaceId), "cli-workspace-created");
+				await File.WriteAllTextAsync(tempFile, "remote-console-cli-payload");
+				var upload = await RunCliAsync(["--server=.", $"--pipe={pipeName}", "file.upload", workspaceId!, tempFile, "payload.txt"]);
+				Expect(upload.ExitCode == 0, "cli-file-uploaded");
+				var submitJob = await RunCliAsync([
+					"--server=.",
+					$"--pipe={pipeName}",
+					"console.submit",
+					"--workspace",
+					workspaceId!,
+					"--shell",
+					"powershell",
+					"--",
+					"Get-Content payload.txt"]);
+				var jobId = ReadDataString(submitJob.Output, "jobId");
+				Expect(submitJob.ExitCode == 0 && !string.IsNullOrWhiteSpace(jobId), "cli-command-submitted");
+				var followJob = await RunCliAsync(["--server=.", $"--pipe={pipeName}", "console.follow", jobId!]);
+				Expect(followJob.ExitCode == 0 && followJob.Output.Contains("remote-console-cli-payload", StringComparison.Ordinal), "cli-output-followed");
+			}
+		}
+		finally
+		{
+			if (!service.HasExited)
+				service.Kill(entireProcessTree: true);
+			await service.WaitForExitAsync();
+			_ = await serviceOutput;
+			_ = await serviceError;
+			if (File.Exists(tempFile))
+				File.Delete(tempFile);
+		}
+
+		return failures.Count == 0
+			? FunctionalScenarioResult.Pass("remote-console-cli", checks.ToArray())
+			: FunctionalScenarioResult.Fail("remote-console-cli", checks, failures);
+
+		async Task<(int ExitCode, string Output, string Error)> RunCliAsync(string[] arguments, string? standardInput = null)
+		{
+			var startInfo = new ProcessStartInfo("dotnet")
+			{
+				UseShellExecute = false,
+				RedirectStandardInput = standardInput is not null,
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				CreateNoWindow = true,
+				WorkingDirectory = repositoryRoot
+			};
+			startInfo.ArgumentList.Add("run");
+			startInfo.ArgumentList.Add("--project");
+			startInfo.ArgumentList.Add(cliProject);
+			startInfo.ArgumentList.Add("-c");
+			startInfo.ArgumentList.Add("Debug");
+			startInfo.ArgumentList.Add("--");
+			foreach (var argument in arguments)
+				startInfo.ArgumentList.Add(argument);
+			using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start CLI grammar test.");
+			if (standardInput is not null)
+			{
+				await process.StandardInput.WriteAsync(standardInput);
+				process.StandardInput.Close();
+			}
+			var output = process.StandardOutput.ReadToEndAsync();
+			var error = process.StandardError.ReadToEndAsync();
+			await process.WaitForExitAsync();
+			return (process.ExitCode, await output, await error);
+		}
+
+		void Expect(bool condition, string name)
+		{
+			if (condition)
+				checks.Add(name);
+			else
+				failures.Add(name);
+		}
+
+		static string FindRepositoryRoot()
+		{
+			var current = new DirectoryInfo(AppContext.BaseDirectory);
+			while (current is not null)
+			{
+				if (File.Exists(Path.Combine(current.FullName, "Iwesun.Runtime.slnx")))
+					return current.FullName;
+				current = current.Parent;
+			}
+			throw new DirectoryNotFoundException("Runtime repository root was not found.");
+		}
+
+		static string? ReadDataString(string json, string propertyName)
+		{
+			using var document = JsonDocument.Parse(json);
+			if (!document.RootElement.TryGetProperty("data", out var data))
+				return null;
+			foreach (var property in data.EnumerateObject())
+			{
+				if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+					return property.Value.GetString();
+			}
+			return null;
 		}
 	}
 

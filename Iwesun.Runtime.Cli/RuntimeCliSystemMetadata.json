@@ -131,6 +131,12 @@
       "capability": "debug-only",
       "examples": [ "iwrt breakpoint.clear-numeric sample.host.random.numeric" ]
     },
+    "breakpoint.list-numeric": {
+      "summary": "List Debug numeric breakpoint bindings and active thresholds.",
+      "risk": "read-only",
+      "capability": "debug-only",
+      "examples": [ "iwrt breakpoint.list-numeric" ]
+    },
     "hook.list": {
       "summary": "List registered diagnostic event hooks.",
       "risk": "read-only",
@@ -226,6 +232,102 @@
       "examples": [
         "iwrt reflection.invoke sample.host Refresh"
       ]
+    },
+    "console.info": {
+      "summary": "Show RemoteConsole service identity and approval mode.",
+      "risk": "read-only",
+      "capability": "remote-console",
+      "examples": [ "iwrt console.info" ]
+    },
+    "console.submit": {
+      "summary": "Submit a workspace command for policy evaluation and execution.",
+      "risk": "destructive",
+      "capability": "remote-console",
+      "examples": [ "iwrt console.submit --workspace <id> --shell powershell -- whoami" ]
+    },
+    "console.status": {
+      "summary": "Show one RemoteConsole job state.",
+      "risk": "read-only",
+      "capability": "remote-console",
+      "examples": [ "iwrt console.status <jobId>" ]
+    },
+    "console.follow": {
+      "summary": "Follow sequenced stdout and stderr until the job reaches a terminal state.",
+      "risk": "read-only",
+      "capability": "remote-console",
+      "examples": [ "iwrt console.follow <jobId>" ]
+    },
+    "console.cancel": {
+      "summary": "Request cancellation of a RemoteConsole job.",
+      "risk": "destructive",
+      "capability": "remote-console",
+      "examples": [ "iwrt console.cancel <jobId>" ]
+    },
+    "console.pending": {
+      "summary": "List jobs awaiting approval.",
+      "risk": "read-only",
+      "capability": "remote-console",
+      "examples": [ "iwrt console.pending" ]
+    },
+    "console.approve": {
+      "summary": "Approve a pending RemoteConsole job as an authorized approver.",
+      "risk": "destructive",
+      "capability": "remote-console-approver",
+      "examples": [ "iwrt console.approve <jobId>" ]
+    },
+    "console.reject": {
+      "summary": "Reject a pending RemoteConsole job with a reason.",
+      "risk": "destructive",
+      "capability": "remote-console-approver",
+      "examples": [ "iwrt console.reject <jobId> not-approved" ]
+    },
+    "console.policy.get": {
+      "summary": "Show the current RemoteConsole approval mode.",
+      "risk": "read-only",
+      "capability": "remote-console",
+      "examples": [ "iwrt console.policy.get" ]
+    },
+    "console.policy.set": {
+      "summary": "Set Manual, Guarded, or Automatic approval mode.",
+      "risk": "destructive",
+      "capability": "remote-console-approver",
+      "examples": [ "iwrt console.policy.set Manual" ]
+    },
+    "workspace.create": {
+      "summary": "Create an isolated RemoteConsole workspace.",
+      "risk": "state-changing",
+      "capability": "remote-console",
+      "examples": [ "iwrt workspace.create deployment" ]
+    },
+    "workspace.list": {
+      "summary": "List RemoteConsole workspaces.",
+      "risk": "read-only",
+      "capability": "remote-console",
+      "examples": [ "iwrt workspace.list" ]
+    },
+    "workspace.show": {
+      "summary": "Show one RemoteConsole workspace.",
+      "risk": "read-only",
+      "capability": "remote-console",
+      "examples": [ "iwrt workspace.show <workspaceId>" ]
+    },
+    "workspace.remove": {
+      "summary": "Remove one RemoteConsole workspace.",
+      "risk": "destructive",
+      "capability": "remote-console",
+      "examples": [ "iwrt workspace.remove <workspaceId>" ]
+    },
+    "console.file.list": {
+      "summary": "List files contained in a RemoteConsole workspace.",
+      "risk": "read-only",
+      "capability": "remote-console",
+      "examples": [ "iwrt console.file.list <workspaceId>" ]
+    },
+    "file.upload": {
+      "summary": "Upload a local file into a RemoteConsole workspace using verified chunks.",
+      "risk": "state-changing",
+      "capability": "remote-console",
+      "examples": [ "iwrt file.upload <workspaceId> ./package.zip package.zip" ]
     },
     "web.programs.capabilities": {
       "summary": "Show WebRuntime program capabilities.",

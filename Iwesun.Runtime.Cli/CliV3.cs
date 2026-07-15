@@ -55,6 +55,8 @@ internal static class CliApplication
             }
 
             var name = options.CommandArguments[0];
+            if (CliRemoteConsoleShell.IsCommand(name))
+                return await CliRemoteConsoleShell.ExecuteAsync(config, options, cancellationToken);
             if (name.Equals("multi.query", StringComparison.OrdinalIgnoreCase))
             {
                 if (options.CommandArguments.Count < 3)
@@ -510,6 +512,7 @@ internal sealed record CliOptions(string? ConfigPath, string? UserConfigPath, st
         foreach (var arg in args)
         {
             if (arg is "--help" or "-h") help = true;
+            else if (command.Count > 0) command.Add(arg);
             else if (arg == "--interactive") interactive = true;
             else if (arg.StartsWith("--config=")) config = arg[9..].Trim('"');
             else if (arg.StartsWith("--user-config=")) userConfig = arg[14..].Trim('"');

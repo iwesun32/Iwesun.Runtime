@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using Iwesun.Runtime.Diagnostics;
@@ -12,10 +13,22 @@ internal static class CliTransport
     public static async Task<string> SendAsync(
         ResolvedRuntimeTarget target,
         RuntimeDiagnosticFrame frame,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool enableImpersonation = false)
     {
         var payload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(frame));
-        await using var pipe = new NamedPipeClientStream(target.ServerName, target.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        await using var pipe = enableImpersonation
+            ? new NamedPipeClientStream(
+                target.ServerName,
+                target.PipeName,
+                PipeDirection.InOut,
+                PipeOptions.Asynchronous,
+                TokenImpersonationLevel.Impersonation)
+            : new NamedPipeClientStream(
+                target.ServerName,
+                target.PipeName,
+                PipeDirection.InOut,
+                PipeOptions.Asynchronous);
         var started = Stopwatch.GetTimestamp();
         using (var connect = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {

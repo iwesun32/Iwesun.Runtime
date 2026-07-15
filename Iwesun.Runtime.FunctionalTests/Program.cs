@@ -328,6 +328,7 @@ static class FunctionalChildRunner
 				"remote-console-approval" => RemoteConsoleScenario.RunApprovalAsync(),
 				"remote-console-command" => RemoteConsoleScenario.RunCommandAsync(),
 				"remote-console-workspace" => RemoteConsoleScenario.RunWorkspaceAsync(),
+				"remote-console-cli" => RemoteConsoleScenario.RunCliAsync(),
 				#if DEBUG
                 "cli-numeric-breakpoint" => RunCliNumericBreakpointScenario(provider, diagnosticsPipeName),
 				#endif

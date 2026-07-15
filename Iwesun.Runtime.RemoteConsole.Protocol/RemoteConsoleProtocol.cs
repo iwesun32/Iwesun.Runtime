@@ -70,6 +70,7 @@ public static class RemoteConsoleProtocol
 {
 	public const string Domain = "remote.console";
 	public const string ServerTarget = "remote.console.server";
+	public const string DefaultPipeName = "Iwesun.Runtime.RemoteConsole";
 	public const int MaxUploadChunkBytes = 64 * 1024;
 	public const int MaxFollowLimit = 4096;
 	public const int MaxFollowWaitMs = 30_000;

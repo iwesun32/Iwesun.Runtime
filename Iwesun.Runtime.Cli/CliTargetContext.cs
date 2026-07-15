@@ -4,6 +4,7 @@ internal sealed class CliTargetContext
 {
     private readonly Dictionary<string, CliTarget> _targets;
     private readonly Dictionary<string, CliNode> _nodes;
+    private readonly Dictionary<string, string> _currentNames = new(StringComparer.OrdinalIgnoreCase);
     public CliTargetContext(IReadOnlyDictionary<string, CliNode> nodes, IReadOnlyDictionary<string, CliTarget> targets)
     {
         _nodes = new Dictionary<string, CliNode>(nodes, StringComparer.OrdinalIgnoreCase);
@@ -11,7 +12,7 @@ internal sealed class CliTargetContext
         _targets = new Dictionary<string, CliTarget>(targets, StringComparer.OrdinalIgnoreCase);
     }
 
-    public string? CurrentName { get; private set; }
+    public string? CurrentName => CurrentNameFor("diagnostics");
     public IReadOnlyDictionary<string, CliTarget> Targets => _targets;
     public IReadOnlyDictionary<string, CliNode> Nodes => _nodes;
 
@@ -26,16 +27,26 @@ internal sealed class CliTargetContext
 
     public void Use(string name)
     {
-        Resolve(name);
-        CurrentName = name;
+		var target = Resolve(name);
+		_currentNames[target.Endpoint] = name;
     }
+
+	public void Use(string name, string endpoint)
+	{
+		var target = Resolve(name);
+		if (!target.Endpoint.Equals(endpoint, StringComparison.OrdinalIgnoreCase))
+			throw new CliException("CLI_TARGET_ENDPOINT", $"Target '{name}' is endpoint '{target.Endpoint}', not '{endpoint}'.", 2);
+		_currentNames[endpoint] = name;
+	}
+
+	public string? CurrentNameFor(string endpoint) => _currentNames.GetValueOrDefault(endpoint);
 
     public void Remove(string name)
     {
         if (!_targets.Remove(name))
             throw new CliException("CLI_TARGET_NOT_FOUND", $"Target '{name}' is not defined.", 2);
-        if (name.Equals(CurrentName, StringComparison.OrdinalIgnoreCase))
-            CurrentName = null;
+		foreach (var endpoint in _currentNames.Where(item => item.Value.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(static item => item.Key).ToArray())
+			_currentNames.Remove(endpoint);
     }
 
     public CliTarget Resolve(string name) => _targets.TryGetValue(name, out var target)
@@ -65,6 +76,12 @@ internal sealed class CliTargetContext
 
     public (string Name, CliTarget Target)? Current() =>
         CurrentName is null ? null : (CurrentName, Resolve(CurrentName));
+
+	public (string Name, CliTarget Target)? Current(string endpoint)
+	{
+		var name = CurrentNameFor(endpoint);
+		return name is null ? null : (name, Resolve(name));
+	}
 
     private static void ValidateName(string name)
     {

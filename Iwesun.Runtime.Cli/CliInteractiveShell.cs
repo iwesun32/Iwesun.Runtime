@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Net;
 using System.Net.Sockets;
+using Iwesun.Runtime.RemoteConsole.Protocol;
 
 namespace Iwesun.Runtime.Cli;
 
@@ -83,6 +84,11 @@ internal sealed class CliInteractiveShell
                     await HandleTargetAsync(tokens, cancellationToken);
                     continue;
                 }
+                if (local == "console" && tokens.Length > 1 && tokens[1].Equals("target", StringComparison.OrdinalIgnoreCase))
+                {
+					await HandleConsoleTargetAsync(tokens, cancellationToken);
+					continue;
+				}
                 if (local == "node")
                 {
                     await HandleNodeAsync(tokens, cancellationToken);
@@ -100,7 +106,9 @@ internal sealed class CliInteractiveShell
                 }
                 else
                 {
-                    targetAlias = _targets.CurrentName;
+					targetAlias = CliRemoteConsoleShell.IsCommand(tokens[0])
+						? _targets.CurrentNameFor("remote-console")
+						: _targets.CurrentName;
                 }
                 if (targetAlias is null && !_hasStartupPipe && _targets.Targets.Count > 1 && _destructiveCommands.Contains(tokens[0]))
                     throw new CliException("CLI_TARGET_REQUIRED", $"Command '{tokens[0]}' requires an explicit target in a multi-target shell.", 2);
@@ -201,6 +209,37 @@ internal sealed class CliInteractiveShell
                 throw new CliException("CLI_TARGET_USAGE", "Usage: target add <name> <pipe> | target list | target use <name> | target current | target remove <name>.", 2);
         }
     }
+
+	private async Task HandleConsoleTargetAsync(string[] tokens, CancellationToken cancellationToken)
+	{
+		if (tokens.Length < 3)
+			throw new CliException("CLI_CONSOLE_TARGET_USAGE", "Usage: console target add|list|use|current|remove|test.", 2);
+		switch (tokens[2].ToLowerInvariant())
+		{
+			case "add" when tokens.Length is 5 or 6:
+				_targets.Add(tokens[3], tokens.Length == 6 ? tokens[5] : RemoteConsoleProtocol.DefaultPipeName, tokens[4], "remote-console");
+				return;
+			case "list" when tokens.Length == 3:
+				foreach (var item in _targets.Targets.Where(static item => item.Value.Endpoint.Equals("remote-console", StringComparison.OrdinalIgnoreCase)).OrderBy(static item => item.Key))
+					Console.WriteLine($"{item.Key}{(item.Key.Equals(_targets.CurrentNameFor("remote-console"), StringComparison.OrdinalIgnoreCase) ? "*" : "")}={item.Value.Node}/{item.Value.PipeName}");
+				return;
+			case "use" when tokens.Length == 4:
+				_targets.Use(tokens[3], "remote-console");
+				return;
+			case "current" when tokens.Length == 3:
+				var current = _targets.Current("remote-console");
+				Console.WriteLine(current is null ? "(none)" : $"{current.Value.Name}={current.Value.Target.Node}/{current.Value.Target.PipeName}");
+				return;
+			case "remove" when tokens.Length == 4:
+				_targets.Remove(tokens[3]);
+				return;
+			case "test" when tokens.Length == 4:
+				await ExecuteRemoteAsync(["console.info"], tokens[3], cancellationToken);
+				return;
+			default:
+				throw new CliException("CLI_CONSOLE_TARGET_USAGE", "Usage: console target add <name> <node> [pipe] | console target list|use|current|remove|test.", 2);
+		}
+	}
 
     private async Task HandleNodeAsync(string[] tokens, CancellationToken cancellationToken)
     {
