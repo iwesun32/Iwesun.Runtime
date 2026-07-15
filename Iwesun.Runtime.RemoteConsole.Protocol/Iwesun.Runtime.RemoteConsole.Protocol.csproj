@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Iwesun.Runtime.RemoteConsole.Protocol</RootNamespace>
+    <AssemblyName>Iwesun.Runtime.RemoteConsole.Protocol</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" />
+  </ItemGroup>
+
+</Project>

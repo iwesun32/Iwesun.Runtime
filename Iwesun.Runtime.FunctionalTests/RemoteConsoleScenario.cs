@@ -1,8 +1,72 @@
 using System.Buffers.Binary;
 using Iwesun.Runtime.Diagnostics;
+using Iwesun.Runtime.RemoteConsole.Protocol;
 
 internal static class RemoteConsoleScenario
 {
+	public static Task<FunctionalScenarioResult> RunProtocolAsync()
+	{
+		var checks = new List<string>();
+		var failures = new List<string>();
+		var invalidSubmit = new RemoteConsoleSubmitRequest(
+			"",
+			"",
+			"",
+			"",
+			new Dictionary<string, string>(),
+			"");
+
+		if (!RemoteConsoleProtocol.Validate(invalidSubmit).Ok)
+			checks.Add("empty-submit-rejected");
+		else
+			failures.Add("Empty submit request was accepted.");
+
+		if (!RemoteConsoleProtocol.Validate(new RemoteConsoleFollowRequest("job", -1, 10, 100)).Ok)
+			checks.Add("negative-follow-sequence-rejected");
+		else
+			failures.Add("Negative follow sequence was accepted.");
+
+		var oversizedChunk = new RemoteConsoleUploadChunkRequest(
+			"upload",
+			0,
+			Convert.ToBase64String(new byte[RemoteConsoleProtocol.MaxUploadChunkBytes + 1]));
+		if (!RemoteConsoleProtocol.Validate(oversizedChunk).Ok)
+			checks.Add("oversized-upload-chunk-rejected");
+		else
+			failures.Add("Oversized upload chunk was accepted.");
+
+		if (!RemoteConsoleProtocol.IsKnownAction("unknown.action"))
+			checks.Add("unknown-action-rejected");
+		else
+			failures.Add("Unknown action was accepted.");
+
+		if (!RemoteConsoleProtocol.IsKnownState((RemoteConsoleJobState)int.MaxValue))
+			checks.Add("unknown-state-rejected");
+		else
+			failures.Add("Unknown job state was accepted.");
+
+		var frame = RemoteConsoleProtocol.CreateRequest(
+			RemoteConsoleActions.JobSubmit,
+			"protocol-frame",
+			new RemoteConsoleSubmitRequest(
+				"protocol-frame",
+				"powershell",
+				"Get-Date",
+				"workspace",
+				new Dictionary<string, string>(),
+				"read-only"));
+		if (frame.Command?.Domain == RemoteConsoleProtocol.Domain
+			&& frame.Command.Target == RemoteConsoleProtocol.ServerTarget
+			&& frame.Command.Action == RemoteConsoleActions.JobSubmit)
+			checks.Add("frame-route-isolated");
+		else
+			failures.Add("Remote console frame route mismatch.");
+
+		return Task.FromResult(failures.Count == 0
+			? FunctionalScenarioResult.Pass("remote-console-protocol", checks.ToArray())
+			: FunctionalScenarioResult.Fail("remote-console-protocol", checks, failures));
+	}
+
 	public static async Task<FunctionalScenarioResult> RunFrameCodecAsync()
 	{
 		var checks = new List<string>();
