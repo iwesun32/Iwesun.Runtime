@@ -170,6 +170,22 @@ internal static class RemoteConsoleScenario
 		var automatic = store.Submit(request with { RequestId = "approval-automatic" }, submitterSid, automaticPolicy);
 		Expect(automatic.Job?.State == RemoteConsoleJobState.Starting, "automatic-command-starting");
 
+		var restart = store.Submit(
+			request with { RequestId = "approval-restart-computer", Command = "Restart-Computer -Force" },
+			submitterSid,
+			automaticPolicy);
+		Expect(restart.Job?.State == RemoteConsoleJobState.Rejected, "built-in-restart-computer-rejected");
+		var shutdown = store.Submit(
+			request with { RequestId = "approval-shutdown-exe", Shell = "cmd", Command = "shutdown.exe /r /t 0" },
+			submitterSid,
+			automaticPolicy);
+		Expect(shutdown.Job?.State == RemoteConsoleJobState.Rejected, "built-in-shutdown-restart-rejected");
+		var harmlessText = store.Submit(
+			request with { RequestId = "approval-harmless-shutdown-text", Command = "Write-Output 'shutdown coordinator status'" },
+			submitterSid,
+			automaticPolicy);
+		Expect(harmlessText.Job?.State == RemoteConsoleJobState.Starting, "harmless-shutdown-text-allowed");
+
 		return failures.Count == 0
 			? FunctionalScenarioResult.Pass("remote-console-approval", checks.ToArray())
 			: FunctionalScenarioResult.Fail("remote-console-approval", checks, failures);

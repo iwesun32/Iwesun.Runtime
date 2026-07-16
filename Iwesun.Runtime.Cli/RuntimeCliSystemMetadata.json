@@ -288,7 +288,7 @@
       "examples": [ "iwrt console.policy.get" ]
     },
     "console.policy.set": {
-      "summary": "Set Manual, Guarded, or Automatic approval mode.",
+      "summary": "Set Manual, Guarded, or Automatic approval mode; OS shutdown and restart commands remain denied.",
       "risk": "destructive",
       "capability": "remote-console-approver",
       "examples": [ "iwrt console.policy.set Manual" ]

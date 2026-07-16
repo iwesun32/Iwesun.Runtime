@@ -39,7 +39,7 @@ var remoteConsoleOptions = new RemoteConsoleOptions
 
 `--pipe=<name>` 可覆盖源码默认管道，适合临时实例或并行调试。它只改变端点名，不改变 Windows ACL 和角色声明。
 
-Debug 构建另有 `--test-current-user`，仅供本机自动化测试：它把当前 Windows SID同时设为提交者和审批者，并使用 `Automatic`。此代码由 `#if DEBUG` 隔离，Release 不包含该测试入口。
+Debug 构建另有 `--test-current-user`，仅供本机自动化测试：它把当前 Windows SID 同时设为提交者和审批者，并使用 `Automatic`。此代码由 `#if DEBUG` 隔离，Release 不包含该测试入口。即使在此测试模式下，操作系统关机和重启命令仍由内建规则强制拒绝。
 
 ## 3. 发布服务
 
@@ -138,6 +138,8 @@ workspace.remove <workspaceId>
 - `Manual`：所有任务进入 `AwaitingApproval`；
 - `Guarded`：匹配拒绝规则的任务拒绝，匹配自动批准规则的任务执行，其余等待审批；
 - `Automatic`：通过拒绝规则和基础校验后自动批准。
+
+三种模式都不能放行操作系统电源命令。`Restart-Computer`、`Stop-Computer` 以及带 `/r`、`/s`、`/g`、`/sg` 或 `/hybrid` 的 `shutdown.exe` 命令由服务内建规则直接拒绝；该规则不能通过 `console.policy.set` 或用户拒绝规则覆盖。Runtime 的 `lifecycle.shutdown` 只让目标宿主从正常程序出口结束，不会调用操作系统重启。
 
 ```text
 console.pending

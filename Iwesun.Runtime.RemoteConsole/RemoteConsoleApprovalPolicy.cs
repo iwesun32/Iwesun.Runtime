@@ -12,6 +12,10 @@ public enum RemoteConsoleApprovalDecision
 
 public sealed class RemoteConsoleApprovalPolicy
 {
+	private static readonly Regex SystemPowerCommandPattern = new(
+		@"(?:^|[\s;&|])(?:Restart-Computer|Stop-Computer)\b|(?:^|[\s;&|])shutdown(?:\.exe)?\b(?=[^\r\n]*(?:/(?:r|s|g|sg|hybrid)\b|-(?:r|s)\b))",
+		RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+		TimeSpan.FromMilliseconds(250));
 	private readonly Regex[] _autoApprovePatterns;
 	private readonly Regex[] _denyPatterns;
 	private int _mode;
@@ -45,6 +49,8 @@ public sealed class RemoteConsoleApprovalPolicy
 	{
 		ArgumentNullException.ThrowIfNull(request);
 		var candidate = string.Join('\n', request.Shell, request.Command, request.WorkingDirectory);
+		if (SystemPowerCommandPattern.IsMatch(request.Command))
+			return RemoteConsoleApprovalDecision.Reject;
 		return Mode switch
 		{
 			RemoteConsoleApprovalMode.Manual => RemoteConsoleApprovalDecision.AwaitApproval,
