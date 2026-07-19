@@ -58,6 +58,8 @@ dotnet run --project Iwesun.Runtime.WebView2.SampleHost\Iwesun.Runtime.WebView2.
 
 运行前需要安装 WebView2 Runtime。示例不会保存 Cookie，也不会把脚本正文写入审计日志。
 
+`DataStreamRecorderSample.cs` 是独立可编译的数据记录器接线样例，展示命名委托、请求/响应交换、请求 sidecar、manifest、元数据快速门和生命周期释放。示例方法不会由窗口自动调用，避免默认产生记录文件。
+
 ## 发布位置
 
 - `bin\Iwesun.Runtime.WebView2.SampleHost\`：可运行示例输出。

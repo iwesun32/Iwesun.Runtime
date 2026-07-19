@@ -82,9 +82,9 @@ public sealed class RuntimeManagedRegistry : IDisposable
 	private readonly RuntimeInstructionDispatcher _controllerDispatcher;
 	private readonly ConcurrentQueue<RuntimeManagedCommand> _controllerCommands = new();
 	private readonly ConcurrentDictionary<string, RuntimeStateSnapshot> _sharedUnitStates = new(StringComparer.OrdinalIgnoreCase);
-	private readonly ConcurrentDictionary<string, RuntimeDList<RuntimeState>> _sharedUnitStateHistory = new(StringComparer.OrdinalIgnoreCase);
+	private readonly ConcurrentDictionary<string, RuntimeStateHistory> _sharedUnitStateHistory = new(StringComparer.OrdinalIgnoreCase);
 	private readonly RuntimeStateManager _globalLifecycle = new();
-	private readonly RuntimeDList<RuntimeState> _globalLifecycleHistory = new();
+	private readonly RuntimeStateHistory _globalLifecycleHistory = new(StateHistoryDepth);
 	private DateTimeOffset? _globalExitDeadlineUtc;
 	private readonly ConcurrentQueue<RuntimeManagedEvent> _eventFifo = new();
 	private long _commandSequence;
@@ -120,7 +120,7 @@ public sealed class RuntimeManagedRegistry : IDisposable
 		_controllerDispatcher = new RuntimeInstructionDispatcher(_controllerInbox, DispatchControllerInstruction);
 		EnsureGlobalLifecycleStates();
 		var initial = _globalLifecycle.SetCurrentByName("Initialize");
-		_globalLifecycleHistory.AddLast(initial);
+		_globalLifecycleHistory.Append(initial);
 	}
 
 	public RuntimeManagedRegistration Register(string unitId, string unitType, string ownership, RManagedStateSnapshot state, bool blocksShutdown = true)
@@ -192,8 +192,7 @@ public sealed class RuntimeManagedRegistry : IDisposable
 		EnsureGlobalLifecycleStates();
 		var state = _globalLifecycle.SetCurrentByName(stateName);
 		_globalExitDeadlineUtc = exitDeadlineUtc;
-		_globalLifecycleHistory.AddLast(state);
-		TrimHistory(_globalLifecycleHistory);
+		_globalLifecycleHistory.Append(state);
 		PublishEvent("runtime.global", "global-state-updated", $"Global lifecycle changed to {state.Name}.", new
 		{
 			state.Code,
@@ -251,7 +250,7 @@ public sealed class RuntimeManagedRegistry : IDisposable
 	public IReadOnlyList<RuntimeState> SnapshotGlobalLifecycleHistory(int take = StateHistoryDepth)
 	{
 		take = Math.Clamp(take, 1, StateHistoryDepth);
-		var all = _globalLifecycleHistory.ToArraySnapshot();
+		var all = _globalLifecycleHistory.Snapshot();
 		if (all.Count <= take)
 		{
 			return all;
@@ -275,7 +274,7 @@ public sealed class RuntimeManagedRegistry : IDisposable
 			return Array.Empty<RuntimeState>();
 		}
 
-		var all = history.ToArraySnapshot();
+		var all = history.Snapshot();
 		if (all.Count <= take)
 		{
 			return all;
@@ -290,7 +289,7 @@ public sealed class RuntimeManagedRegistry : IDisposable
 		var result = new Dictionary<string, IReadOnlyList<RuntimeState>>(StringComparer.OrdinalIgnoreCase);
 		foreach (var pair in _sharedUnitStateHistory)
 		{
-			var all = pair.Value.ToArraySnapshot();
+			var all = pair.Value.Snapshot();
 			if (all.Count <= take)
 			{
 				result[pair.Key] = all;
@@ -642,23 +641,8 @@ public sealed class RuntimeManagedRegistry : IDisposable
 
 	private void AppendUnitStateHistory(string unitId, RuntimeState state)
 	{
-		var history = _sharedUnitStateHistory.GetOrAdd(unitId, static _ => new RuntimeDList<RuntimeState>());
-		history.AddLast(state);
-		TrimHistory(history);
-	}
-
-	private static void TrimHistory(RuntimeDList<RuntimeState> history)
-	{
-		while (history.Count > StateHistoryDepth)
-		{
-			var snapshot = history.ToArraySnapshot();
-			if (snapshot.Count == 0)
-			{
-				break;
-			}
-
-			history.RemoveFirst(snapshot[0]);
-		}
+		var history = _sharedUnitStateHistory.GetOrAdd(unitId, static _ => new RuntimeStateHistory(StateHistoryDepth));
+		history.Append(state);
 	}
 
 	private void EnsureGlobalLifecycleStates()

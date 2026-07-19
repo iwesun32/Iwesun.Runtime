@@ -10,6 +10,7 @@
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Data\Iwesun.Data\Iwesun.Data.csproj" />
     <ProjectReference Include="..\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
   </ItemGroup>

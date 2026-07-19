@@ -149,7 +149,7 @@ await RuntimeInjector.Break(
 - 细分状态：
   - 使用 `TransitionTo/TryTransitionTo` 写入业务状态
 - 子任务状态：
-  - 使用 `AppendSubTaskState/TryAppendSubTaskState` 维护 DList 语义轨迹
+  - 使用 `AppendSubTaskState/TryAppendSubTaskState` 维护有序状态轨迹
 
 ---
 

@@ -3,6 +3,15 @@
 > 状态：ACTIVE  
 > 最后更新：2026-07-12
 
+## 2026-07-17 RecordStore V2 隔离迁移验证
+
+- Runtime 作为 Iwesun.Data 的现役消费者，先迁移 `RuntimeStateHistory`、`RuntimeRootTable` 和文件路径登记三个集中存储点。
+- 在 Iwesun.Data 完成兼容验收前，只使用隔离类型 `RecordStoreV2<TValue,TPrimaryKey>`，不得覆盖或删除当前 `RecordStore<TKey,TValue>` 1.0.25。
+- Runtime 的公开业务值类型不为存储实现强行增加可变 ID；使用 Diagnostics 内部存储行承载 `StoreRecordId`，保持公开 API 和序列化契约不变。
+- `Clear`/`Compact`/ref updater 不带入 V2：清空通过替换内部 Working 表，删除直接按 ID 完成，更新采用“读取完整行—写回完整行”。
+- 迁移必须保持原有顺序、大小写不敏感身份语义、主键替换、辅助索引、克隆隔离和状态历史容量行为。
+- Debug、Release 构建与 `Iwesun.Runtime.FunctionalTests` 验证通过前，不得把 Runtime 消费者迁移标记为完成。
+
 ## 2026-07-15 RemoteConsole 快速适配发布要求
 
 - RemoteConsole 必须作为独立 Windows 服务和独立管道发布，不得复用业务宿主 Diagnostics 管道。
@@ -586,3 +595,285 @@
 - Runtime 和 DDNS Snap 不读取、保存或处理 AI 账号密码；密码不得进入 MSI、命令行、配置文件、日志或 Runtime Frame。
 - DDNS Snap Server 安装包必须消费当前 Runtime 1.0.21，完成 Release 构建、安装内容检查和 MSI 生成。
 - 发布前必须验证 Runtime CLI 的远程 Node/Target、`node auth/test`、主管道 ACL 和大 Frame；无法在本机完成的 Atlas 实机项必须明确标记为待部署验证，不得冒充通过。
+
+# 2026-07-16 Debug 断点试探性加固
+
+## 已复现的真实缺陷
+
+- 同一断点 ID 有两个并发等待调用链时，原单一 `IsWaiting` 布尔值和容量为 1 的信号量只能可靠恢复其中一个；另一个调用链可能永久等待。
+- `RuntimeOutputSwitch.Enabled=false` 会连带关闭断点等待，导致“关闭输出”意外改变断点控制语义。
+- 命中上下文存在循环引用、过深对象图或不受支持类型时，命中事件序列化异常会进入业务调用链。
+- 重复断点 ID 原来会静默替换登记项，旧登记项上的等待者失去 CLI 控制入口。
+- `RuntimeDiagnosticBreakpoints` 虽有 `Dispose()` 方法但未实现 `IDisposable`，DI 容器不会按释放契约处理它；立即关闭信号量还存在等待者释放竞态。
+- CLI 对未知断点 ID 的 enable/disable/resume 原来返回成功帧和 `false`，不利于自动化判断。
+
+## 本轮试探性修改
+
+- 保留现有匿名 MMF、Semaphore、共享状态布局和历史设计注释；增加每断点局部状态锁、等待计数与恢复预留计数，使一个恢复信号严格对应一个实际等待者。
+- 断点启用状态与数据输出总开关解耦；输出仍可保持静默，但已启用断点继续生效。
+- 命中上下文先转换为安全 `JsonElement`，失败时退化为有限的类型/错误摘要；事件发布异常不再破坏业务调用链。
+- 重复 ID 使用 `TryAdd` 明确拒绝；断点注册表和状态对象的释放实现幂等。
+- Dispose 先恢复所有等待者并给予有界退出窗口；仍未返回的调用链不强行关闭其等待句柄，由进程退出回收。
+- `CancellationToken` 与恢复信号同时参与等待；等待开始后的取消能够返回，并回收与取消竞争产生的许可，不污染下一次命中。
+- 未知 ID 的 enable/disable/resume 返回 `NOT_FOUND` 结构化失败；已有 ID 的协议保持不变。
+
+## 验证与暂缓项
+
+- `breakpoint-safety` 已覆盖并发恢复、32 路突发恢复、Disable 全释放、取消无陈旧信号、输出解耦、循环上下文、重复登记、释放契约和未知 ID；最终实现连续 30 轮压力测试无失败。
+- 原有 `numeric-breakpoint` 与跨进程 `bp-process-cli` 必须继续作为发布前阻断回归；CLI 断开不得自动恢复断点。
+- 最新实现的 `bp-process-cli` 连续三轮和 `cli-numeric-breakpoint` 均通过；Debug/Release 全解决方案构建保持 0 警告、0 错误。
+- 已确认 `process` 和 `pipe-registry` 原失败是测试仍按裸数组读取分页结果，并非登记表为空；测试改读 `RuntimePagedResult<T>.Items` 后均通过，生产分页接口保持不变。
+- 当前跨进程控制的实际路径是“CLI 命名管道 -> 宿主内断点注册表 -> 匿名信号量”，不是外部进程直接打开命名 MMF/信号量；历史注释保留并已增加现状说明。
+- `RuntimeShutdownCoordinator` 当前没有在发布准备关机时显式调用 `ResumeAll()`。这可能使停在断点上的受管任务一直等到主控超时；需结合更多服务退出样本决定是否把“关机先解除调试等待”升级为正式规范，本轮不修改公共退出协议。
+- 已核对 Runtime 与 RemoteConsole 源码，没有发现调用操作系统重启/关机 API 的断点路径；现有系统事件证据指向用户界面发起的重启，不能归因于 Runtime。
+- 初始试探阶段未更新版本或覆盖安装目录；后续经用户批准纳入 1.0.23 全量发布。
+
+## 1.0.23 发布状态
+
+- [x] Debug 断点并发恢复、Disable 全释放、CancellationToken、上下文隔离、重复登记、释放契约和未知 ID 结构化错误完成修正。
+- [x] `breakpoint-safety` 纳入默认完整运行器，完整场景从 24 项扩展到 25 项。
+- [x] `process` 与 `pipe-registry` 测试统一读取分页 `Items`，不回退大数据分页设计。
+- [x] 25 项 Debug 完整功能集全部通过，失败数为 0。
+- [x] 发布更新记录、WebView2 发布状态、用户手册和统一打包入口同步到 1.0.23。
+- [x] Data 根数据结构与项目技术说明、WebView2 脚本/反射说明纳入全量发布源和安装阻断校验。
+- [x] Debug/Release 1.0.23 全构建、全量 staging、自检和 MSI Rebuild 由统一打包脚本完成，均为 0 警告、0 错误。
+- [x] 发布自检入口统一归一化 InstallRoot/DataRoot；绝对路径和仓库根相对路径均完成验证。
+
+# 2026-07-17 RuntimeDList 升级为 Iwesun.Data RecordStore
+
+- Runtime必须阅读并遵守独立Data仓库的`DLIST_TO_RECORD_STORE_V2_MIGRATION.md`，不得把
+  RecordStore 未实现的便捷 API 当作可用能力。
+- 删除 Runtime 私有 `RuntimeDList<T>` 实现和调用；状态历史、RuntimeRoot 条目与文件路径
+  登记统一迁移到 `Iwesun.Data.RecordStore<TKey,TValue>`。
+- `Iwesun.Runtime.Data` 继续保存 Runtime 专属数据与传输协议；独立 `Iwesun.Data` 作为新的
+  基础数据依赖，依赖方向只能是 Runtime -> Data。
+- DList 自动合并、节点引用、按键隐式删除和 Source 原地排序不得带入新实现；更新与废止使用
+  `StoreRecordId`，业务排序在 Runtime 层显式完成。
+- 含字典、任意 Payload 或 RuntimeState Catalog 引用的值类型必须提供明确克隆边界，不能直接
+  使用值复制掩盖可变引用共享。
+- 发布内容必须同时包含 `Iwesun.Runtime.Data.dll` 与 `Iwesun.Data.dll`，安装版样例和验证脚本
+  必须校验新依赖来源与存在性。
+- 迁移计划和验收边界见 `docs/05-runtime-tooling/RECORD_STORE_MIGRATION_PLAN.md`。
+
+## 实施状态
+
+- [x] Runtime 私有 `RuntimeDList<T>` 实现与调用全部删除。
+- [x] 状态历史、RuntimeRoot 条目和文件路径登记迁移到 RecordStore。
+- [x] `Iwesun.Data` 加入解决方案、宿主显式引用、安装样例和统一发布树。
+- [x] 用户手册、速查手册、Data 技术说明、迁移计划、技能和上游迁移资料同步。
+- [x] Data 删除 DList 专用测试后 44/44 通过，Runtime Debug/Release 构建及 25 项完整功能场景全部通过。
+- [x] staging 自检和安装版 SampleHost Debug/Release RecordStore DLL 哈希校验通过。
+- [x] DList 两个公开类型与 JSON 转换器已从活动程序集删除；历史材料进入忽视存档，禁止重新链接。
+
+# 2026-07-17 RecordStore 单写者与快照并发加固
+
+- RecordStore 的基础模型保持为“单写者 Source + 多线程只读 Snapshot”，不得为了误用防护改造成默认加锁的通用并发集合。
+- Runtime 现有 StateHistory、RuntimeRoot 和文件登记继续使用外层业务锁，不改成隐式异步锁。
+- Data 提供可选的异步 Source 访问协调器；调用方只有在跨执行流操作 Source 时才显式使用。
+- Data 核心必须检测重叠的写入/发布并快速失败；快照索引必须支持发布后多线程首次查询。
+- 修改需保留旧状态位与直接索引重建实现的注释回退参照，并通过 Data Debug/Release、Runtime Debug/Release 及完整功能场景。
+
+## 实施状态
+
+- [x] 增加 `SingleWriterSnapshotReaders` 访问模型和可选 `RecordStoreAccessGate`/异步租约。
+- [x] Source 写入与 Publish 增加低成本重叠检测；强制入口快速失败，`TryAppend` 返回 false。
+- [x] 快照索引改为局部完整构建、加锁一次安装；旧直接共享字段重建代码保留为注释回退参照。
+- [x] 新增 4 项 Data 并发边界契约和 1 项旧类型缺失契约；DList 专用测试归档后，Data Debug/Release 44/44 通过。
+- [x] Runtime 继续使用现有外层业务锁，不重复获取 SourceAccess；Debug/Release 均 0 警告、0 错误。
+- [x] Runtime 25/25 完整功能场景通过，报告为 `full-report-20260717-052432.json`。
+
+# 2026-07-17 Runtime 1.0.24 全量发布准备
+
+- 1.0.24 是 1.0.23 之后的新补丁版本，统一承载 RecordStore 单写者/快照并发加固与 DList 废止迁移结果。
+- 必须执行 Data Debug/Release 全测试，以及 128 MB、256 MB 的普通发布和聚合发布性能矩阵。
+- 必须执行 Runtime Debug/Release 全解决方案构建和 25 项完整功能场景，不得只用聚焦测试代替。
+- WebView2 DLL、发布状态、控制资料必须和 Diagnostics、CLI、Data 同步进入本次全量包。
+- 文档、技能、系统/用户 JSON、样例源码、安装版 SampleHost 和验证脚本必须全部从当前源码重建。
+- 唯一允许的打包入口是 `build-runtime-setup.ps1 -ProductVersion 1.0.24`；完成 staging 自检后强制 Rebuild MSI。
+
+## 1.0.24 验收状态
+
+- [x] Data 删除 DList 专用测试后，Debug/Release 的 44/44 RecordStore 测试通过。
+- [x] Data 128/256 MB 普通发布和聚合发布性能矩阵通过。
+- [x] Runtime Debug/Release 0 警告、0 错误。
+- [x] Runtime 25/25 完整功能场景通过，报告为 `full-report-20260717-052432.json`。
+- [x] 文档、技能、WebView2 状态和版本说明同步。
+
+# 2026-07-17 Runtime 1.0.25 / RecordStore 语义发布准备
+
+- 1.0.25 是 1.0.24 之后的新补丁版本，不覆盖旧 MSI；当前阶段只准备源码、文档、技能、发布工程
+  和验证入口，未经明确发布指令不生成正式安装包。
+- Iwesun.Data 增加 `AllowKeyDuplicate` 和缺省关闭的 `AutoMerge`；旧 `AllowDuplicate` 不保留别名。
+- `DuplicateComparison` 只用于显式自动合并或聚合发布，不是普通 Add 的唯一性检查器；普通 Add
+  在 AutoMerge 关闭时不得调用该委托。
+- Runtime 全量发布必须新增携带属性委托语义、开发样例、技术设计、Data 更新记录和完整测试报告。
+- Data Debug/Release 54/54，128/256 MB 普通与聚合规模测试均通过；Runtime 25/25；Aether 19/19。
+- DDNS Snap 的消费者测试替身缺少 `PublishServerAccessAddresses(...)` 是独立已知问题，不得伪报为
+  RecordStore 回归通过，也不得在 Runtime 仓库越权修复。
+
+## 1.0.25 发布准备验收
+
+- [x] Data、Runtime、Setup 默认版本统一为 1.0.25。
+- [x] Data API、迁移、属性委托语义、用户指南、开发样例、发布说明和测试报告同步。
+- [x] Runtime Release 项目和安装验证脚本纳入新增 Data 文档。
+- [x] Runtime 接入技能更新 RecordStore 1.0.25 边界。
+- [x] 执行 1.0.25 全量 staging 和发布文档自检；完整 Data 文档树、兼容平铺文档及 DLL
+  `1.0.25.0` 版本均已核验。
+- [ ] 执行 1.0.25 正式 ZIP/MSI Rebuild、安装样例 Debug/Release 哈希、安装/升级验证和最终哈希记录。
+
+# 2026-07-17 WebView2 完整运行时 DOM 真快照 API
+
+- `Iwesun.Runtime.WebView2` 新增与站点无关的完整 DOM 快照 API；输入为现有 `IWebRuntimeScriptSession`，输出为结构化 JSON。
+- 快照必须递归覆盖顶层 document、可访问 iframe document、开放 shadow root、全部元素/文本/注释节点、全部 attribute，以及表单、滚动、媒体、尺寸等当前 primitive property 状态。
+- API 不得包含豆包 XPath、账号、历史、技能、布局或文件路径语义；不创建 WebView2 窗口，不持久化业务数据。
+- 宿主必须在 WebView2 所属 STA 调用；取消令牌和无效脚本结果应明确传播，不得返回伪成功骨架。
+- 豆包等业务项目负责在第一次快照上连接业务数据和事件，完成后再次调用同一 API 生成第二份快照。
+
+## 实施状态
+
+- [x] 公共模型、`CaptureAsync`、`RestoreAsync` 和 `RestoreAndLinkAsync` 已实现；数据/事件链接采用公开 JSON 模型。
+- [x] 管理 action、CLI v3 命令、JSON 格式与 WebView2/CLI 文档已同步。
+- [x] Runtime 全解决方案 Debug/Release 均 0 警告、0 错误；CLI `web.dom.snapshot --help` 可解析。
+- [x] AIGateway WebRuntime 管理程序已声明并路由两个 action，使用 Runtime 源码构建的 Service Debug/Release 均通过。
+- [x] 豆包工具已引用公共 API；链接后的第二快照包含 3 个 document（2 个 iframe document）、3881 节点、3170 元素、16188 attributes、51254 properties；2 个数据链接和 3 个事件链接全部命中，并输出 `dom-linked.snapshot.json`。
+- [x] 公共恢复接口支持 STA 同步上下文和 DOM 顺序 frame session；文件回放环境对未修改 frame document 原样继承第一快照，禁止将 MHTML 的 frame 限制伪装成完整恢复。
+- [x] 在 `Iwesun.Runtime.WebView2/docs` 增加 DOM 真快照独立权威手册，完整说明技术边界、公共 C# API、CLI、管理 JSON 命令、响应接收、错误处理和端到端使用样例。
+- [x] Runtime 总索引、CLI 手册与 WebView2 控制文档链接到该权威手册，避免在多份概览中维护不一致的协议副本。
+- [x] CLI 系统配置与帮助元数据已同时注册 `web.dom.snapshot`、`web.dom.restore-link`；外部 JSON 与程序集内嵌回退均已实际解析两条命令的完整帮助。
+- [x] 当前 Release 的 CLI、WebView2 公共 DLL、CLI 系统配置、帮助元数据和真快照文档已同步到 `C:\Program Files\Iwesun\Runtime`；源文件与安装文件哈希一致，安装目录 CLI 可解析两条命令。实际采集已进入管道连接阶段；宿主未运行时明确返回可重试的 `CLI_CONNECT_TIMEOUT`。
+
+# 2026-07-18 WebView2 原始加载数据文件监控
+
+- Runtime 提供与站点无关的 WebView2 原始加载监控协议，用于在数据进入 DOM 解释器之前按需捕获 HTTP/Fetch/XHR、WebSocket 与 WebMessage 数据。
+- CLI 只负责编译并发送启动、状态、停止命令；正文必须由 WebView2 宿主直接写入指定目录，不得通过 CLI 命名管道搬运大正文。
+- 启动请求支持 URL、HTTP 方法、资源类型、Content-Type、方向和最大正文长度过滤；默认关闭，只有显式启动后才捕获。
+- 每个监控会话具有稳定 ID；状态响应只返回输出目录、命中数、写入字节数、丢弃数和错误摘要，不返回正文。
+- 输出同时包含原始正文文件和可关联 URL、会话 ID、文档 ID、时间及 Content-Type 的清单；文件名必须清理路径穿越字符并避免覆盖。
+- Cookie、Authorization、Set-Cookie 等敏感头默认不落盘；只有显式选择后才允许记录请求或响应头。
+- 停止、WebView2 销毁或宿主退出时必须解除事件订阅并释放文件句柄，不得残留后台监控。
+- Runtime 公共协议不得包含豆包 XPath、账号或具体文档结构；豆包历史、会话和文档语义由业务宿主在通用捕获结果上解析。
+- 验收必须覆盖 CLI 启动→真实加载→状态→停止闭环、Debug/Release 编译以及停止后的无新增文件验证。
+
+## 实施状态
+
+- [x] 公共 `IDataStreamRecorderManager`、定义/匹配/输出/状态/事件模型和业务分类器接口已实现。
+- [x] create/start/status/list/update/stop/delete/events 生命周期与安全文件输出、模板命名、清单、限额和停止语义已实现。
+- [x] AIGateway WebView2 原生响应事件只在元数据命中时读取正文，并将正文直接送入宿主内记录器。
+- [x] CLI 系统配置注册八条 `web.data-recorder.*` 命令；当前 CLI 已实际加载并解析这些命令。
+- [x] 公共 API 行为探针验证不匹配不写入、命中只写一次、停止后不再写入以及删除定义。
+- [x] Runtime WebView2、Runtime CLI 与 AIGateway Service（Runtime 源码模式）Debug/Release 均 0 警告、0 错误。
+- [ ] 使用真实豆包历史、会话和文档响应完成 CLI 端到端落盘；该项需要运行窗口二并配置豆包业务匹配规则。
+
+## 通用条件与监视器专属委托
+
+- 通用条件必须覆盖大部分无需代码的场景，并支持 `All`、`Any`、`Not`、`AtLeast` 递归组合；简单 Source/Content 字段继续作为兼容的隐式 `All` 条件。
+- 通用叶子条件必须采用稳定字段名与操作符协议，至少支持存在、相等、包含、正则、集合、数值比较、类型、数组长度、JSON Path 和文件特征判断。
+- 每个监视器最多绑定一个专属匹配委托；委托属于运行时对象，不直接序列化进入 CLI JSON。
+- CLI/持久化定义使用稳定 `MatcherId`，业务宿主负责注册对应委托；找不到委托时创建或启动必须明确失败，不得静默回退。
+- 委托与通用条件的组合模式为 `None`、`And`、`Or`、`Override`：分别表示只用通用条件、两者同时满足、任一满足、完全屏蔽通用条件。
+- 委托异常必须按单条记录失败处理，发布结构化失败事件，不得逃入 WebView2 STA 回调；可配置连续错误阈值使单个监视器进入 `Faulted`。
+- C# 业务 API 必须同时支持注册命名委托和直接向一个监视器挂载委托；更新定义时不得意外把另一个监视器的委托共享或替换。
+
+### 实施状态
+
+- [x] `DataStreamCondition` 支持 `All`、`Any`、`Not`、`AtLeast`、`Always`、`Never` 和通用叶子操作符。
+- [x] 简单 Source/Content 条件继续兼容，并与复合表达式共同组成通用判断结果。
+- [x] `DataStreamMatchDelegate`、命名注册、直接挂载、更新保留及 `None/And/Or/Override` 组合模式已实现。
+- [x] 委托数据视图支持 MetadataOnly、BodyPreview、FullBody、ParsedText、ParsedJson；受限模式不会通过 Context.Record 暴露完整正文。
+- [x] 委托异常发布 `RecordFailed`，连续达到阈值后只将对应监视器置为 `Faulted`。
+- [x] 行为探针验证 CLI 字符串枚举反序列化、嵌套 All/Any、命名 Override/And/Or 和直接挂载委托。
+
+## 请求与响应交换上下文
+
+- 数据记录必须能够同时携带请求 URL、方法、Query、请求正文、响应状态、Content-Type 和响应正文，使分页游标、conversation ID 与文档 ID 可以在同一次交换中关联。
+- 请求正文和响应正文必须分别受委托数据访问开关约束；MetadataOnly 不得通过嵌套 Record 重新取得正文。
+- 通用字段增加 `request.bodyLength`、`request.text`、`request.json`、`request.body`，并继续支持 `request.query.*`、`request.header.*`、`response.header.*`。
+- WebView2 宿主只在至少一个运行中监视器可能需要该交换时读取正文；读取请求 Content 时不得改变仍被浏览器使用的流位置。
+- Authorization、Cookie、Set-Cookie 等敏感头不得进入默认记录、事件或清单；内存匹配所需头也必须经过默认脱敏过滤。
+
+### 实施状态
+
+- [x] `DataStreamRecord` 同时携带 RequestContent 与响应 Content，通用条件支持 request JSON/text/body/bodyLength。
+- [x] 委托 MetadataOnly、Preview 和完整正文视图同时限制请求、响应两侧，不能从 Context.Record 绕过。
+- [x] 文件输出可显式保存请求正文 sidecar，并在 manifest 中关联请求与响应文件；默认仍不保存请求正文。
+- [x] AIGateway WebView2 在响应回调中读取可回绕的请求流并恢复原位置；不可安全回绕的流不读取。
+- [x] 请求和响应头进入匹配上下文前过滤 Authorization、Cookie、Token、Secret、API Key 与 WebSocket Key。
+- [x] 豆包窗口二工具新增独立业务 Profile，包含历史目录、单会话和嵌套文档三个命名委托与监视器定义，不修改原豆包适配器。
+- [x] 交换行为探针验证请求/响应联合 JSON Path、MetadataOnly 隔离、请求 sidecar；豆包 Profile 样本验证三类数据均命中。
+
+# 2026-07-18 Runtime WebView2 数据流记录器发布收尾
+
+- 数据流记录器作为 1.0.26 功能线保留独立升级说明，并纳入当前 1.0.27 Runtime 统一 staging；不覆盖既有安装包，未经明确发布指令，不生成或签署正式 MSI。
+- `Iwesun.Runtime.WebView2` 数据流记录器的公共 C# API、管理 JSON Frame、CLI v3 命令、系统配置、帮助元数据和业务接入样例必须保持同一契约。
+- WebView2 权威文档必须覆盖通用复合条件、命名/直接委托、请求响应交换、生命周期、事件订阅、文件输出、安全边界和完整编程样例。
+- 升级说明必须明确新增程序集/API、宿主接线要求、配置兼容性、敏感数据边界、1.0.25 到 1.0.26 的升级步骤和回退方式。
+- CLI 系统配置与安装目录配置必须包含 `web.data-recorder.create/start/status/list/update/stop/delete/events`，并实际验证 JSON 参数编译和帮助查询。
+- 发布器必须从干净 staging 重建文档、样例、配置和 DLL，不复用旧 publish/staging 内容；发布前检查版本、文件清单、哈希、Debug/Release 变体和残留进程。
+- 验收必须包含 Runtime 全解决方案 Debug/Release、功能场景、CLI 配置解析、数据记录器生命周期探针以及 staging 自检。
+
+## 实施状态
+
+- [x] 公共 API、JSON/CLI 契约和配置完成发布审计。
+- [x] WebView2 权威手册、1.0.26 功能升级说明、样例和文档索引完成。
+- [x] 版本和发布器清理/重建规则已纳入当前 1.0.27 统一发布入口。
+- [x] Debug/Release、功能场景、CLI 与 staging 自检通过；正式 MSI 未生成。
+
+# 2026-07-18 Runtime 1.0.27 / RecordStore V2 发布准备
+
+- 1.0.27 统一承载 Iwesun.Data RecordStore V2 的稳定索引节点、空索引桶回收、迁移资料和安全/性能验证结果。
+- Runtime 全量发布目录必须携带当前 V2 设计、公共 API、DList 与 1.0.25 两条迁移指南、发布状态及完整安全性能报告；删除已废止的旧 Data 文档入口。
+- `Iwesun.Data.dll` 必须接受统一发布版本注入；安装树中的所有副本必须与 `lib/Iwesun.Data/Iwesun.Data.dll` 文件版本和 SHA-256 一致。
+- `lib` 只保留一个 RecordStore 权威入口；Diagnostics Debug/Release、WebView2 等库目录不得再携带冗余 Data 副本，应用目录允许保留运行所需的同哈希私有副本。
+- 统一发布入口必须关闭共享编译并采用单节点构建，避免并行项目发布争抢同一输出文件。
+- 当前用户指令仅要求整理文档和程序、准备完整 staging；未经后续明确“打包”指令，不生成或签署 MSI。
+
+## 1.0.27 发布准备验收
+
+- [x] Runtime、Data 文档入口和接入技能同步到 RecordStore V2 当前契约。
+- [x] 发布工程与安装自检增加 Data 版本、全树副本哈希和唯一 lib 入口检查。
+- [x] 从干净输出完成 1.0.27 全量 staging，并通过安装目录自检。
+- [x] 清理发布准备过程中产生的临时版本探针和非交付中间目录。
+
+# 2026-07-19 Runtime 1.0.28 / RemoteConsole 全量发布
+
+- 用户已明确授权生成新的全量安装包；版本推进到1.0.28，不覆盖或复用1.0.27 staging/MSI。
+- RemoteConsole、Protocol、CLI、WebView2、Diagnostics、Data、样例、配置、文档、技能和脚本必须由唯一
+  全量入口从当前源码重新构建并进入同一安装包。
+- RemoteConsole文档必须明确：当前操作端是CLI；支持本地文件分块上传到远端隔离工作区；远端后续复制
+  通过审批后的PowerShell `Copy-Item`并受服务账号ACL约束；当前不提供`file.download`。
+- 发布验收必须包含RemoteConsole/CLI Debug端到端场景、Debug/Release严格构建、staging命令清单、
+  RemoteConsole文件版本同步、文档与技能存在性、安装版SampleHost双配置哈希和MSI强制Rebuild。
+- MSI只携带RemoteConsole程序，不自动创建AI账号、注册或启动Windows服务；管理员仍需交互提供凭据。
+
+## 1.0.28 发布验收
+
+- [x] RemoteConsole CLI端到端验证通过：独立管道、工作区、文件上传、PowerShell执行和输出跟随。
+- [x] RemoteConsole与CLI Debug/Release构建通过，0警告、0错误。
+- [x] 全量1.0.28 staging、自检和MSI Rebuild完成。
+
+# 2026-07-19 Runtime 1.0.29 / Networks、Data、WebView2 同步全量发布
+
+- 用户已明确要求在 Runtime、Iwesun.Networks、Iwesun.Data 和 Iwesun.Runtime.WebView2 升级后，全面整理
+  发布状态并重新生成全量 Runtime 安装包；新包版本推进到 1.0.29，不覆盖或复用 1.0.28 staging/MSI。
+- `Iwesun.Networks` 1.2.0 已达到本地 `READY_FOR_DISTRIBUTION`，Runtime 全量发布必须新增当前源码构建的
+  `Iwesun.Networks.dll`、Networks 文档、示例和发布状态，并在安装自检中验证程序集版本及必需文件。
+- `Iwesun.Data` 的正式兼容版本仍为 1.0.25，Runtime 可通过统一版本注入生成 1.0.29.0 安装程序集；
+  `RecordStoreV2<TValue,TPrimaryKey>` 仍是隔离开发类型，固定 50 万条 Source 内存 81.4 MiB 高于
+  65.375 MiB 门槛，本次打包不得表述为 V2 正式晋升。
+- WebView2 的 DOM 真快照、数据流记录器、请求响应交换、复合条件、业务匹配委托、CLI 命令、SampleHost、
+  文档和发布状态必须同步到 1.0.29，不得继续保留“1.0.27 staging、尚未生成 MSI”的过期结论。
+- Diagnostics、CLI、Runtime Data、RemoteConsole、Protocol、WebView2、Networks、Data、SampleHost、配置、
+  文档、技能和发布脚本必须由唯一入口从当前源码重建；禁止只复制已有 DLL、NuGet 包或旧 staging。
+- 发布验收至少包含 Networks Debug/Release 测试与构建、Data Debug/Release 测试、Runtime Debug/Release
+  全解决方案构建和完整功能场景、CLI 配置与帮助、安装树文档/版本/哈希、安装版 SampleHost 双配置验证
+  以及 MSI 强制 Rebuild。
+- 不自动安装 MSI，不注册或启动 RemoteConsole/其他 Windows 服务，不创建账号，不推送 Git、创建标签或
+  上传 NuGet；这些系统或外部分发动作仍需用户另行明确授权。
+
+## 1.0.29 发布验收
+
+- [x] Runtime 发布工程纳入 Networks 1.2.0 程序集、文档、示例和发布状态。
+- [x] Runtime、Networks、Data、WebView2 的发布状态和索引同步到当前真实边界。
+- [x] Networks、Data 和 Runtime 的 Debug/Release 构建、测试及 Runtime 完整功能场景通过。
+- [x] 全新 1.0.29 staging、自检、安装版 SampleHost 双配置验证和 MSI Rebuild 完成。
+- [x] 最终交付答复记录 MSI 大小、SHA-256、程序集版本和 ProductVersion；不写入 MSI 内文档，避免自引用。

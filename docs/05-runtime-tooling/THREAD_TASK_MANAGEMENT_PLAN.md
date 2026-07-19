@@ -184,5 +184,5 @@ flowchart TD
 ## 相关文档
 
 - 设计说明 → [THREAD_TASK_MANAGEMENT.md](THREAD_TASK_MANAGEMENT.md)
-- 运行时诊断总览 → [RUNTIME_DIAGNOSTICS.md](RUNTIME_DIAGNOSTICS.md)
-- 文档索引 → [README.md](README.md)
+- 运行时诊断总览 → [RUNTIME_DIAGNOSTICS.md](../RUNTIME_DIAGNOSTICS.md)
+- 文档索引 → [README.md](../README.md)

@@ -1,9 +1,12 @@
 using System.Collections.Concurrent;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.Versioning;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Iwesun.Runtime.Data;
 
 #if DEBUG
+#pragma warning disable CA1416 // Debug breakpoint state is an explicitly Windows-only feature boundary.
 namespace Iwesun.Runtime.Diagnostics;
 
 /// <summary>
@@ -13,10 +16,16 @@ namespace Iwesun.Runtime.Diagnostics;
 /// Release builds: registration and Wait methods are no-ops.
 /// Not a debugger breakpoint — only the calling call-chain is paused (await), other threads run freely.
 /// </summary>
-public sealed class RuntimeDiagnosticBreakpoints
+public sealed class RuntimeDiagnosticBreakpoints : IDisposable
 {
 	private readonly ConcurrentDictionary<string, BreakpointState> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
 	private readonly ConcurrentDictionary<string, RuntimeNumericBindingState> _numericBindings = new(StringComparer.OrdinalIgnoreCase);
+	private int _disposed;
+	private static readonly JsonSerializerOptions ContextSerializerOptions = new()
+	{
+		MaxDepth = 32,
+		ReferenceHandler = ReferenceHandler.IgnoreCycles
+	};
 
 	public RuntimeDiagnosticBreakpoints() { }
 
@@ -24,7 +33,12 @@ public sealed class RuntimeDiagnosticBreakpoints
 
 	public void Register(BreakpointState breakpoint)
 	{
-		_breakpoints[breakpoint.Id] = breakpoint;
+		ArgumentNullException.ThrowIfNull(breakpoint);
+		ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+		if (!_breakpoints.TryAdd(breakpoint.Id, breakpoint))
+		{
+			throw new InvalidOperationException($"Breakpoint '{breakpoint.Id}' is already registered.");
+		}
 	}
 
 	public bool TryGet(string id, out BreakpointState breakpoint)
@@ -97,8 +111,9 @@ public sealed class RuntimeDiagnosticBreakpoints
 	public async Task WaitAsync(string id, Func<bool>? condition = null, object? context = null, CancellationToken ct = default)
 	{
 #if DEBUG
-		if (!RuntimeOutputSwitch.Enabled)
-			return;
+		// Trial hardening: breakpoint control is independent from diagnostic output publication.
+		// The previous output-gate check is intentionally retained here for comparison:
+		// if (!RuntimeOutputSwitch.Enabled) return;
 
 		if (!_breakpoints.TryGetValue(id, out var bp) || !bp.SharedState.EnabledBool)
 			return;
@@ -114,33 +129,50 @@ public sealed class RuntimeDiagnosticBreakpoints
 			return;
 
 		// Mark as waiting and capture snapshot
-		bp.SharedState.IsWaiting = 1;
+		bp.EnterWait();
 		bp.LastHitAt = DateTimeOffset.UtcNow;
-		bp.LastContext = context;
+		var capturedContext = CaptureContext(context);
+		bp.LastContext = capturedContext;
 
 		// Publish breakpoint hit event through the switchboard
-		DiagnosticSwitchboard.ReportPoint(
-			RuntimeStaticInjectorCatalog.ComposePrefixedId(RuntimeInjectorIdPatterns.BreakpointHitPrefix, id),
-			"breakpoints",
-			"hit",
-			$"Breakpoint hit: {id}",
-			new
-			{
-				breakpointId = id,
-				bp.Section,
-				bp.Description,
-				hitCount = bp.HitCount,
-				context
-			});
-
-		// Wait indefinitely for manual resume signal (named OS Semaphore — cross-process capable)
 		try
 		{
-			await Task.Run(() => bp.Signal.WaitOne(), ct).ConfigureAwait(false);
+			DiagnosticSwitchboard.ReportPoint(
+				RuntimeStaticInjectorCatalog.ComposePrefixedId(RuntimeInjectorIdPatterns.BreakpointHitPrefix, id),
+				"breakpoints",
+				"hit",
+				$"Breakpoint hit: {id}",
+				new
+				{
+					breakpointId = id,
+					bp.Section,
+					bp.Description,
+					hitCount = bp.HitCount,
+					context = capturedContext
+				});
+		}
+		catch
+		{
+			// Diagnostics must never fault the business call-chain while publishing a hit.
+		}
+
+		// Wait indefinitely for manual resume signal (named OS Semaphore — cross-process capable)
+		var signalConsumed = false;
+		try
+		{
+			signalConsumed = await Task.Run(() =>
+			{
+				if (!ct.CanBeCanceled)
+					return bp.Signal.WaitOne();
+
+				return WaitHandle.WaitAny([bp.Signal, ct.WaitHandle]) == 0;
+			}).ConfigureAwait(false);
 		}
 		catch (OperationCanceledException) { }
-
-		bp.SharedState.IsWaiting = 0;
+		finally
+		{
+			bp.ExitWait(signalConsumed);
+		}
 #else
 		await Task.CompletedTask;
 #endif
@@ -188,31 +220,24 @@ public sealed class RuntimeDiagnosticBreakpoints
 			return false;
 		bp.SharedState.Enabled = 0;
 		// If currently waiting, release immediately
-		if (bp.SharedState.IsWaiting == 1)
-			Resume(id);
+		while (Resume(id)) { }
 		return true;
 	}
 
 	public bool Resume(string id)
 	{
-		if (!_breakpoints.TryGetValue(id, out var bp) || bp.SharedState.IsWaiting == 0)
+		if (!_breakpoints.TryGetValue(id, out var bp))
 			return false;
 #if DEBUG
-		try { bp.Signal.Release(); } catch (SemaphoreFullException) { }
+		return bp.TrySignalResume();
 #endif
-		return true;
 	}
 
 	public void ResumeAll()
 	{
 		foreach (var (_, bp) in _breakpoints)
 		{
-			if (bp.SharedState.IsWaiting == 1)
-			{
-#if DEBUG
-				try { bp.Signal.Release(); } catch (SemaphoreFullException) { }
-#endif
-			}
+			while (Resume(bp.Id)) { }
 		}
 	}
 
@@ -235,10 +260,42 @@ public sealed class RuntimeDiagnosticBreakpoints
 
 	public void Dispose()
 	{
+		if (Interlocked.Exchange(ref _disposed, 1) != 0)
+			return;
+
 		ResumeAll();
+		// Give resumed call-chains a bounded window to leave WaitAsync before handles close.
+		// The previous immediate-dispose behavior caused an ObjectDisposedException race.
+		SpinWait.SpinUntil(
+			() => _breakpoints.Values.All(static bp => !bp.HasWaiters),
+			TimeSpan.FromSeconds(1));
 		foreach (var (_, bp) in _breakpoints)
 		{
-			bp.Dispose();
+			// If a call-chain still has not returned, preserve its handles until process exit.
+			// Closing an actively waited handle is more dangerous than this bounded shutdown leak.
+			if (!bp.HasWaiters)
+				bp.Dispose();
+		}
+		_breakpoints.Clear();
+		_numericBindings.Clear();
+	}
+
+	private static object? CaptureContext(object? context)
+	{
+		if (context == null)
+			return null;
+
+		try
+		{
+			return JsonSerializer.SerializeToElement(context, context.GetType(), ContextSerializerOptions);
+		}
+		catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException)
+		{
+			return new
+			{
+				contextType = context.GetType().FullName ?? context.GetType().Name,
+				captureError = ex.GetType().Name
+			};
 		}
 	}
 }
@@ -255,6 +312,10 @@ public sealed class RuntimeDiagnosticBreakpoints
 //
 // Named Semaphore: "Local\iwrt.bp.<safe-id>"
 // Named MMF:       "Local\iwrt.bpstate.<safe-id>"
+//
+// Current exploratory implementation note: the legacy design comments above are retained,
+// but the active constructors use anonymous process-local MMF/Semaphore instances. CLI control
+// crosses processes through the diagnostics named pipe and is applied inside the host process.
 
 /// <summary>
 /// Provides typed, safe access to the MemoryMappedFile shared state for a single breakpoint.
@@ -270,6 +331,7 @@ public sealed class BreakpointSharedState : IDisposable
 
 	private readonly MemoryMappedFile _mmf;
 	private readonly MemoryMappedViewAccessor _view;
+	private int _disposed;
 
 	internal BreakpointSharedState(string mmfName)
 	{
@@ -300,6 +362,9 @@ public sealed class BreakpointSharedState : IDisposable
 
 	public void Dispose()
 	{
+		if (Interlocked.Exchange(ref _disposed, 1) != 0)
+			return;
+
 		_view.Dispose();
 		_mmf.Dispose();
 	}
@@ -318,6 +383,10 @@ public sealed class BreakpointState : IDisposable
 	public long HitCount;
 	public DateTimeOffset? LastHitAt;
 	public object? LastContext;
+	private readonly object _waitGate = new();
+	private int _waitingCount;
+	private int _reservedResumeCount;
+	private int _disposed;
 
 	/// <summary>
 	/// Shared memory state — readable/writable from any process that opens the same MMF.
@@ -338,12 +407,76 @@ public sealed class BreakpointState : IDisposable
 		Id = id ?? throw new ArgumentNullException(nameof(id));
 		SharedState = new BreakpointSharedState(id);
 #if DEBUG
-		Signal = new Semaphore(0, 1);
+		Signal = new Semaphore(0, int.MaxValue);
 #endif
+	}
+
+	internal void EnterWait()
+	{
+		int waiting;
+		lock (_waitGate)
+		{
+			waiting = ++_waitingCount;
+		}
+		SharedState.IsWaiting = waiting > 0 ? 1 : 0;
+	}
+
+	internal void ExitWait(bool signalConsumed)
+	{
+		int waiting;
+		var discardCanceledSignal = false;
+		lock (_waitGate)
+		{
+			waiting = --_waitingCount;
+			if (signalConsumed && _reservedResumeCount > 0)
+				_reservedResumeCount--;
+			else if (!signalConsumed && _reservedResumeCount > waiting)
+			{
+				_reservedResumeCount--;
+				discardCanceledSignal = true;
+			}
+		}
+		if (discardCanceledSignal)
+			Signal.WaitOne(0);
+		SharedState.IsWaiting = waiting > 0 ? 1 : 0;
+	}
+
+	internal bool TrySignalResume()
+	{
+		lock (_waitGate)
+		{
+			if (_waitingCount <= _reservedResumeCount)
+				return false;
+
+			try
+			{
+				Signal.Release();
+				_reservedResumeCount++;
+				return true;
+			}
+			catch (SemaphoreFullException)
+			{
+				return false;
+			}
+		}
+	}
+
+	internal bool HasWaiters
+	{
+		get
+		{
+			lock (_waitGate)
+			{
+				return _waitingCount > 0;
+			}
+		}
 	}
 
 	public void Dispose()
 	{
+		if (Interlocked.Exchange(ref _disposed, 1) != 0)
+			return;
+
 		SharedState.Dispose();
 #if DEBUG
 		Signal.Dispose();
@@ -451,4 +584,5 @@ internal static class RuntimeNumericThresholdOperators
 		}
 	}
 }
+#pragma warning restore CA1416
 #endif

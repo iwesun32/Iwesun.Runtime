@@ -133,6 +133,39 @@ Runtime Hub 目标：`webruntime.programs`。
 
 `WebRuntimeEventEnvelope` 使用 `EventId / CorrelationId / ProgramId / BackendId / Source / Kind / Data / Timestamp`。`Data` 是 `JsonElement`，不得把 JSON 再包装成字符串 Payload。
 
+## 完整运行时 DOM 真快照
+
+完整的技术边界、公共 C# API、快照 schema、管理 JSON、CLI、返回数据接收、事件路由、错误码和端到端样例统一见 [DOM_SNAPSHOT_API.md](DOM_SNAPSHOT_API.md)。本节只保留控制面速查，避免维护第二份协议正文。
+
+公共 C# API 分为两个独立入口：
+
+- `WebRuntimeDomSnapshot.CaptureAsync(session, ct)`：读取当前结果态 DOM，覆盖 document、可访问 iframe、开放 shadow root、全部节点、全部 attribute 和当前 primitive property。返回 `iwesun.webview2.dom-snapshot/1.0` JSON，不保存 CSS，也不重新运行页面业务脚本。
+- `WebRuntimeDomSnapshot.RestoreAndLinkAsync(session, snapshotJson, linkPlan, ct)`：从快照重建完整 DOM，再按 XPath 应用数据链接和事件链接。事件触发后通过 WebMessage 发送 `source=iwesun.runtime.webview2.dom-snapshot` 与稳定 `eventId`。
+
+管理 JSON 请求格式：
+
+```json
+{"backendId":"doubao-web","action":"dom.snapshot.capture"}
+```
+
+```json
+{
+  "backendId":"doubao-web",
+  "action":"dom.snapshot.restoreAndLink",
+  "args": {
+    "snapshot": "{...iwesun.webview2.dom-snapshot/1.0...}",
+    "linkPlan": {
+      "dataLinks": [{"xpath":"/html/body/main/h1","operation":"text","dataKey":"title","value":"本地标题"}],
+      "eventLinks": [{"xpath":"/html/body/main/button","eventType":"click","eventId":"document.close"}]
+    }
+  }
+}
+```
+
+数据操作支持 `link`、`text`、`attribute`、`property` 和 `hidden`。快照只保存 DOM 结果态；CSS、图片、字体作为独立静态资源，业务数据源和事件处理器由宿主负责。
+
+完整 DOM 通常为数 MB。Diagnostics 控制入口与代理响应统一使用 16 MiB Frame 上限；超过上限时业务程序应直接调用公共 C# API 或采用自身的分块存储，不得截断后伪装成完整快照。
+
 ## 禁止事项
 
 - 禁止 WebRuntime 私有 Envelope。

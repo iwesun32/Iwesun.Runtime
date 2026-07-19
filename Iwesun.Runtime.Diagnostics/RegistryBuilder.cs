@@ -2,6 +2,10 @@ using System.Reflection;
 
 namespace Iwesun.Runtime.Diagnostics;
 
+#if DEBUG
+#pragma warning disable CA1416 // Breakpoint registry construction is compiled only for the Windows Debug feature.
+#endif
+
 /// <summary>
 /// Scans host assembly attributes at startup and builds the three
 /// diagnostic registries (watch points, breakpoints, hookable events) in memory.
@@ -103,6 +107,9 @@ public static class RegistryBuilder
 			hooks);
 	}
 }
+#if DEBUG
+#pragma warning restore CA1416
+#endif
 
 // ── Registry Snapshot ───────────────────────────────────────
 

@@ -419,6 +419,86 @@
         "iwrt web.snapshot"
       ]
     },
+    "web.dom.snapshot": {
+      "summary": "Capture the complete live DOM state of a registered WebRuntime target.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.dom.snapshot doubao-web"
+      ]
+    },
+    "web.dom.restore-link": {
+      "summary": "Restore a complete DOM snapshot and attach data and event links.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.dom.restore-link doubao-web \"<snapshot-json>\" \"<link-plan-json>\""
+      ]
+    },
+    "web.data-recorder.create": {
+      "summary": "Create a host-side WebView2 data stream recorder from a JSON definition.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.data-recorder.create doubao-web doubao-web \"<definition-json>\""
+      ]
+    },
+    "web.data-recorder.start": {
+      "summary": "Start a previously created WebView2 data stream recorder.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.data-recorder.start doubao-web doubao-web history-recorder"
+      ]
+    },
+    "web.data-recorder.status": {
+      "summary": "Read one WebView2 data stream recorder state and counters.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.data-recorder.status doubao-web doubao-web history-recorder"
+      ]
+    },
+    "web.data-recorder.list": {
+      "summary": "List WebView2 data stream recorders registered by a host.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.data-recorder.list doubao-web doubao-web"
+      ]
+    },
+    "web.data-recorder.update": {
+      "summary": "Replace a WebView2 data stream recorder definition.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.data-recorder.update doubao-web doubao-web history-recorder \"<definition-json>\""
+      ]
+    },
+    "web.data-recorder.stop": {
+      "summary": "Stop a WebView2 data stream recorder without deleting its files.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.data-recorder.stop doubao-web doubao-web history-recorder"
+      ]
+    },
+    "web.data-recorder.delete": {
+      "summary": "Delete a WebView2 data stream recorder definition with explicit cleanup options.",
+      "risk": "state-changing",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.data-recorder.delete doubao-web doubao-web history-recorder false false"
+      ]
+    },
+    "web.data-recorder.events": {
+      "summary": "Read bounded metadata events from WebView2 data stream recorders.",
+      "risk": "read-only",
+      "capability": "all-builds",
+      "examples": [
+        "iwrt web.data-recorder.events doubao-web doubao-web history-recorder 20 500"
+      ]
+    },
     "web.navigate": {
       "summary": "Navigate a registered WebRuntime target.",
       "risk": "state-changing",

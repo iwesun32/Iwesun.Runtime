@@ -9,7 +9,7 @@ namespace Iwesun.Runtime.Diagnostics;
 
 public sealed class RuntimeDiagnosticsMonitor : BackgroundService
 {
-	private const int MaxCommandBytes = 1024 * 1024;
+	private const int MaxCommandBytes = 16 * 1024 * 1024;
 	private readonly RuntimeDiagnosticHub _hub;
 	private readonly DiagnosticSwitchboardConfigStore _configStore;
 	private readonly RuntimeNamedPipeAccessPolicy _accessPolicy;

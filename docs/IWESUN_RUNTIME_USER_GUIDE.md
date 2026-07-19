@@ -13,7 +13,7 @@
 
 旧 preview 宿主可能在引用阶段编译成功，但运行时因程序集版本和 API 绑定不一致而崩溃。迁移前应统一升级相关 PackageReference，清理宿主 `bin/obj/publish`，再分别构建 Debug 和 Release。
 
-Runtime 正式发布 DLL 的 AssemblyVersion/FileVersion 与 MSI ProductVersion 同步，例如 `1.0.22.0` 对应安装包 `1.0.22`；InformationalVersion 用于显示发布标识。
+Runtime 正式发布 DLL 的 AssemblyVersion/FileVersion 与 MSI ProductVersion 同步，例如 `1.0.26.0` 对应安装包 `1.0.26`；InformationalVersion 用于显示发布标识。
 
 ## 1. 替换程序启动主程序
 
@@ -468,15 +468,31 @@ C:\Program Files\Iwesun\Runtime\lib\Iwesun.Runtime.Diagnostics\
     <HintPath>$(IwesunRuntimeRoot)\lib\Iwesun.Runtime.Diagnostics\$(DiagnosticsVariant)\Iwesun.Runtime.Diagnostics.dll</HintPath>
     <Private>true</Private>
   </Reference>
+  <Reference Include="Iwesun.Runtime.Data">
+    <HintPath>$(IwesunRuntimeRoot)\lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll</HintPath>
+    <Private>true</Private>
+  </Reference>
+  <Reference Include="Iwesun.Data">
+    <HintPath>$(IwesunRuntimeRoot)\lib\Iwesun.Data\Iwesun.Data.dll</HintPath>
+    <Private>true</Private>
+  </Reference>
 </ItemGroup>
 ```
 
 `Private=true` 会把选中的 DLL 复制到宿主输出目录。Debug 应用如果错误加载 Release DLL，`#if DEBUG` 已在 Runtime DLL 编译期裁掉的断点服务无法通过 JSON、CLI 或运行时开关恢复。
 
+`Iwesun.Data.dll`提供RecordStore V2，是Diagnostics的必需运行时依赖；安装版宿主必须显式引用并复制它，不能依赖旧输出目录中偶然存在的传递副本。
+
+安装目录`docs\Iwesun.Data\`保存RecordStore完整文档树；公共接口见
+`docs\Iwesun.Data\docs\02-api\RECORD_STORE_V2_PUBLIC_API.md`，迁移分别见
+`docs\Iwesun.Data\docs\02-api\DLIST_TO_RECORD_STORE_V2_MIGRATION.md`与
+`docs\Iwesun.Data\docs\02-api\RECORD_STORE_1_0_25_TO_V2_MIGRATION.md`，当前晋升边界见
+`docs\Iwesun.Data\docs\RELEASE_STATUS.md`。
+
 从源码开发引用迁移到安装版 DLL 时，必须执行：
 
 1. 删除旧的 Diagnostics `ProjectReference` 或本地 DLL `Reference`，禁止同一程序集保留两条引用路径。
-2. 加入上述按 `$(Configuration)` 选择的条件引用。
+2. 加入上述按 `$(Configuration)` 选择的 Diagnostics 条件引用，并加入两个 Data 固定引用。
 3. 删除宿主项目旧的 `bin`、`obj`、`publish` 和安装 staging。
 4. 分别重新构建 Debug 与 Release。
 5. 验证 Debug 输出中的 DLL 为 `Compiled=DEBUG`，Release 输出为 `Compiled=RELEASE`。

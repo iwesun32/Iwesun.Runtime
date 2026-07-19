@@ -149,11 +149,14 @@ iwrt reflection.invoke my-host.control GetSnapshot
 iwrt web.programs.capabilities
 iwrt web.programs.status
 iwrt web.snapshot openai-web
+iwrt web.dom.snapshot doubao-web
 iwrt web.navigate openai-web https://chatgpt.com/
 iwrt web.mouse.click openai-web 640 480
 iwrt web.keyboard.press openai-web Enter
 iwrt web.keyboard.type openai-web "hello"
 ```
+
+`web.dom.snapshot <targetId>` 一条命令返回当前 WebView2 的完整结果态 DOM 真快照。它不同于用于人工概览的 `web.snapshot`：不依赖截图或 CSS，而是逐节点返回全部 attribute、当前 primitive property、可访问 iframe 和开放 shadow root。恢复与链接命令为 `web.dom.restore-link <targetId> <snapshot-json> <link-plan-json>`；大快照通常由业务程序直接调用公共 C# API，避免 shell 参数长度限制。完整 JSON、响应接收和 C# 样例见 [WebView2 完整运行时 DOM 真快照手册](../Iwesun.Runtime.WebView2/docs/DOM_SNAPSHOT_API.md)。
 
 CLI 不直接连接 WebRuntime 管道。请求先进入 RuntimeDiagnostics，再由 `diagnostics.proxy` 根据 `RuntimePipeRegistry` 中的 `WebRuntime` 租约解析真实 `ResolvedPipeName`，转发标准 `RuntimeDiagnosticFrame`。代理参数固定采用 `module=WebRuntime / pipe=WebRuntime / targetId=<backend> / domain=web.runtime / proxyAction=<action>`；业务参数和 ProgramId 继续作为 typed Args 转发。
 
@@ -287,3 +290,31 @@ iwrt --pipe=MyProduct.RuntimeDiagnostics pipe.list
 3. JSON schema 是否为 `iwesun.runtime.cli/3.0`。
 4. 命令是否存在于当前权威 catalog。
 5. 目标业务专用管道是否已经登记并保持活动租约。
+
+## 9. WebView2 数据流记录器
+
+1.0.26 增加八条 `web.data-recorder.*` 命令，覆盖 create、start、status、list、update、stop、delete 和 events。CLI 只发送管理 Frame，正文由 WebView2 宿主直接写文件。
+
+```powershell
+iwrt web.data-recorder.create --help
+iwrt web.data-recorder.status doubao-web doubao-web history
+iwrt web.data-recorder.events doubao-web doubao-web history 20 500
+```
+
+完整 definition JSON、位置参数、RuntimeDiagnosticFrame 和 C# API 参见 `DATA_STREAM_MONITOR_RECORDER.md`。
+
+## 10. RemoteConsole与文件上传
+
+远程PowerShell使用独立`Iwesun.Runtime.RemoteConsole`服务和独立CLI目标，不复用业务Diagnostics管道：
+
+```text
+workspace.create deployment
+file.upload <workspaceId> C:\packages\app.zip app.zip
+console.file.list <workspaceId>
+console.submit --workspace <workspaceId> --shell powershell -- Expand-Archive app.zip -DestinationPath app
+console.follow <jobId>
+```
+
+`file.upload`只负责CLI本地文件到远端隔离工作区。当前没有`file.download`；上传后复制到其他远端目录应
+提交审批后的PowerShell `Copy-Item`，并受服务账号Windows ACL限制。完整安装、账号和审批步骤见
+`IWESUN_RUNTIME_REMOTE_CONSOLE.md`。

@@ -61,9 +61,9 @@ public sealed class WebRuntimeScriptAuditLog
 }
 
 /// <summary>
-/// Dispatches the explicitly requested script-evaluation action through the existing
-/// WebView2 session. This is not a general command router: callers must opt in with
-/// script.evaluate/eval and the script is bounded before it reaches WebView2.
+/// Dispatches explicit script-evaluation and complete DOM snapshot actions through the
+/// existing WebView2 session. Arbitrary script text remains limited to script.evaluate/eval;
+/// snapshot actions use compiled library expressions and structured link plans.
 /// </summary>
 public static class WebRuntimeScriptDispatcher
 {
@@ -77,6 +77,51 @@ public static class WebRuntimeScriptDispatcher
 	{
 		ArgumentNullException.ThrowIfNull(session);
 		ArgumentNullException.ThrowIfNull(request);
+		if (request.Action.Equals(WebRuntimeScriptActions.DomSnapshotCapture, StringComparison.OrdinalIgnoreCase))
+		{
+			try
+			{
+				var snapshot = await WebRuntimeDomSnapshot.CaptureAsync(session, ct).ConfigureAwait(false);
+				auditLog?.Add(new(DateTimeOffset.UtcNow, request.Action, 0, true, null, null));
+				return WebRuntimeScriptDispatchResult.Completed(new { snapshot });
+			}
+			catch (OperationCanceledException) { throw; }
+			catch (Exception ex)
+			{
+				auditLog?.Add(new(DateTimeOffset.UtcNow, request.Action, 0, false, "DOM_SNAPSHOT_CAPTURE_FAILED", ex.Message));
+				return WebRuntimeScriptDispatchResult.Failed("DOM_SNAPSHOT_CAPTURE_FAILED", ex.Message);
+			}
+		}
+		if (request.Action.Equals(WebRuntimeScriptActions.DomSnapshotRestoreAndLink, StringComparison.OrdinalIgnoreCase))
+		{
+			if (request.Args is null
+				|| !request.Args.TryGetValue("snapshot", out var snapshotElement)
+				|| snapshotElement.ValueKind != JsonValueKind.String)
+				return WebRuntimeScriptDispatchResult.Failed("MISSING_DOM_SNAPSHOT", "dom.snapshot.restoreAndLink requires args.snapshot.");
+			var linkPlan = new WebRuntimeDomLinkPlan();
+			if (request.Args.TryGetValue("linkPlan", out var linkPlanElement))
+			{
+				linkPlan = linkPlanElement.ValueKind == JsonValueKind.String
+					? JsonSerializer.Deserialize<WebRuntimeDomLinkPlan>(linkPlanElement.GetString() ?? "{}", new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? linkPlan
+					: linkPlanElement.Deserialize<WebRuntimeDomLinkPlan>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? linkPlan;
+			}
+			try
+			{
+				var result = await WebRuntimeDomSnapshot.RestoreAndLinkAsync(
+					session,
+					snapshotElement.GetString() ?? "",
+					linkPlan ?? new WebRuntimeDomLinkPlan(),
+					ct).ConfigureAwait(false);
+				auditLog?.Add(new(DateTimeOffset.UtcNow, request.Action, 0, true, null, null));
+				return WebRuntimeScriptDispatchResult.Completed(new { result });
+			}
+			catch (OperationCanceledException) { throw; }
+			catch (Exception ex)
+			{
+				auditLog?.Add(new(DateTimeOffset.UtcNow, request.Action, 0, false, "DOM_SNAPSHOT_RESTORE_FAILED", ex.Message));
+				return WebRuntimeScriptDispatchResult.Failed("DOM_SNAPSHOT_RESTORE_FAILED", ex.Message);
+			}
+		}
 
 		if (!IsEvaluateAction(request.Action))
 			return new WebRuntimeScriptDispatchResult(false, false);

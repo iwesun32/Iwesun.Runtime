@@ -12,6 +12,9 @@
 
 它不是安装器代理，也不会自动创建 Windows 账号、保存密码、注册其他服务或替代业务 Diagnostics 管道。UI 审批与监视目前只保留协议接口，当前可用操作端是 CLI Shell。
 
+1.0.28发布验收已通过CLI真实命名管道端到端：工作区创建、分块上传、PowerShell执行、stdout/stderr与
+退出码跟随均可用。管理UI仍不是当前操作路径。
+
 本地 Diagnostics 管道不受影响。普通诊断命令继续连接各宿主的 Diagnostics 管道；只有 `console.*`、`workspace.*`、`console.file.list` 和 `file.upload` 连接 RemoteConsole 管道。
 
 ## 2. 发布前源码声明
@@ -131,6 +134,16 @@ workspace.remove <workspaceId>
 
 `file.upload` 是 CLI 客户端命令：读取本地文件，计算 SHA-256，然后发送 `begin/chunk/commit`。服务端验证顺序、长度、配额和哈希后才原子落地。
 
+当前文件能力边界：
+
+| 操作 | 当前状态 | 说明 |
+| --- | --- | --- |
+| CLI本地文件上传到远端工作区 | 已支持 | 使用`file.upload`，服务端验证长度、顺序、配额和SHA-256 |
+| 查看远端工作区文件 | 已支持 | 使用`console.file.list` |
+| 在远端继续复制或展开文件 | 已支持 | 提交审批后的PowerShell `Copy-Item`、`Expand-Archive`等命令，受服务账号ACL约束 |
+| 从远端下载到CLI本地 | 未支持 | 当前没有`file.download`，不得写成双向传输 |
+| 绕过工作区直接上传任意绝对路径 | 不支持 | 绝对路径、UNC、ADS、`..`及重解析点逃逸均拒绝 |
+
 工作目录只能位于服务工作区根目录内。盘符路径、UNC、ADS、路径穿越和重解析点逃逸均被拒绝。工作区默认保留 24 小时，过期项由服务清理。
 
 ## 8. 审批模式
@@ -194,3 +207,5 @@ dotnet run --project .\Iwesun.Runtime.FunctionalTests -c Debug -- `
 - 当前机器 `IwesunAiDiag` 账号：存在且启用；
 - SCM 指定账号安装/启动：当前执行会话不是管理员，环境受限，未执行；
 - 真实服务账号 `whoami` 与 SCM stop/start：须在管理员交互安装后执行，当前不得标记完成。
+- 1.0.28 Debug端到端：已通过，包含`cli-file-uploaded`、`cli-command-submitted`和`cli-output-followed`；
+- 1.0.28 RemoteConsole/CLI Release `-warnaserror`：已通过，0警告、0错误。

@@ -48,7 +48,19 @@ C:\Program Files\Iwesun\Runtime\samples\templates\RuntimeHost.Startup.Minimal.Te
     <HintPath>$(RuntimeRoot)\lib\Iwesun.Runtime.Diagnostics\Release\Iwesun.Runtime.Diagnostics.dll</HintPath>
   </Reference>
 </ItemGroup>
+<ItemGroup>
+  <Reference Include="Iwesun.Runtime.Data">
+    <HintPath>$(RuntimeRoot)\lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll</HintPath>
+  </Reference>
+  <Reference Include="Iwesun.Data">
+    <HintPath>$(RuntimeRoot)\lib\Iwesun.Data\Iwesun.Data.dll</HintPath>
+  </Reference>
+</ItemGroup>
 ```
+
+`Iwesun.Data.dll` 是 Diagnostics 当前使用的RecordStore V2基础依赖，不能只复制Diagnostics DLL。
+完整资料安装在`docs\Iwesun.Data\`；首次接入至少阅读README、V2对外API、DList/V1迁移指南和
+发布状态。根`docs`下同时保留这些常用入口。V2仍是隔离类型，不得因安装包携带而改名晋升。
 
 然后删除宿主项目旧的 `bin`、`obj`、`publish`，防止继续加载旧副本。
 
@@ -273,7 +285,7 @@ iwrt --pipe=YourProduct.RuntimeDiagnostics pipe.list
 迁移完成必须全部满足：
 
 - [ ] 新 `Program.cs` 使用 `Start`、`Activate` 和协调退出流程；
-- [ ] Debug/Release 分别引用对应公共 DLL，没有宿主私有旧副本；
+- [ ] Debug/Release 分别引用对应 Diagnostics DLL，并同时引用当前 `Iwesun.Runtime.Data.dll` 与 `Iwesun.Data.dll`，没有宿主私有旧副本；
 - [ ] eligible 的 Process/Thread/轻量 Task 及字段、集合、返回类型已迁移；
 - [ ] 普通 async、`Task<T>`、UI/STA/COM/message-pump 场景未被误替换；
 - [ ] 诊断、监视、断点和反射白名单符合安全规则，默认静默；
@@ -283,3 +295,17 @@ iwrt --pipe=YourProduct.RuntimeDiagnostics pipe.list
 - [ ] WebRuntime 使用公共输入和预编译 C# Program，不存在调用方脚本回退；
 - [ ] Stop/Wakeup、取消、实际完成、注销和租约释放顺序已验证；
 - [ ] Debug/Release 构建通过，并用真实 CLI 完成状态、管道和目标业务命令验证。
+
+## 14. 远程PowerShell与文件上传
+
+使用独立RemoteConsole服务，不改变当前Diagnostics目标：
+
+```text
+workspace.create deployment
+file.upload <workspaceId> C:\packages\app.zip app.zip
+console.submit --workspace <workspaceId> --shell powershell -- Expand-Archive app.zip -DestinationPath app
+console.follow <jobId>
+```
+
+已支持本地文件上传到远端工作区；远端继续复制使用审批后的`Copy-Item`。当前不支持`file.download`。
+服务安装、AI账号、审批和ACL参见`IWESUN_RUNTIME_REMOTE_CONSOLE.md`。

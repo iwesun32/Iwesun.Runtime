@@ -68,12 +68,15 @@ WebView2 运行时控制面属于 Service 正式功能。Tester、外部脚本�
 | `navigate` | 已实现 |
 | `url` | 已实现 |
 | `snapshot` | 已实现 |
+| `dom.snapshot.capture` | 已实现 |
+| `dom.snapshot.restoreAndLink` | 已实现 |
 | `discover` | 已实现 |
 
 设计约束：
 
 - `discover` 是 AI 自动探索页面的首选入口。
 - `snapshot` 偏人工概览，`discover` 偏结构化可操作目标。
+- `dom.snapshot.capture` 保存完整结果态 DOM；`dom.snapshot.restoreAndLink` 从该结果树恢复并重新挂载数据/事件链接，不运行原业务 JS。
 - 导航动作必须作用于已有后端会话，不创建独立测试浏览器。
 
 ### 2.3 DOM 与 XPath

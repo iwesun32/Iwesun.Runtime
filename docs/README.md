@@ -9,6 +9,8 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | 文档 | 说明 |
 | --- | --- |
 | **[IWESUN_RUNTIME_QUICK_START.md](IWESUN_RUNTIME_QUICK_START.md)** | ⭐ **速查手册**：备份主程序、引用 DLL、全局替换、管道/日志配置、编译验证 |
+| **[RELEASE_NOTES.md](RELEASE_NOTES.md)** | 当前版本更新记录、修复内容、验证结果和已知边界 |
+| [IWESUN_RUNTIME_RELEASE_INDEX.md](IWESUN_RUNTIME_RELEASE_INDEX.md) | 安装包专用文档索引；发布器将其安装为 `docs/README.md` |
 | **[IWESUN_RUNTIME_DESIGN.md](IWESUN_RUNTIME_DESIGN.md)** | ⭐ **完整设计文档**：架构、功能分类、注入界面、JSON指令、CLI格式 |
 | **[IWESUN_RUNTIME_USER_GUIDE.md](IWESUN_RUNTIME_USER_GUIDE.md)** | 业务接入权威手册：主程序、受管执行、单点注入、状态退出、JSON/CLI |
 | **[IWESUN_RUNTIME_WINDOWS_SERVICE.md](IWESUN_RUNTIME_WINDOWS_SERVICE.md)** | Windows Service 专项手册：SCM 生命周期、业务边界、清理状态与退出码 |
@@ -17,8 +19,16 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | 项目总览：定位、结构、依赖关系、核心链路 |
 | [RUNTIME_DIAGNOSTICS.md](RUNTIME_DIAGNOSTICS.md) | 运行时诊断核心机制、协议与输出控制 |
 | [RUNTIME_ROOT_DATA_STRUCTURE.md](RUNTIME_ROOT_DATA_STRUCTURE.md) | RuntimeRoot 单根挂载的数据结构总览（T01~T10） |
+| [DATA_PROJECT_RUNTIME_ROOT.md](05-runtime-tooling/DATA_PROJECT_RUNTIME_ROOT.md) | Data 公共项目、RuntimeRoot 基础类型与容器技术说明 |
+| [RECORD_STORE_V2_PUBLIC_API.md](../../Data/docs/02-api/RECORD_STORE_V2_PUBLIC_API.md) | RecordStore V2公共属性、事件、委托和方法语义 |
+| [DLIST_TO_RECORD_STORE_V2_MIGRATION.md](../../Data/docs/02-api/DLIST_TO_RECORD_STORE_V2_MIGRATION.md) | DList到RecordStore V2迁移指南 |
+| [RECORD_STORE_1_0_25_TO_V2_MIGRATION.md](../../Data/docs/02-api/RECORD_STORE_1_0_25_TO_V2_MIGRATION.md) | RecordStore 1.0.25到V2迁移指南 |
 | [IWESUN_RUNTIME_CLI.md](IWESUN_RUNTIME_CLI.md) | CLI 命令手册、配置驱动与管道入口 |
 | [WEBVIEW2_JSON_PIPE_CLI_PLAN.md](../Iwesun.Runtime.WebView2/docs/WEBVIEW2_JSON_PIPE_CLI_PLAN.md) | WebView2 统一 JSON 协议、管道唯一申请与 CLI v3 迁移结果 |
+| [SCRIPT_REFLECTION_PLAN.md](../Iwesun.Runtime.WebView2/docs/SCRIPT_REFLECTION_PLAN.md) | WebView2 受控脚本、反射边界与实现状态 |
+| [DOM_SNAPSHOT_API.md](../Iwesun.Runtime.WebView2/docs/DOM_SNAPSHOT_API.md) | WebView2 完整 DOM 真快照 API、恢复与链接 |
+| [DATA_STREAM_MONITOR_RECORDER.md](../Iwesun.Runtime.WebView2/docs/DATA_STREAM_MONITOR_RECORDER.md) | WebView2 数据流记录器 C# API、JSON Frame、CLI 和安全边界 |
+| [WEBVIEW2_1.0.26_UPGRADE.md](../Iwesun.Runtime.WebView2/docs/WEBVIEW2_1.0.26_UPGRADE.md) | WebView2 1.0.26 升级、配置兼容和回退说明 |
 | [REQUIREMENTS_ACTIVE.md](REQUIREMENTS_ACTIVE.md) | 当前活跃需求、功能覆盖与执行复核 |
 | [iwesun-runtime-integration](../skills/iwesun-runtime-integration/SKILL.md) | 可复制的 Codex Runtime 业务接入技能 |
 | [UNIFIED_INTERFACE.md](UNIFIED_INTERFACE.md) | 统一界面与术语规范 |
@@ -47,6 +57,8 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 
 | 项目 | 说明 |
 | --- | --- |
+| `Iwesun.Runtime.Data` | Runtime 专属数据层：RuntimeRoot 条目、静态注入目录和值类型指令 |
+| `Iwesun.Data` | 独立数据基础库：RecordStore 稳定记录、身份、约束、深复制与快照能力 |
 | `Iwesun.Runtime.Diagnostics` | 运行时诊断内核：开关板、FIFO、Hub、反射、监控管道 |
 | `Iwesun.Runtime.WebView2` | WebRuntime 公共平台：标准 Frame 编解码、专用管道客户端、虚拟输入、预编译 C# 程序截获转接、生命周期与执行监控 |
 | `Iwesun.Runtime.Cli` | 命令行工具：诊断、快照查询、事件消费、WebRuntime 控制 |
@@ -72,6 +84,7 @@ Iwesun Runtime 是独立的运行时工具库，提供诊断内核、CLI 控制�
 | [RUNTIME_INTEGRATION_GUIDE.md](05-runtime-tooling/RUNTIME_INTEGRATION_GUIDE.md) | 发布版接入手册：启动/结束模板、创建API、状态接口、CLI扩展与发布清单 |
 | [RUNTIME_RELEASE_PACKAGING.md](05-runtime-tooling/RUNTIME_RELEASE_PACKAGING.md) | Runtime 发布总项目、发布清单、目录结构、MSI 安装与卸载 |
 | [WEB_RUNTIME_CONTROL.md](../Iwesun.Runtime.WebView2/docs/WEB_RUNTIME_CONTROL.md) | WebView2 公共控制、C# Program 与监控接口 |
+| [DOM_SNAPSHOT_API.md](../Iwesun.Runtime.WebView2/docs/DOM_SNAPSHOT_API.md) | WebView2 完整运行时 DOM 真快照技术手册：C# API、CLI、JSON、响应接收与样例 |
 | [WEBVIEW2_RUNTIME_CAPABILITIES.md](../Iwesun.Runtime.WebView2/docs/WEBVIEW2_RUNTIME_CAPABILITIES.md) | WebView2 运行时能力规划与动作命名规范 |
 | [INJECTOR_STANDARDIZATION.md](05-runtime-tooling/INJECTOR_STANDARDIZATION.md) | 六大类注入器标准化、最简写法、宏式体验边界 |
 | [INJECTOR_STANDARDIZATION_PLAN.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_PLAN.md) | 注入器标准化技术方案、实现边界、分阶段实施 |

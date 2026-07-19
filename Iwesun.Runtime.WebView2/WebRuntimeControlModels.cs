@@ -21,6 +21,32 @@ public static class WebRuntimeScriptActions
 {
 	public const string Evaluate = "script.evaluate";
 	public const string EvalAlias = "eval";
+	public const string DomSnapshotCapture = "dom.snapshot.capture";
+	public const string DomSnapshotRestoreAndLink = "dom.snapshot.restoreAndLink";
+}
+
+public sealed class WebRuntimeDomDataLink
+{
+	public string XPath { get; init; } = "";
+	public string Operation { get; init; } = "link";
+	public string? Name { get; init; }
+	public string? DataKey { get; init; }
+	public JsonElement? Value { get; init; }
+}
+
+public sealed class WebRuntimeDomEventLink
+{
+	public string XPath { get; init; } = "";
+	public string EventType { get; init; } = "click";
+	public string EventId { get; init; } = "";
+	public bool PreventDefault { get; init; } = true;
+	public bool StopPropagation { get; init; } = true;
+}
+
+public sealed class WebRuntimeDomLinkPlan
+{
+	public IReadOnlyList<WebRuntimeDomDataLink> DataLinks { get; init; } = Array.Empty<WebRuntimeDomDataLink>();
+	public IReadOnlyList<WebRuntimeDomEventLink> EventLinks { get; init; } = Array.Empty<WebRuntimeDomEventLink>();
 }
 
 public sealed class WebRuntimeControlRequest

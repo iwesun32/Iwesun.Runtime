@@ -24,8 +24,7 @@ public interface IRManagedState
 public sealed class RManagedState : IRManagedState
 {
     private readonly ConcurrentDictionary<string, string> _details = new(StringComparer.OrdinalIgnoreCase);
-    private readonly RuntimeDList<RuntimeState> _subTaskStates = new();
-    private readonly object _subTaskGate = new();
+    private readonly RuntimeStateHistory _subTaskStates = new();
     private readonly RuntimeManagedRegistry? _managed;
 	private readonly RuntimeInstructionEntityKind _entityKind;
 
@@ -49,10 +48,7 @@ public sealed class RManagedState : IRManagedState
     {
         get
         {
-            lock (_subTaskGate)
-            {
-                return _subTaskStates.ToArraySnapshot();
-            }
+            return _subTaskStates.Snapshot();
         }
     }
 
@@ -84,11 +80,7 @@ public sealed class RManagedState : IRManagedState
             return false;
         }
 
-        lock (_subTaskGate)
-        {
-            _subTaskStates.AddLast(state);
-            TrimSubTaskStateHistory();
-        }
+        _subTaskStates.Append(state);
 
         Sync();
         return true;
@@ -98,11 +90,7 @@ public sealed class RManagedState : IRManagedState
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stateName);
         var state = StateManager.Catalog.RequireByName(stateName);
-        lock (_subTaskGate)
-        {
-            _subTaskStates.AddLast(state);
-            TrimSubTaskStateHistory();
-        }
+        _subTaskStates.Append(state);
 
         Sync();
         return state;
@@ -110,10 +98,7 @@ public sealed class RManagedState : IRManagedState
 
     public void ClearSubTaskStates()
     {
-        lock (_subTaskGate)
-        {
-            _subTaskStates.Clear();
-        }
+        _subTaskStates.Clear();
 
         Sync();
     }
@@ -134,11 +119,7 @@ public sealed class RManagedState : IRManagedState
 
     public RManagedStateSnapshot Snapshot()
     {
-        IReadOnlyList<RuntimeState> subTaskStates;
-        lock (_subTaskGate)
-        {
-            subTaskStates = _subTaskStates.ToArraySnapshot();
-        }
+        var subTaskStates = _subTaskStates.Snapshot();
 
         return new RManagedStateSnapshot(UnitId, StateManager.Snapshot(), _details.ToDictionary(), subTaskStates);
     }
@@ -148,19 +129,6 @@ public sealed class RManagedState : IRManagedState
         _managed?.UpdateState(UnitId, Snapshot());
     }
 
-    private void TrimSubTaskStateHistory()
-    {
-        while (_subTaskStates.Count > 128)
-        {
-            var snapshot = _subTaskStates.ToArraySnapshot();
-            if (snapshot.Count == 0)
-            {
-                break;
-            }
-
-            _subTaskStates.RemoveFirst(snapshot[0]);
-        }
-    }
 }
 
 public sealed record RManagedStateSnapshot(

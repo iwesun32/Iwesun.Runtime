@@ -80,4 +80,8 @@ RuntimeInjector.Data(hub, "product.worker", state, new RuntimeDiagnosticObjectAc
 
 CLI disconnect does not resume a breakpoint. Resume is explicit. Restore enabled points, sections, hooks, pipe/file switches, and global state after focused debugging.
 
+For one breakpoint ID, multiple concurrent calling call-chains may wait at the same time. Each `resume` releases one actual waiter; `resumeAll` and `disable` release every current waiter for that scope. A cancellation token supplied to the breakpoint wait can release that call-chain without leaving a signal for the next hit. Closing the CLI still has no effect on breakpoint state.
+
+Breakpoint context is captured as a bounded JSON-safe snapshot. Keep it small even though cyclic or unsupported objects now degrade to a type/error summary instead of faulting business code. Duplicate breakpoint IDs are configuration errors, and enable/disable/resume for an unknown ID return `NOT_FOUND`.
+
 Dynamic watch/output points enter the switchboard catalog on first observation and remain disabled by default. Use `switchboard.point.list`, `switchboard.point.enable`, and `switchboard.point.disable`; an unknown ID must return `OUTPUT_POINT_NOT_FOUND`.

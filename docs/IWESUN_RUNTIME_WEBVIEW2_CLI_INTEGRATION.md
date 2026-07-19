@@ -45,6 +45,12 @@ CLI 的命令路由唯一由 `Iwesun.Runtime.Cli/RuntimeCliSystemConfig.json` �
 | `web.monitor.filter.add` | `monitor.filter.add` |
 | `web.monitor.filter.clear` | `monitor.filter.clear` |
 | `web.highlight` | `highlightXPath` |
+| `web.data-recorder.create` | `data.recorder.create` |
+| `web.data-recorder.start` | `data.recorder.start` |
+| `web.data-recorder.status/list` | `data.recorder.status/list` |
+| `web.data-recorder.update` | `data.recorder.update` |
+| `web.data-recorder.stop/delete` | `data.recorder.stop/delete` |
+| `web.data-recorder.events` | `data.recorder.events` |
 
 用户可以复制 `RuntimeCliUserConfig.example.json` 为 `RuntimeCliUserConfig.json`，增加别名或组合命令；系统配置和用户增量配置都必须保持 `iwesun.runtime.cli/3.0`。
 
@@ -58,6 +64,7 @@ CLI 的命令路由唯一由 `Iwesun.Runtime.Cli/RuntimeCliSystemConfig.json` �
 - `WebRuntimeMonitorFilterRegistry`：监控过滤器。
 - `WebRuntimeEvidenceScripts`：XPath 高亮和清理。
 - `WebRuntimeHostController` / `IWebRuntimeHostAdapter`：宿主接线。
+- `IDataStreamRecorderManager` / `DataStreamRecorderManager`：原始请求/响应数据记录、业务委托、状态和事件。
 
 宿主在 WebView2 STA 线程调用脚本，在 `WebResourceRequested` 事件中应用网络决策。公共库不创建窗口、不保存业务 Cookie、不自行维护业务管道。
 
@@ -92,7 +99,9 @@ WiX `Iwesun.Runtime.Setup` 只消费 staging：
 版本步进后只执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtime-setup.ps1 -ProductVersion 1.0.22
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtime-setup.ps1 -ProductVersion 1.0.26
 ```
 
 该脚本依次执行 Debug/Release 全量编译、完整 staging、安装前自检、WiX Rebuild，并输出 MSI 路径和 SHA-256。
+
+1.0.26 在构建前先执行 Debug、Release 和 Setup clean；正式 MSI 只在明确发布时调用该唯一入口。数据记录器完整接口见 `Iwesun.Runtime.WebView2/docs/DATA_STREAM_MONITOR_RECORDER.md`，升级和回退见 `WEBVIEW2_1.0.26_UPGRADE.md`。

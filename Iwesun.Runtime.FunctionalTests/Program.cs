@@ -134,7 +134,17 @@ static class FunctionalParentRunner
 {
     public static async Task<int> RunAsync(string[] args)
     {
-        var scenarios = new[] { "diagnostics", "managed", "thread", "task", "process", "tree", "root-safety", "sharedfifo-protocol", "numeric-breakpoint", "pipe-registry", "tree-process", "cli", "cli-context-shell", "cli-transport-failure", "cli-numeric-breakpoint", "file-output-filter", "file-registry", "file-output-e2e", "switchboard-config", "file-output-format-variants", "bp-process-cli", "sample-host-random-state", "sample-host-cli-full", "web-runtime-script" };
+        var scenarios = new[]
+        {
+            "diagnostics", "managed", "thread", "task", "process", "root-safety", "sharedfifo-protocol",
+            "pipe-registry", "tree-process", "cli", "cli-context-shell", "cli-transport-failure",
+            "file-output-filter", "file-registry", "file-output-e2e", "switchboard-config",
+            "file-output-format-variants", "data-stream-recorder", "sample-host-random-state", "sample-host-cli-full",
+            "web-runtime-script",
+#if DEBUG
+            "tree", "numeric-breakpoint", "cli-numeric-breakpoint", "breakpoint-safety", "bp-process-cli",
+#endif
+        };
         var results = new List<FunctionalScenarioResult>(scenarios.Length);
         var executions = new List<ChildScenarioExecution>(scenarios.Length);
         var failures = new List<string>();
@@ -329,6 +339,7 @@ static class FunctionalChildRunner
 				"remote-console-command" => RemoteConsoleScenario.RunCommandAsync(),
 				"remote-console-workspace" => RemoteConsoleScenario.RunWorkspaceAsync(),
 				"remote-console-cli" => RemoteConsoleScenario.RunCliAsync(),
+				"breakpoint-safety" => BreakpointSafetyScenario.RunAsync(),
 				#if DEBUG
                 "cli-numeric-breakpoint" => RunCliNumericBreakpointScenario(provider, diagnosticsPipeName),
 				#endif
@@ -342,6 +353,7 @@ static class FunctionalChildRunner
                 "sample-host-random-state" => Task.FromResult(SampleHostRandomStateScenario.Run()),
                 "sample-host-cli-full" => SampleHostCliFullScenario.RunAsync(),
 				"web-runtime-script" => WebRuntimeScriptScenario.RunAsync(),
+				"data-stream-recorder" => DataStreamRecorderScenario.RunAsync(),
 				"probe" => RunProbeScenario(provider),
                 _ => Task.FromResult(FunctionalScenarioResult.Fail(options.Scenario, Array.Empty<string>(), new[] { $"Unknown scenario: {options.Scenario}" }))
             });
@@ -825,6 +837,20 @@ static class FunctionalChildRunner
             checks.Add("global-state-set-ok");
         }
 
+		for (var i = 0; i < 140; i++)
+		{
+			managed.UpdateState(unitId, managedState.Snapshot());
+		}
+		var boundedHistory = managed.SnapshotUnitStateHistory(unitId, 128);
+		if (boundedHistory.Count != 128 || boundedHistory.Any(static state => state.Name != "Working"))
+		{
+			failures.Add("RecordStore state history did not preserve the newest 128 ordered states.");
+		}
+		else
+		{
+			checks.Add("record-store-state-history-bounded");
+		}
+
         var unitHistory = await hub.ExecuteAsync(new RuntimeDiagnosticAction
         {
             TargetId = "runtime.managed",
@@ -896,6 +922,74 @@ static class FunctionalChildRunner
         }
 
         checks.Add("runtime-root-snapshot-ok");
+
+		var directRoot = new RuntimeRootContainer();
+		var mutableSecondary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+		{
+			["scope"] = "original"
+		};
+		var mutablePayload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+		{
+			["value"] = "original"
+		};
+		directRoot.Upsert("RecordStoreMigration", new RuntimeRootEntryEnvelope(
+			"entry-a",
+			"primary-a",
+			mutableSecondary,
+			mutablePayload));
+		mutableSecondary["scope"] = "mutated";
+		mutablePayload["value"] = "mutated";
+		if (!directRoot.TryGet("RecordStoreMigration", "entry-a", out var detachedEntry)
+			|| detachedEntry.Value.SecondaryKeys["scope"] != "original"
+			|| detachedEntry.Value.Payload is not JsonElement detachedPayload
+			|| detachedPayload.GetProperty("value").GetString() != "original")
+		{
+			failures.Add("RuntimeRoot RecordStore clone strategy leaked mutable input references.");
+		}
+		else
+		{
+			checks.Add("record-store-root-values-detached");
+		}
+
+		directRoot.Upsert("RecordStoreMigration", new RuntimeRootEntryEnvelope(
+			"entry-a",
+			"primary-b",
+			new Dictionary<string, string> { ["scope"] = "updated" },
+			new { value = "updated" }));
+		directRoot.Upsert("RecordStoreMigration", new RuntimeRootEntryEnvelope(
+			"entry-b",
+			"primary-b",
+			new Dictionary<string, string> { ["scope"] = "replacement" },
+			new { value = "replacement" }));
+		var migrationTable = directRoot.Snapshot().Tables.Single(static table => table.TableName == "RecordStoreMigration");
+		if (migrationTable.Count != 1
+			|| migrationTable.Entries[0].Id != "entry-b"
+			|| directRoot.TryGet("RecordStoreMigration", "entry-a", out _)
+			|| directRoot.QueryBySecondary("RecordStoreMigration", "scope", "replacement").Count != 1)
+		{
+			failures.Add("RuntimeRoot RecordStore upsert or primary-key replacement semantics changed.");
+		}
+		else
+		{
+			checks.Add("record-store-root-upsert-compatible");
+		}
+
+		directRoot.SetFilePathDescriptors([
+			new RuntimeFilePathDescriptor("z.log", isPrimaryRecord: true),
+			new RuntimeFilePathDescriptor("a.log", isPrimaryRecord: true)
+		]);
+		var filePaths = directRoot.GetFilePathDescriptorsSnapshot();
+		if (filePaths.Count != 2
+			|| filePaths.Count(static descriptor => descriptor.IsPrimaryRecord) != 1
+			|| filePaths[0].FilePathName != "a.log"
+			|| !filePaths[0].IsPrimaryRecord)
+		{
+			failures.Add("File path RecordStore primary normalization or stable ordering changed.");
+		}
+		else
+		{
+			checks.Add("record-store-file-path-order-stable");
+		}
 
         var hasReflectionCatalog = rootSnapshot.Tables.Any(x =>
             x.TableName.Equals("T09.DiagnosticHubTable.Reflection.Types.Catalog", StringComparison.OrdinalIgnoreCase));
@@ -1415,8 +1509,8 @@ static class FunctionalChildRunner
             return FunctionalScenarioResult.Fail("pipe-registry", checks, failures);
         }
 
-        var leases = JsonSerializer.SerializeToElement(list.Value);
-        if (leases.ValueKind != JsonValueKind.Array || leases.GetArrayLength() == 0)
+        var leasesPage = JsonSerializer.SerializeToElement(list.Value);
+        if (!TryGetPagedItems(leasesPage, out var leases) || leases.GetArrayLength() == 0)
         {
             failures.Add("pipe registry list is empty.");
             return FunctionalScenarioResult.Fail("pipe-registry", checks, failures);
@@ -1980,8 +2074,8 @@ static class FunctionalChildRunner
             });
             if (leaseList.Success)
             {
-                var leaseJson = JsonSerializer.SerializeToElement(leaseList.Value);
-                processGuardianAnnounced = leaseJson.ValueKind == JsonValueKind.Array
+                var leasePageJson = JsonSerializer.SerializeToElement(leaseList.Value);
+                processGuardianAnnounced = TryGetPagedItems(leasePageJson, out var leaseJson)
                     && leaseJson.EnumerateArray().Any(x =>
 					x.TryGetProperty("RequestedPipeName", out var requestedName)
                         && requestedName.GetString() == process.UnitId);
@@ -2013,8 +2107,8 @@ static class FunctionalChildRunner
         }
         else
         {
-            var processJson = JsonSerializer.SerializeToElement(processList.Value);
-            if (processJson.ValueKind != JsonValueKind.Array
+            var processPageJson = JsonSerializer.SerializeToElement(processList.Value);
+            if (!TryGetPagedItems(processPageJson, out var processJson)
                 || !processJson.EnumerateArray().Any(x => x.TryGetProperty("UnitId", out var idNode) && idNode.GetString() == process.UnitId))
             {
                 failures.Add("process list command did not list the active process.");
@@ -2116,6 +2210,19 @@ static class FunctionalChildRunner
         return failures.Count == 0
             ? FunctionalScenarioResult.Pass("process", checks.ToArray())
             : FunctionalScenarioResult.Fail("process", checks, failures);
+    }
+
+    private static bool TryGetPagedItems(JsonElement page, out JsonElement items)
+    {
+        if (page.ValueKind == JsonValueKind.Object
+            && page.TryGetProperty("Items", out items)
+            && items.ValueKind == JsonValueKind.Array)
+        {
+            return true;
+        }
+
+        items = default;
+        return false;
     }
 
 	#if DEBUG
@@ -2479,7 +2586,15 @@ static class FunctionalChildRunner
             "task.list",
             "pipe.list",
             "reflection.get",
-            "reflection.invoke"
+            "reflection.invoke",
+            "web.data-recorder.create",
+            "web.data-recorder.start",
+            "web.data-recorder.status",
+            "web.data-recorder.list",
+            "web.data-recorder.update",
+            "web.data-recorder.stop",
+            "web.data-recorder.delete",
+            "web.data-recorder.events"
         };
         foreach (var requiredCommand in requiredCommands)
         {

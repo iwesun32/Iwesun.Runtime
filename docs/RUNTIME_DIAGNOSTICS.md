@@ -160,4 +160,4 @@ RuntimeOutput.TracePoint("pipeline.stage", "DnsUpdateStage",
 - 注入器动态缓冲池方案（对象级登记与回收）→ [05-runtime-tooling/INJECTOR_DYNAMIC_POOL_SCHEME.md](05-runtime-tooling/INJECTOR_DYNAMIC_POOL_SCHEME.md)
 - 统一界面规范 → [UNIFIED_INTERFACE.md](UNIFIED_INTERFACE.md)
 - AI 访问规则复核 → [AI_ACCESS_RECHECK.md](AI_ACCESS_RECHECK.md)
-- 全局访问规则 → [../.github/instructions/copilot-access-rules.instructions.md](../.github/instructions/copilot-access-rules.instructions.md)
+- 仓库内 AI 访问规则由 `.github/instructions` 单独维护，不属于运行时安装文档。

@@ -1,93 +1,69 @@
-# Data 公共项目（RuntimeRoot 基础类）技术说明
+# Runtime Data 与 RecordStore 技术说明
 
-> **状态**: CURRENT | **最后更新**: 2026-07-10  
-> **源码**: `Iwesun.Runtime.Data/RuntimeRootDataStructures.cs`
+> **状态**：CURRENT
+> **最后更新**：2026-07-18
+> **源码**：`Iwesun.Runtime.Data/`、`D:\Git Space\Data\Iwesun.Data/RecordStore*.cs`
 
-## 1. 目的
+## 1. 两个 Data 项目的边界
 
-将 RuntimeRoot 的基础数据类从业务项目分离，统一放入公共 Data 项目，避免容器和条目模型与当前业务实现强耦合。
+- `Iwesun.Runtime.Data`：Runtime 专属值类型和协议，包括 RuntimeRoot 条目、文件路径描述、
+  静态注入目录、FIFO 传输模型和值类型指令。
+- `Iwesun.Data`：独立、业务无关的数据基础库；Runtime使用其中的
+  `RecordStoreV2<TValue,TPrimaryKey>`作为结构型内存记录存储。V2仍保持隔离名称，不能在消费者文档中
+  提前写成已晋升的正式`RecordStore`。
 
-## 2. 项目定位
+依赖方向固定为：
 
-- 项目：`Iwesun.Runtime.Data`
-- 目标框架：`net10.0`
-- 角色：公共数据结构层（不包含业务流程逻辑）
+```text
+Iwesun.Data                    Iwesun.Runtime.Data
+          \                    /
+           Iwesun.Runtime.Diagnostics
+                      ↑
+       SampleHost / CLI / FunctionalTests
+```
 
-## 3. 当前下沉的基础类型
+`Iwesun.Runtime.Data` 不再提供或维护私有 `RuntimeDList<T>`。
 
-1. 条目与快照
+## 2. RuntimeRoot 基础类型
+
 - `RuntimeRootEntryEnvelope`
 - `RuntimeRootTableSnapshot`
 - `RuntimeRootSnapshot`
-
-2. DLIST 容器
-- `RuntimeDListNode<T>`
-- `RuntimeDList<T>`
-
-3. 辅助索引扩展点
+- `RuntimeFilePathDescriptor`
 - `IRuntimeRootAuxIndex`
 - `RuntimeRootSortedPrimaryKeyIndex`
 
-## 3.1 RuntimeDList 新增能力（本轮）
+这些类型仍属于 `Iwesun.Runtime.Data`，因为它们描述 Runtime 协议和快照，而不是通用数据库能力。
 
-- 重复归一委托：`DuplicatePredicate: Func<T,T,bool>`
-- 可重复开关：`AllowDuplicates`
-- 过滤委托：`FilterPredicate: Func<T,bool>`
-- 条目合并委托：`MergeDelegate: Func<T,T,T>`
-- 合并开关：`MergeOnDuplicate`
-- 批量新增：`AddRange(IEnumerable<T>)`
-- 排序方法：
-  - `Sort(Comparison<T>)`
-  - `Sort(IComparer<T>)`
-- 新增结果模型：
-  - `RuntimeDListAddResult<T>`
-  - `RuntimeDListBatchAddResult`
-- 标准接口增强：
-  - `RuntimeRootEntryEnvelope` 实现 `IEquatable<>`、`IComparable<>`
-  - `RuntimeDList<T>` 实现 `IReadOnlyCollection<T>`
+## 3. RecordStore 使用方式
 
-### 归一与合并语义
+Runtime 当前使用 RecordStore 的范围只有：
 
-当 `AllowDuplicates = false` 且 `MergeOnDuplicate = true`，新条目命中重复判定后会走：
+- 状态历史：稳定追加、`StoreRecordId` 精确废止、128 条有界裁剪；
+- RuntimeRoot 表：以 `Id` 分组，显式 Upsert 和主键冲突替换；
+- 文件路径登记：以 `FilePathName` 分组，显式更新和主记录归一。
 
-```text
-MergedValue = MergeDelegate(OldValue, NewValue)
-```
+不使用以下能力：持久化、JSON 转换、发布快照、聚合发布、流程 Marker。
 
-即执行“合并更新”，不是拒绝，也不是简单覆盖。
+RuntimeRoot当前不启用添加时自动合并，继续由容器锁、`StoreRecordId`和业务索引完成Upsert/主记录
+归一。V2的Definition只冻结多个Key与业务主键；过滤、限制、Merge、唯一约束和Publish格式属于Store
+实例配置。完整公共契约见随安装包发布的`RECORD_STORE_V2_PUBLIC_API.md`。
 
-### 继承扩展点（子类可改算法）
+## 4. 克隆和所有权
 
-`RuntimeDList<T>` 已提供可覆写虚方法，子类可替换算法而不改调用面：
+RecordStore 要求结构值中的可变引用具有明确深复制策略：
 
-- `ShouldAccept(T value)`：过滤策略
-- `IsDuplicate(T left, T right)`：重复判定策略
-- `TryMergeDuplicate(T existing, T incoming, out T merged)`：重复合并策略
-- `FindFirstDuplicateNode(T value)`：重复查找策略
-- `SortCore(IReadOnlyList<T> values, Comparison<T> comparison)`：排序策略
-- `RebuildFromOrdered(IReadOnlyList<T> values)`：重建策略
+- `SecondaryKeys`、`Annotations` 每次克隆为新的只读字典；
+- RuntimeRoot 任意 Payload 转换为独立 `JsonElement`；不可序列化对象退化为类型摘要；
+- 状态历史复制公开字段，不把可变 `RuntimeStateCatalog` 引用带入历史快照。
 
-## 4. 分层边界
+这保证调用方修改原对象后不会覆盖 Store 内记录。
 
-- `Iwesun.Runtime.Data`
-  - 仅负责数据结构定义、通用容器、通用索引接口
-- `Iwesun.Runtime.Diagnostics`
-  - 负责 RuntimeRoot 表装配、运行时数据刷新、诊断 target 暴露
+## 5. 迁移资料
 
-该边界确保后续可在不改业务逻辑的前提下升级容器实现。
-
-## 5. 依赖关系
-
-```text
-Iwesun.Runtime.Data          (基础数据层)
-         ↑
-Iwesun.Runtime.Diagnostics   (使用 Data 层封装运行时数据)
-         ↑
-SampleHost / Cli / FunctionalTests
-```
-
-## 6. 后续演进建议
-
-1. 在 Data 层继续扩展更多可插拔索引实现（按热点查询类型）。
-2. 视数据规模将索引重建策略升级为增量维护。
-3. 保持 Data 层不引入业务依赖，维持可复用性。
+- Runtime 实施计划：`RECORD_STORE_MIGRATION_PLAN.md`
+- DList迁移手册：`D:\Git Space\Data\docs\02-api\DLIST_TO_RECORD_STORE_V2_MIGRATION.md`
+- 1.0.25迁移手册：`D:\Git Space\Data\docs\02-api\RECORD_STORE_1_0_25_TO_V2_MIGRATION.md`
+- 上游API：`D:\Git Space\Data\docs\02-api\RECORD_STORE_V2_PUBLIC_API.md`
+- 上游设计：`D:\Git Space\Data\docs\01-design\RECORD_STORE_DESIGN_V2.md`
+- 发布状态：`D:\Git Space\Data\docs\RELEASE_STATUS.md`

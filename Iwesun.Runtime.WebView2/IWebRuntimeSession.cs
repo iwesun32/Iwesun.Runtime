@@ -7,6 +7,12 @@ public interface IWebRuntimeScriptSession
 	Task<string> EvaluateStringInFrameAsync(string sourceUrlContains, string expression, CancellationToken ct);
 }
 
+/// <summary>Provides stable DOM-order frame evaluation for snapshot restoration.</summary>
+public interface IWebRuntimeIndexedFrameScriptSession
+{
+	Task<string> EvaluateStringInFrameAsync(int frameIndex, string expression, CancellationToken ct);
+}
+
 /// <summary>Provides native browser input dispatch independent of a business host.</summary>
 public interface IWebRuntimeInputSession
 {

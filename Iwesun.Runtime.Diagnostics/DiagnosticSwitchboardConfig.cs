@@ -142,7 +142,7 @@ public sealed class DiagnosticSwitchboardConfigStore
 
 public static class DiagnosticSwitchboardCompiledConfig
 {
-	public const int SchemaVersion = 4;
+	public const int SchemaVersion = 5;
 	public const string GeneratedFrom = "compiled:DdnsSnapDiagnosticSwitchboard:v4";
 	public const string DefaultRuntimeDiagnosticsPipeName = "DdnsSnap.RuntimeDiagnostics";
 
@@ -361,9 +361,9 @@ public static class DiagnosticSwitchboardCompiledConfig
 				"PeerSync HTTP transient failure",
 				"peer-sync"),
 			Point(
-				"service.merge.dlist-policy",
+				"service.merge.recordstore-policy",
 				"pipeline",
-				"DList policy state at final recursive merge entry.",
+				"RecordStore policy state at final recursive merge entry.",
 				"DdnsSnap.Service.Services.Pipeline.MergeTreeSourcesStage",
 				"MergeTreeSourcesStage.Execute -> RuntimeOutput.TracePoint -> FIFO",
 				"structured-json",

@@ -597,20 +597,24 @@ public sealed class RuntimeDiagnosticHub
 				var enableId = ReadString(command, "id") ?? ReadString(command, "breakpointId");
 				if (string.IsNullOrWhiteSpace(enableId))
 					return RuntimeDiagnosticActionResult.Fail("diagnostics.breakpoints", action, "id or breakpointId is required.");
-				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action,
-					_breakpoints.Enable(enableId));
+				if (!_breakpoints.Enable(enableId))
+					return RuntimeDiagnosticActionResult.Fail("diagnostics.breakpoints", action, $"Breakpoint not found: {enableId}", "NOT_FOUND");
+				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action, true);
 
 			case "disable":
 				var disableId = ReadString(command, "id") ?? ReadString(command, "breakpointId");
 				if (string.IsNullOrWhiteSpace(disableId))
 					return RuntimeDiagnosticActionResult.Fail("diagnostics.breakpoints", action, "id or breakpointId is required.");
-				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action,
-					_breakpoints.Disable(disableId));
+				if (!_breakpoints.Disable(disableId))
+					return RuntimeDiagnosticActionResult.Fail("diagnostics.breakpoints", action, $"Breakpoint not found: {disableId}", "NOT_FOUND");
+				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action, true);
 
 			case "resume":
 				var resumeId = ReadString(command, "id") ?? ReadString(command, "breakpointId");
 				if (string.IsNullOrWhiteSpace(resumeId))
 					return RuntimeDiagnosticActionResult.Fail("diagnostics.breakpoints", action, "id or breakpointId is required.");
+				if (!_breakpoints.TryGet(resumeId, out _))
+					return RuntimeDiagnosticActionResult.Fail("diagnostics.breakpoints", action, $"Breakpoint not found: {resumeId}", "NOT_FOUND");
 				return RuntimeDiagnosticActionResult.Ok("diagnostics.breakpoints", action,
 					_breakpoints.Resume(resumeId));
 

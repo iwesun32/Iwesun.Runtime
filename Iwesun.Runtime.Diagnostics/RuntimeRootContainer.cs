@@ -1,14 +1,20 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Collections.ObjectModel;
+using System.Text.Json;
+using Iwesun.Data;
 using Iwesun.Runtime.Data;
 
 namespace Iwesun.Runtime.Diagnostics;
 
 public sealed class RuntimeRootTable
 {
+	private static readonly RecordStoreDefinition<RuntimeRootEntryRow, string> EntryDefinition =
+		CreateEntryDefinition();
+
 	private readonly object _gate = new();
-	private readonly RuntimeDList<RuntimeRootEntryEnvelope> _entries = new();
-	private readonly Dictionary<string, RuntimeDListNode<RuntimeRootEntryEnvelope>> _byId = new(StringComparer.OrdinalIgnoreCase);
-	private readonly Dictionary<string, RuntimeDListNode<RuntimeRootEntryEnvelope>> _byPrimary = new(StringComparer.OrdinalIgnoreCase);
+	private RecordStoreV2<RuntimeRootEntryRow, string> _entries = CreateEntryStore();
+	private readonly Dictionary<string, StoreRecordId> _byId = new(StringComparer.OrdinalIgnoreCase);
+	private readonly Dictionary<string, StoreRecordId> _byPrimary = new(StringComparer.OrdinalIgnoreCase);
 	private readonly Dictionary<string, HashSet<string>> _bySecondary = new(StringComparer.OrdinalIgnoreCase);
 	private readonly Dictionary<string, IRuntimeRootAuxIndex> _auxIndexes = new(StringComparer.OrdinalIgnoreCase);
 
@@ -16,14 +22,6 @@ public sealed class RuntimeRootTable
 	{
 		ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
 		TableName = tableName;
-		_entries.AllowDuplicates = false;
-		_entries.MergeOnDuplicate = true;
-		_entries.DuplicatePredicate = static (left, right) =>
-			left.Id.Equals(right.Id, StringComparison.OrdinalIgnoreCase);
-		_entries.MergeDelegate = static (existing, incoming) => MergeEnvelope(existing, incoming);
-		_entries.FilterPredicate = static entry =>
-			!string.IsNullOrWhiteSpace(entry.Id)
-			&& !string.IsNullOrWhiteSpace(entry.PrimaryKey);
 		_auxIndexes["sorted-primary"] = new RuntimeRootSortedPrimaryKeyIndex();
 	}
 
@@ -55,7 +53,7 @@ public sealed class RuntimeRootTable
 		ArgumentNullException.ThrowIfNull(entries);
 		lock (_gate)
 		{
-			_entries.Clear();
+			_entries = CreateEntryStore();
 			_byId.Clear();
 			_byPrimary.Clear();
 			_bySecondary.Clear();
@@ -82,9 +80,10 @@ public sealed class RuntimeRootTable
 	{
 		lock (_gate)
 		{
-			if (_byId.TryGetValue(id, out var node))
+			if (_byId.TryGetValue(id, out var recordId)
+				&& _entries.TryGetRecord(recordId, out var stored))
 			{
-				entry = node.Value;
+				entry = stored.Value;
 				return true;
 			}
 		}
@@ -97,9 +96,10 @@ public sealed class RuntimeRootTable
 	{
 		lock (_gate)
 		{
-			if (_byPrimary.TryGetValue(primaryKey, out var node))
+			if (_byPrimary.TryGetValue(primaryKey, out var recordId)
+				&& _entries.TryGetRecord(recordId, out var stored))
 			{
-				entry = node.Value;
+				entry = stored.Value;
 				return true;
 			}
 		}
@@ -121,9 +121,10 @@ public sealed class RuntimeRootTable
 			var result = new List<RuntimeRootEntryEnvelope>(ids.Count);
 			foreach (var id in ids)
 			{
-				if (_byId.TryGetValue(id, out var node))
+				if (_byId.TryGetValue(id, out var recordId)
+					&& _entries.TryGetRecord(recordId, out var stored))
 				{
-					result.Add(node.Value);
+					result.Add(stored.Value);
 				}
 			}
 
@@ -148,41 +149,67 @@ public sealed class RuntimeRootTable
 	{
 		lock (_gate)
 		{
-			var entries = _entries.ToArraySnapshot();
-			return new RuntimeRootTableSnapshot(TableName, entries.Count, entries);
+			var entries = _entries.Select(static row => row.Value).ToArray();
+			return new RuntimeRootTableSnapshot(TableName, entries.Length, entries);
 		}
 	}
 
 	private void AddInternal(RuntimeRootEntryEnvelope entry)
 	{
-		_byId.TryGetValue(entry.Id, out var existingNode);
-		var previous = existingNode?.Value;
-		var result = _entries.TryAdd(entry);
-		if (result.Node == null)
+		if (string.IsNullOrWhiteSpace(entry.Id) || string.IsNullOrWhiteSpace(entry.PrimaryKey))
 		{
-			throw new InvalidOperationException($"Entry '{entry.Id}' was rejected by RuntimeRootTable DLIST policy.");
+			throw new InvalidOperationException($"Entry '{entry.Id}' was rejected by RuntimeRootTable RecordStore policy.");
 		}
 
-		var node = result.Node;
-		if (previous.HasValue)
+		var previous = default(RuntimeRootEntryEnvelope);
+		var previousRow = default(RuntimeRootEntryRow);
+		var hasExisting = _byId.TryGetValue(entry.Id, out var recordId)
+			&& _entries.TryGetRecord(recordId, out previousRow);
+		if (hasExisting)
 		{
-			RemoveSecondaryIndexes(previous.Value);
-			_byPrimary.Remove(previous.Value.PrimaryKey);
+			previous = previousRow.Value;
 		}
+		var candidate = hasExisting ? MergeEnvelope(previous, entry) : entry;
 
-		var stored = node.Value;
-		if (_byPrimary.TryGetValue(stored.PrimaryKey, out var primaryConflictNode)
-			&& !ReferenceEquals(primaryConflictNode, node))
+		if (_byPrimary.TryGetValue(candidate.PrimaryKey, out var primaryConflictId)
+			&& (!hasExisting || primaryConflictId != recordId)
+			&& _entries.TryGetRecord(primaryConflictId, out var displacedRow))
 		{
-			var displaced = primaryConflictNode.Value;
-			_entries.Remove(primaryConflictNode);
+			var displaced = displacedRow.Value;
+			_entries.TryDeprecate(primaryConflictId);
 			_byId.Remove(displaced.Id);
+			_byPrimary.Remove(displaced.PrimaryKey);
 			RemoveSecondaryIndexes(displaced);
 		}
 
-		_byId[stored.Id] = node;
-		_byPrimary[stored.PrimaryKey] = node;
-		AddSecondaryIndexes(stored);
+		if (hasExisting)
+		{
+			RemoveSecondaryIndexes(previous);
+			_byPrimary.Remove(previous.PrimaryKey);
+			var updatedRow = new RuntimeRootEntryRow
+			{
+				StoreRecordId = recordId,
+				Value = candidate
+			};
+			if (_entries.TryUpdate(updatedRow) != RecordUpdateResult.Updated)
+			{
+				throw new InvalidOperationException($"Entry '{entry.Id}' could not be updated in RuntimeRootTable RecordStore.");
+			}
+		}
+		else
+		{
+			recordId = _entries.Add(new RuntimeRootEntryRow { Value = candidate });
+		}
+
+		if (!_entries.TryGetRecord(recordId, out var stored))
+		{
+			throw new InvalidOperationException($"Entry '{entry.Id}' was not readable after RuntimeRootTable RecordStore update.");
+		}
+
+		var storedValue = stored.Value;
+		_byId[storedValue.Id] = recordId;
+		_byPrimary[storedValue.PrimaryKey] = recordId;
+		AddSecondaryIndexes(storedValue);
 	}
 
 	private void AddSecondaryIndexes(RuntimeRootEntryEnvelope entry)
@@ -223,7 +250,7 @@ public sealed class RuntimeRootTable
 
 	private void RebuildAuxIndexesLocked()
 	{
-		var entries = _entries.ToArraySnapshot();
+		var entries = _entries.Select(static row => row.Value).ToArray();
 		foreach (var index in _auxIndexes.Values)
 		{
 			index.Rebuild(entries);
@@ -246,25 +273,102 @@ public sealed class RuntimeRootTable
 			existing.RegisteredAt,
 			DateTimeOffset.UtcNow);
 	}
+
+	private static RecordStoreDefinition<RuntimeRootEntryRow, string> CreateEntryDefinition()
+	{
+		var id = new RecordKeyDefinition<RuntimeRootEntryRow, string>(
+			"id",
+			static row => row.Value.Id,
+			StringComparer.OrdinalIgnoreCase,
+			StringComparer.OrdinalIgnoreCase);
+		var primary = new RecordKeyDefinition<RuntimeRootEntryRow, string>(
+			"primary",
+			static row => row.Value.PrimaryKey,
+			StringComparer.OrdinalIgnoreCase,
+			StringComparer.OrdinalIgnoreCase);
+		return new RecordStoreDefinition<RuntimeRootEntryRow, string>(
+			[id, primary],
+			new PrimaryKeyDefinition<RuntimeRootEntryRow, string>(
+				["id"],
+				static row => row.Value.Id,
+				StringComparer.OrdinalIgnoreCase,
+				StringComparer.OrdinalIgnoreCase));
+	}
+
+	private static RecordStoreV2<RuntimeRootEntryRow, string> CreateEntryStore() =>
+		new(EntryDefinition) { CloneStrategy = RuntimeRootEntryRowCloneStrategy.Instance };
+
+	private struct RuntimeRootEntryRow : IRecordStoreValue
+	{
+		public StoreRecordId StoreRecordId { get; set; }
+		public RuntimeRootEntryEnvelope Value { get; init; }
+	}
+
+	private sealed class RuntimeRootEntryRowCloneStrategy : IDeepCloneStrategy<RuntimeRootEntryRow>
+	{
+		public static RuntimeRootEntryRowCloneStrategy Instance { get; } = new();
+
+		public RuntimeRootEntryRow Clone(in RuntimeRootEntryRow value) => new()
+		{
+			StoreRecordId = value.StoreRecordId,
+			Value = RuntimeRootEntryCloneStrategy.Instance.Clone(value.Value)
+		};
+	}
+
+	private sealed class RuntimeRootEntryCloneStrategy : IDeepCloneStrategy<RuntimeRootEntryEnvelope>
+	{
+		public static RuntimeRootEntryCloneStrategy Instance { get; } = new();
+
+		public RuntimeRootEntryEnvelope Clone(in RuntimeRootEntryEnvelope value) =>
+			new(
+				value.Id,
+				value.PrimaryKey,
+				new ReadOnlyDictionary<string, string>(
+					new Dictionary<string, string>(value.SecondaryKeys, StringComparer.OrdinalIgnoreCase)),
+				ClonePayload(value.Payload),
+				value.RegisteredAt,
+				value.UpdatedAt);
+
+		private static object? ClonePayload(object? payload)
+		{
+			if (payload is null)
+			{
+				return null;
+			}
+
+			if (payload is JsonElement element)
+			{
+				return element.Clone();
+			}
+
+			try
+			{
+				return JsonSerializer.SerializeToElement(payload, payload.GetType());
+			}
+			catch (Exception ex) when (ex is not OutOfMemoryException)
+			{
+				return JsonSerializer.SerializeToElement(new
+				{
+					type = payload.GetType().FullName,
+					unavailable = true
+				});
+			}
+		}
+	}
 }
 
 public sealed class RuntimeRootContainer
 {
+	private static readonly RecordStoreDefinition<RuntimeFilePathRow, string> FilePathDefinition =
+		CreateFilePathDefinition();
+
 	private readonly object _gate = new();
 	private readonly Dictionary<string, RuntimeRootTable> _tables = new(StringComparer.OrdinalIgnoreCase);
-	private readonly RuntimeDList<RuntimeFilePathDescriptor> _filePathDescriptors = new();
-	private readonly Dictionary<string, RuntimeDListNode<RuntimeFilePathDescriptor>> _filePathByName = new(StringComparer.OrdinalIgnoreCase);
+	private RecordStoreV2<RuntimeFilePathRow, string> _filePathDescriptors = CreateFilePathStore();
+	private readonly Dictionary<string, StoreRecordId> _filePathByName = new(StringComparer.OrdinalIgnoreCase);
 
 	public RuntimeRootContainer()
 	{
-		_filePathDescriptors.AllowDuplicates = false;
-		_filePathDescriptors.MergeOnDuplicate = true;
-		_filePathDescriptors.DuplicatePredicate = static (left, right) =>
-			left.FilePathName.Equals(right.FilePathName, StringComparison.OrdinalIgnoreCase);
-		_filePathDescriptors.MergeDelegate = static (existing, incoming) =>
-			MergeFilePathDescriptor(existing, incoming);
-		_filePathDescriptors.FilterPredicate = static descriptor =>
-			!string.IsNullOrWhiteSpace(descriptor.FilePathName);
 	}
 
 	public void SetFilePathDescriptors(IEnumerable<RuntimeFilePathDescriptor> descriptors)
@@ -273,7 +377,7 @@ public sealed class RuntimeRootContainer
 
 		lock (_gate)
 		{
-			_filePathDescriptors.Clear();
+			_filePathDescriptors = CreateFilePathStore();
 			_filePathByName.Clear();
 
 			foreach (var descriptor in descriptors)
@@ -298,7 +402,7 @@ public sealed class RuntimeRootContainer
 	{
 		lock (_gate)
 		{
-			return _filePathDescriptors.ToArraySnapshot();
+			return GetOrderedFilePathDescriptorsLocked();
 		}
 	}
 
@@ -306,7 +410,7 @@ public sealed class RuntimeRootContainer
 	{
 		lock (_gate)
 		{
-			foreach (var item in _filePathDescriptors)
+			foreach (var item in GetOrderedFilePathDescriptorsLocked())
 			{
 				if (!item.IsPrimaryRecord)
 				{
@@ -419,7 +523,7 @@ public sealed class RuntimeRootContainer
 				.OrderBy(x => x.TableName, StringComparer.OrdinalIgnoreCase)
 				.Select(x => x.Snapshot())
 				.ToArray();
-			var filePathDescriptors = _filePathDescriptors.ToArraySnapshot();
+			var filePathDescriptors = GetOrderedFilePathDescriptorsLocked();
 
 			return new RuntimeRootSnapshot(DateTimeOffset.UtcNow, tables, filePathDescriptors);
 		}
@@ -439,25 +543,36 @@ public sealed class RuntimeRootContainer
 
 	private void AddOrMergeFilePathDescriptorLocked(RuntimeFilePathDescriptor descriptor)
 	{
-		if (_filePathByName.TryGetValue(descriptor.FilePathName, out var existingNode))
+		if (string.IsNullOrWhiteSpace(descriptor.FilePathName))
 		{
-			existingNode.Value = MergeFilePathDescriptor(existingNode.Value, descriptor);
+			throw new InvalidOperationException("File path descriptor was rejected by RuntimeRootContainer RecordStore policy.");
+		}
+
+		if (_filePathByName.TryGetValue(descriptor.FilePathName, out var recordId)
+			&& _filePathDescriptors.TryGetRecord(recordId, out var existingRow))
+		{
+			var existing = existingRow.Value;
+			var merged = MergeFilePathDescriptor(existing, descriptor);
+			var updatedRow = new RuntimeFilePathRow
+			{
+				StoreRecordId = recordId,
+				Value = merged
+			};
+			if (_filePathDescriptors.TryUpdate(updatedRow) != RecordUpdateResult.Updated)
+			{
+				throw new InvalidOperationException($"File path descriptor '{descriptor.FilePathName}' could not be updated in RecordStore.");
+			}
 			return;
 		}
 
-		var result = _filePathDescriptors.TryAdd(descriptor);
-		if (result.Node == null)
-		{
-			throw new InvalidOperationException($"File path descriptor '{descriptor.FilePathName}' was rejected by RuntimeRootContainer DLIST policy.");
-		}
-
-		_filePathByName[descriptor.FilePathName] = result.Node;
+		recordId = _filePathDescriptors.Add(new RuntimeFilePathRow { Value = descriptor });
+		_filePathByName[descriptor.FilePathName] = recordId;
 	}
 
 	private void NormalizePrimaryFilePathDescriptorOrderLocked()
 	{
 		var ordered = _filePathDescriptors
-			.ToArraySnapshot()
+			.Select(static row => row.Value)
 			.OrderBy(static descriptor => descriptor.IsPrimaryRecord ? 0 : 1)
 			.ThenBy(static descriptor => descriptor.FilePathName, StringComparer.OrdinalIgnoreCase)
 			.ToList();
@@ -476,17 +591,21 @@ public sealed class RuntimeRootContainer
 			}
 		}
 
-		_filePathDescriptors.Clear();
+		_filePathDescriptors = CreateFilePathStore();
 		_filePathByName.Clear();
 		foreach (var descriptor in ordered)
 		{
-			var addResult = _filePathDescriptors.TryAdd(descriptor);
-			if (addResult.Node != null)
-			{
-				_filePathByName[descriptor.FilePathName] = addResult.Node;
-			}
+			var recordId = _filePathDescriptors.Add(new RuntimeFilePathRow { Value = descriptor });
+			_filePathByName[descriptor.FilePathName] = recordId;
 		}
 	}
+
+	private IReadOnlyList<RuntimeFilePathDescriptor> GetOrderedFilePathDescriptorsLocked() =>
+		_filePathDescriptors
+			.Select(static row => row.Value)
+			.OrderBy(static descriptor => descriptor.IsPrimaryRecord ? 0 : 1)
+			.ThenBy(static descriptor => descriptor.FilePathName, StringComparer.OrdinalIgnoreCase)
+			.ToArray();
 
 	private static RuntimeFilePathDescriptor MergeFilePathDescriptor(RuntimeFilePathDescriptor existing, RuntimeFilePathDescriptor incoming)
 	{
@@ -515,5 +634,58 @@ public sealed class RuntimeRootContainer
 			annotations,
 			existing.RegisteredAt,
 			DateTimeOffset.UtcNow);
+	}
+
+	private static RecordStoreDefinition<RuntimeFilePathRow, string> CreateFilePathDefinition()
+	{
+		var name = new RecordKeyDefinition<RuntimeFilePathRow, string>(
+			"name",
+			static row => row.Value.FilePathName,
+			StringComparer.OrdinalIgnoreCase,
+			StringComparer.OrdinalIgnoreCase);
+		return new RecordStoreDefinition<RuntimeFilePathRow, string>(
+			[name],
+			new PrimaryKeyDefinition<RuntimeFilePathRow, string>(
+				["name"],
+				static row => row.Value.FilePathName,
+				StringComparer.OrdinalIgnoreCase,
+				StringComparer.OrdinalIgnoreCase));
+	}
+
+	private static RecordStoreV2<RuntimeFilePathRow, string> CreateFilePathStore() =>
+		new(FilePathDefinition) { CloneStrategy = RuntimeFilePathRowCloneStrategy.Instance };
+
+	private struct RuntimeFilePathRow : IRecordStoreValue
+	{
+		public StoreRecordId StoreRecordId { get; set; }
+		public RuntimeFilePathDescriptor Value { get; init; }
+	}
+
+	private sealed class RuntimeFilePathRowCloneStrategy : IDeepCloneStrategy<RuntimeFilePathRow>
+	{
+		public static RuntimeFilePathRowCloneStrategy Instance { get; } = new();
+
+		public RuntimeFilePathRow Clone(in RuntimeFilePathRow value) => new()
+		{
+			StoreRecordId = value.StoreRecordId,
+			Value = RuntimeFilePathCloneStrategy.Instance.Clone(value.Value)
+		};
+	}
+
+	private sealed class RuntimeFilePathCloneStrategy : IDeepCloneStrategy<RuntimeFilePathDescriptor>
+	{
+		public static RuntimeFilePathCloneStrategy Instance { get; } = new();
+
+		public RuntimeFilePathDescriptor Clone(in RuntimeFilePathDescriptor value) =>
+			new(
+				value.FilePathName,
+				value.Description,
+				value.Purpose,
+				value.Source,
+				value.IsPrimaryRecord,
+				new ReadOnlyDictionary<string, string>(
+					new Dictionary<string, string>(value.Annotations, StringComparer.OrdinalIgnoreCase)),
+				value.RegisteredAt,
+				value.UpdatedAt);
 	}
 }

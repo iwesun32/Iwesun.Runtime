@@ -32,6 +32,10 @@
       <HintPath>$(IwesunRuntimeRoot)\lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="Iwesun.Data">
+      <HintPath>$(IwesunRuntimeRoot)\lib\Iwesun.Data\Iwesun.Data.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

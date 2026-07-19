@@ -40,6 +40,8 @@ workspace.show <workspaceId>
 
 `file.upload` hashes the local file and sends bounded `begin/chunk/commit` requests. The server validates sequence, declared length, quota and SHA-256 before atomic placement. Do not bypass the workspace boundary with absolute paths, UNC paths, ADS, `..`, or reparse points.
 
+This is a one-way local-to-remote workspace upload. There is no `file.download` command in the current release. To copy or expand an uploaded file elsewhere on the remote machine, submit an approved PowerShell command such as `Copy-Item` or `Expand-Archive`; the service account's Windows ACL remains authoritative.
+
 ## Submit, approve, and follow
 
 ```text
