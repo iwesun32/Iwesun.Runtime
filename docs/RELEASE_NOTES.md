@@ -1,5 +1,12 @@
 # Iwesun Runtime 发布更新记录
 
+## 1.0.31（2026-07-20）
+
+- 在 1.0.30 单数据程序集强制升级基础上执行全量再发布，默认发布器和 WiX ProductVersion 统一升级到 1.0.31。
+- RecordStore V2 明确为唯一活动 RecordStore 实现；发布索引、安装说明与集成技能不再保留“隔离类型/正式 1.0.25 API”旧状态。
+- Networks、Runtime Data、Runtime Debug/Release、完整功能场景、staging、自检、安装版 SampleHost 双配置与 MSI 均由唯一入口从当前源码重新验证。
+- 安装树继续强制拒绝 `Iwesun.Data.dll`、DList 与 RecordStore V1，并核对全部 `Iwesun.Runtime.Data.dll` 副本的版本和哈希。
+
 ## 1.0.30（2026-07-20）
 
 - Data 强制收口为单程序集：RecordStore V2 源码和公共基础类型并入 `Iwesun.Runtime.Data`；

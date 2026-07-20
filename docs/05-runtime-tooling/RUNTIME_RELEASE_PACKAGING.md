@@ -5,7 +5,7 @@
 以后只使用下列脚本生成安装包：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtime-setup.ps1 -ProductVersion 1.0.29
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtime-setup.ps1 -ProductVersion 1.0.31
 ```
 
 脚本固定执行完整流程：Debug 全解决方案构建、Release 全解决方案构建、清空并重建完整 staging、发布目录自检、WiX 强制 Rebuild、输出 MSI 大小和 SHA-256。不得再把普通增量 `dotnet build` 生成的 MSI 当作发布包。
@@ -15,7 +15,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtim
 唯一入口还会先执行 Iwesun.Networks 与 Runtime Data 的 Debug/Release 测试，以及 Runtime Debug/Release
 完整功能场景。任一上游基础库或 Runtime 场景失败都阻止 staging 和 MSI 生成。
 
-RecordStore文档以两种布局发布：根`docs`保留V2设计、API、两份迁移指南、发布状态和复验报告等常用
+RecordStore文档以两种布局发布：根`docs`保留V2设计、API、发布状态和复验报告等常用
 入口；`docs/Iwesun.Runtime.Data/`保存Data根README，`docs/Iwesun.Runtime.Data/docs/`保存完整 V2 文档目录结构和可用
 相对链接。安装验证必须同时检查两个入口，并拒绝旧的`RECORD_STORE_API.md`、
 `RECORD_STORE_GUIDE.md`等已删除入口重新混入发布清单。

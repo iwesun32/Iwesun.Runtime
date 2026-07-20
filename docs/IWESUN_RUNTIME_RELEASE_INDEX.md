@@ -19,7 +19,7 @@
 - [发布状态](Iwesun.Runtime.Data/docs/RELEASE_STATUS.md)
 - [安全与性能报告](Iwesun.Runtime.Data/docs/03-reference/RECORD_STORE_V2_COMPLETE_SAFETY_AND_PERFORMANCE_REPORT_2026-07-18.md)
 
-> V2 当前仍是隔离开发类型；本安装包携带当前实现和验证资料，不表示替换正式 1.0.25 API。
+> RecordStore V2 是当前唯一活动 RecordStore 实现，统一由 `Iwesun.Runtime.Data.dll` / `Iwesun.Runtime.Data` 提供；旧 DList、RecordStore V1 和 `Iwesun.Data.dll` 不进入安装包。
 
 ## Iwesun.Networks 1.2.0
 

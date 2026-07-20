@@ -945,3 +945,26 @@
   产生明确编译错误，不允许静默回退到旧 DLL。
 - 强制升级验收包含 Runtime Data V2 测试、Runtime Debug/Release 与功能场景，以及三个消费者的
   Debug/Release 构建和相关测试；不得覆盖各仓库已有未提交业务变更。
+
+# 2026-07-20 Runtime 1.0.31 全量发布、提交与推送
+
+- 用户已明确授权在 1.0.30 之后生成新的 Runtime 全量发布，版本推进到 1.0.31，不复用旧 staging 或 MSI。
+- 唯一发布入口必须从当前源码重新执行 Networks 与 Runtime Data Debug/Release 测试、Runtime
+  Debug/Release 全解决方案构建与完整功能场景、完整 staging、自检、安装版 SampleHost 双配置验证和
+  MSI 强制 Rebuild。
+- 发布内容必须只包含 `Iwesun.Runtime.Data.dll` / `Iwesun.Runtime.Data` / `RecordStoreV2` 数据边界，
+  明确拒绝 `Iwesun.Data.dll`、DList 与 RecordStore V1 回流。
+- Diagnostics、CLI、Runtime Data、RemoteConsole、Protocol、WebView2、Networks、SampleHost、配置、
+  文档、技能和发布脚本全部纳入本次发布，版本、哈希和发布状态必须一致。
+- 不自动安装 MSI，不注册或启动 Windows 服务，不创建系统账号，不创建 Git 标签或上传 NuGet。
+- 全量发布验证完成后，用户已授权提交 Runtime 仓库全部变更并推送当前 `main` 分支。
+
+## 1.0.31 发布验收
+
+- [x] Networks 与 Runtime Data Debug/Release 测试通过。
+- [x] Runtime Debug/Release 全解决方案构建与完整功能场景通过。
+- [x] 全新 1.0.31 staging、自检、安装版 SampleHost 双配置验证和 MSI Rebuild 完成。
+- [x] MSI 大小 `3,016,776` 字节、SHA-256
+  `A6D4B1DD1E80E0323173066027A68B6B097E77EB9AFB0FD01C46EF6162396873`、Runtime 程序集文件版本
+  `1.0.31.0` 与 ProductVersion `1.0.31` 完成最终核验。
+- [ ] Runtime 全部变更已提交并推送，远端 `main` 与本地提交一致。

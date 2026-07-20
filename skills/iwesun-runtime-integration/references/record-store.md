@@ -12,8 +12,8 @@ C:\Program Files\Iwesun\Runtime\lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll
 ```
 
 Do not copy the DLL from another host output. The release verifier and installed samples use the library from the
-Runtime installation tree. V2 remains an isolated type until its memory and performance promotion gates pass;
-do not rename it to `RecordStore` in consumer code or documentation.
+Runtime installation tree. V2 is the only active RecordStore implementation; keep its public type name
+`RecordStoreV2` and do not introduce a `RecordStore` compatibility alias in consumer code or documentation.
 
 `Iwesun.Data.dll`, the `Iwesun.Data` namespace, DList, and RecordStore V1 are retired without forwarding types or
 aliases. Their ignored archive is historical evidence only and never participates in builds or releases. Migration rules:
