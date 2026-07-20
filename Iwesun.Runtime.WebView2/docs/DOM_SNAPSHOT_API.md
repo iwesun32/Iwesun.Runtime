@@ -1,5 +1,7 @@
 # WebView2 完整运行时 DOM 真快照：技术与使用手册
 
+需要同时保存 CSS、脚本、事件、CDP、MHTML 和 HTTP 输入正文时，使用[完整页面与 HTTP 输入证据 API](FULL_PAGE_EVIDENCE_API.md)。本页继续定义可恢复 DOM 真快照本身。
+
 本文是 `Iwesun.Runtime.WebView2` 完整运行时 DOM 真快照能力的权威说明，面向 Runtime 宿主开发者、管理程序开发者和 CLI 使用者。
 
 ## 1. 能力目标

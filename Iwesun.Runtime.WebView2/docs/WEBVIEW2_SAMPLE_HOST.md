@@ -60,6 +60,10 @@ dotnet run --project Iwesun.Runtime.WebView2.SampleHost\Iwesun.Runtime.WebView2.
 
 `DataStreamRecorderSample.cs` 是独立可编译的数据记录器接线样例，展示命名委托、请求/响应交换、请求 sidecar、manifest、元数据快速门和生命周期释放。示例方法不会由窗口自动调用，避免默认产生记录文件。
 
+完整页面证据同样不得在样例启动时默认落盘。宿主接入时应在 `Navigate` 前调用 `WebRuntimeNetworkEvidenceSession.StartAsync`，在用户明确选择本机证据目录后调用 `WebRuntimePageEvidenceCapture.CaptureAsync`，最后通过 `await using` 释放网络会话。完整代码顺序、输出清单和隐私边界见 [FULL_PAGE_EVIDENCE_API.md](FULL_PAGE_EVIDENCE_API.md)。
+
+多快照宿主应设置 `WebRuntimePageEvidenceOptions.NetworkExport`，把外部文档/JSON 注册到 `WebRuntimeSharedHttpEvidenceStore`。每个快照使用稳定引用 ID，公共资源池负责 SHA-256 去重和反向引用；样例不得把同一正文复制到每个快照目录。
+
 ## 发布位置
 
 - `bin\Iwesun.Runtime.WebView2.SampleHost\`：可运行示例输出。

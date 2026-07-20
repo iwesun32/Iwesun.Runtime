@@ -49,6 +49,21 @@ function Assert-FileVersionEquals {
     Write-Host "[OK] $Label version => $candidateVersion / $candidateProductVersion"
 }
 
+function Assert-PathAbsent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    if (Test-Path -LiteralPath $Path) {
+        throw "Unexpected [$Label]: $Path"
+    }
+
+    Write-Host "[OK] $Label is absent"
+}
+
 Write-Host "Runtime install verification started."
 Write-Host "InstallRoot: $InstallRoot"
 Write-Host "DataRoot:    $DataRoot"
@@ -65,12 +80,11 @@ Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Diagnostics\
 Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Diagnostics\Microsoft.Extensions.Hosting.WindowsServices.dll") -Label "Windows Service runtime dependency"
 Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Diagnostics\Debug\Microsoft.Extensions.Hosting.WindowsServices.dll") -Label "Windows Service Debug dependency"
 Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Diagnostics\Release\Microsoft.Extensions.Hosting.WindowsServices.dll") -Label "Windows Service Release dependency"
-Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll") -Label "Data library"
-Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Data\Iwesun.Data.dll") -Label "RecordStore data foundation library"
+Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll") -Label "Runtime Data and RecordStore V2 library"
 Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Networks\Iwesun.Networks.dll") -Label "Networks library"
 Assert-PathExists -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.dll") -Label "WebView2 interface library"
 $diagnosticsDll = Join-Path $InstallRoot "lib\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.dll"
-$recordStoreDll = Join-Path $InstallRoot "lib\Iwesun.Data\Iwesun.Data.dll"
+$recordStoreDll = Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll"
 $networksDll = Join-Path $InstallRoot "lib\Iwesun.Networks\Iwesun.Networks.dll"
 $webView2Dll = Join-Path $InstallRoot "lib\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.dll"
 $remoteConsoleExe = Join-Path $InstallRoot "bin\Iwesun.Runtime.RemoteConsole\Iwesun.Runtime.RemoteConsole.exe"
@@ -88,7 +102,12 @@ if ($networksVersionInfo.FileVersion -ne "1.2.0.0") {
 }
 Write-Host "[OK] Networks release FileVersion => $($networksVersionInfo.FileVersion)"
 $recordStoreHash = (Get-FileHash -LiteralPath $recordStoreDll -Algorithm SHA256).Hash
-$recordStoreCopies = @(Get-ChildItem -LiteralPath $InstallRoot -Recurse -Filter "Iwesun.Data.dll" -File)
+$legacyDataCopies = @(Get-ChildItem -LiteralPath $InstallRoot -Recurse -Filter "Iwesun.Data.dll" -File)
+if ($legacyDataCopies.Count -ne 0) {
+    throw "Legacy Iwesun.Data.dll must not be present in the Runtime payload: $($legacyDataCopies.FullName -join ', ')"
+}
+Write-Host "[OK] Legacy Iwesun.Data.dll is absent"
+$recordStoreCopies = @(Get-ChildItem -LiteralPath $InstallRoot -Recurse -Filter "Iwesun.Runtime.Data.dll" -File)
 foreach ($copy in $recordStoreCopies) {
     $copyHash = (Get-FileHash -LiteralPath $copy.FullName -Algorithm SHA256).Hash
     if ($copyHash -ne $recordStoreHash) {
@@ -117,23 +136,23 @@ foreach ($requiredText in @("file.upload", "file.download", "Copy-Item")) {
 Write-Host "[OK] RemoteConsole file capability boundary documented"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\RUNTIME_ROOT_DATA_STRUCTURE.md") -Label "Runtime root data structure guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\DATA_PROJECT_RUNTIME_ROOT.md") -Label "Data project technical guide"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\RECORD_STORE_MIGRATION_PLAN.md") -Label "Runtime RecordStore migration plan"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\02-api\DLIST_TO_RECORD_STORE_V2_MIGRATION.md") -Label "DList to RecordStore V2 migration guide"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\02-api\RECORD_STORE_1_0_25_TO_V2_MIGRATION.md") -Label "RecordStore 1.0.25 to V2 migration guide"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\02-api\RECORD_STORE_V2_PUBLIC_API.md") -Label "RecordStore V2 API guide"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\01-design\RECORD_STORE_DESIGN_V2.md") -Label "RecordStore V2 design"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\01-design\RECORD_STORE_V2_EMPTY_BUCKET_LIFECYCLE_REVIEW_2026-07-18.md") -Label "RecordStore V2 empty bucket lifecycle review"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\IWESUN_DATA_RELEASE_NOTES.md") -Label "Iwesun.Data release notes"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\RELEASE_STATUS.md") -Label "Iwesun.Data release status"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\03-reference\RECORD_STORE_V2_COMPLETE_SAFETY_AND_PERFORMANCE_REPORT_2026-07-18.md") -Label "RecordStore V2 verification report"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\README.md") -Label "Iwesun.Data documentation index"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\02-api\RECORD_STORE_V2_PUBLIC_API.md") -Label "RecordStore V2 API guide"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\01-design\RECORD_STORE_DESIGN_V2.md") -Label "RecordStore V2 design"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\01-design\RECORD_STORE_V2_EMPTY_BUCKET_LIFECYCLE_REVIEW_2026-07-18.md") -Label "RecordStore V2 empty bucket lifecycle review"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\RUNTIME_DATA_RELEASE_NOTES.md") -Label "Runtime Data release notes"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\RELEASE_STATUS.md") -Label "Runtime Data release status"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\03-reference\RECORD_STORE_V2_COMPLETE_SAFETY_AND_PERFORMANCE_REPORT_2026-07-18.md") -Label "RecordStore V2 verification report"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\README.md") -Label "Runtime Data documentation index"
+Assert-PathAbsent -Path (Join-Path $InstallRoot "docs\RECORD_STORE_MIGRATION_PLAN.md") -Label "retired Runtime migration plan"
+Assert-PathAbsent -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\02-api\DLIST_TO_RECORD_STORE_V2_MIGRATION.md") -Label "retired DList migration guide"
+Assert-PathAbsent -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\02-api\RECORD_STORE_1_0_25_TO_V2_MIGRATION.md") -Label "retired RecordStore V1 migration guide"
+Assert-PathAbsent -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\01-design\RECORD_STORE_V2_COMPATIBILITY_AUDIT.md") -Label "retired compatibility audit"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Networks\README.md") -Label "Iwesun.Networks documentation index"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Networks\docs\RELEASE_STATUS.md") -Label "Iwesun.Networks release status"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Networks\docs\03-reference\IWESUN_NETWORKS_1_2_0_RELEASE_NOTES.md") -Label "Iwesun.Networks 1.2.0 release notes"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Networks\docs\02-endpoints\TRACKED_REQUEST_REPLY.md") -Label "Iwesun.Networks tracked endpoint guide"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\IWESUN_DATA_RELEASE_NOTES.md") -Label "Iwesun.Data preserved release notes"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\02-api\RECORD_STORE_V2_PUBLIC_API.md") -Label "Iwesun.Data preserved V2 API"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Data\docs\02-api\DLIST_TO_RECORD_STORE_V2_MIGRATION.md") -Label "Iwesun.Data preserved DList migration"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\RUNTIME_DATA_RELEASE_NOTES.md") -Label "Runtime Data preserved release notes"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\Iwesun.Runtime.Data\docs\02-api\RECORD_STORE_V2_PUBLIC_API.md") -Label "Runtime Data preserved V2 API"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_JSON_PIPE_CLI_PLAN.md") -Label "WebView2 pipe plan"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEB_RUNTIME_CONTROL.md") -Label "WebView2 control guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_RUNTIME_CAPABILITIES.md") -Label "WebView2 capability status"
@@ -141,6 +160,8 @@ Assert-PathExists -Path (Join-Path $InstallRoot "docs\SCRIPT_REFLECTION_PLAN.md"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_RELEASE_STATUS.md") -Label "WebView2 release status"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\DOM_SNAPSHOT_API.md") -Label "WebView2 DOM snapshot API guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\DATA_STREAM_MONITOR_RECORDER.md") -Label "WebView2 data stream recorder guide"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\FULL_PAGE_EVIDENCE_API.md") -Label "WebView2 full page evidence API guide"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_1.0.30_EVIDENCE_RELEASE.md") -Label "WebView2 1.0.30 evidence release notes"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_1.0.26_UPGRADE.md") -Label "WebView2 1.0.26 upgrade guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\WEBVIEW2_SAMPLE_HOST.md") -Label "WebView2 sample host guide"
 $publishedDocs = @(Get-ChildItem -LiteralPath (Join-Path $InstallRoot "docs") -Filter "*.md" -File)
@@ -226,13 +247,13 @@ try {
         }
         Write-Host "[OK] Installed SampleHost $configuration DLL hash"
 
-		$sampleDataDll = Get-ChildItem -LiteralPath (Join-Path $outputRoot "bin") -Recurse -Filter "Iwesun.Data.dll" -File | Select-Object -First 1
+		$sampleDataDll = Get-ChildItem -LiteralPath (Join-Path $outputRoot "bin") -Recurse -Filter "Iwesun.Runtime.Data.dll" -File | Select-Object -First 1
 		if ($null -eq $sampleDataDll) {
-			throw "Installed SampleHost $configuration output did not contain Iwesun.Data.dll."
+			throw "Installed SampleHost $configuration output did not contain Iwesun.Runtime.Data.dll."
 		}
-		$installedDataDll = Join-Path $InstallRoot "lib\Iwesun.Data\Iwesun.Data.dll"
+		$installedDataDll = Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll"
 		if ((Get-FileHash -LiteralPath $sampleDataDll.FullName -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $installedDataDll -Algorithm SHA256).Hash) {
-			throw "Installed SampleHost $configuration output Iwesun.Data.dll hash does not match the installed RecordStore library."
+			throw "Installed SampleHost $configuration output Iwesun.Runtime.Data.dll hash does not match the installed RecordStore library."
 		}
 		Write-Host "[OK] Installed SampleHost $configuration RecordStore DLL hash"
     }

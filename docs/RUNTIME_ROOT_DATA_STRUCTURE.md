@@ -8,10 +8,9 @@
 ## 实现状态（2026-07-17）
 
 - 已将基础条目包装 `struct` 下沉到 Data 公共项目：`Iwesun.Runtime.Data/RuntimeRootEntryEnvelope`（`Id`、主键、辅助键、时间戳、`Payload`）。
-- Runtime 私有 `RuntimeDList<T>` 已移除；主存储升级为独立 `Iwesun.Data/RecordStore<TKey,TValue>`。
+- 主存储统一为 `Iwesun.Runtime.Data.RecordStoreV2<TValue,TPrimaryKey>`。
 - 已新增表容器：`RuntimeRootTable`（基于 RecordStore 存储，使用 `StoreRecordId` 精确更新和废止，提供主键/辅助键索引访问）。
-- 状态历史和文件路径登记同步迁移到 RecordStore；不保留 DList 的节点、隐式删除和原地排序语义。
-  RecordStore 1.0.25 虽提供显式 AutoMerge，RuntimeRoot 当前不启用，仍由容器业务逻辑归一记录。
+- 状态历史和文件路径登记使用 RecordStoreV2；RuntimeRoot 当前不启用 AutoMerge，仍由容器业务逻辑归一记录。
 - 已新增根容器：`RuntimeRootContainer`（按表名统一管理）。
 - 已新增可插拔辅助索引接口：`IRuntimeRootAuxIndex`。
 - 已新增默认辅助索引：`RuntimeRootSortedPrimaryKeyIndex`（主键排序 + 二分前缀查询）。

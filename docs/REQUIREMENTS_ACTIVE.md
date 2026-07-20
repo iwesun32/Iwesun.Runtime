@@ -877,3 +877,71 @@
 - [x] Networks、Data 和 Runtime 的 Debug/Release 构建、测试及 Runtime 完整功能场景通过。
 - [x] 全新 1.0.29 staging、自检、安装版 SampleHost 双配置验证和 MSI Rebuild 完成。
 - [x] 最终交付答复记录 MSI 大小、SHA-256、程序集版本和 ProductVersion；不写入 MSI 内文档，避免自引用。
+
+# 2026-07-20 WebView2 完整页面与 HTTP 输入证据基础 API
+
+- DOM 快照、完整页面证据和 HTTP 输入数据落盘能力统一归属 `Iwesun.Runtime.WebView2`；业务宿主只负责传入已初始化的 `CoreWebView2`、输出目录和受限采集选项，不得重复实现 DOM/CDP/网络正文抓取器。
+- 公共完整页面证据必须覆盖：DOM 真快照、全部 element attributes、primitive/可安全读取属性、完整计算样式、伪元素、开放 Shadow DOM、可访问 iframe、HTML、CDP DOM、DOMSnapshot、MHTML、CSS 静态结构、完整脚本源码、事件监听接口、外部请求/响应元数据和资源到 DOM 容器映射。
+- 公共 HTTP 输入证据会话必须在导航前启动，记录所有请求/响应元数据；对配置命中的 JSON、文本、Markdown、HTML、XML、PDF 和 Office 文档保存完整响应正文、长度与 SHA-256，并保留 CDP request initiator、postData 和调用栈原始事件。
+- HTTP 正文保存失败或等待未完成时不得返回伪成功；输出清单必须明确失败并允许宿主中止主快照完成标记。
+- Cookie、Authorization、Set-Cookie、Token、Secret、API Key 与 WebSocket Key 默认不得写入清单；敏感正文只能进入调用方明确指定的本机证据目录。
+- 公共 API 不得包含豆包 XPath、页面组、快捷键、主/辅助版本、生成 XAML 或业务标题语义；这些编排继续由业务项目完成。
+- 公共库不得暴露任意 JavaScript 或任意 CDP 命令入口；内部只执行固定、可审计的证据脚本和固定 CDP 方法。
+- DoubaoUIClone 必须删除本地完整 DOM/HTTP 抓取实现，改为直接调用 Runtime 公共证据 API；页面组、主/辅助关系和 XAML 生成仍保留在业务项目。
+- 基础库源码变更必须在 `Iwesun.Runtime.WebView2/docs` 补齐发布状态和独立发布说明，并挂载到 Runtime 主设计能力清单、源码文档索引、安装包发布索引与发布说明；未生成新安装包时必须明确标注“源码已就绪、安装包未重建”，不得沿用旧版本已发布结论。
+- 外部文档、JSON 和其他 HTTP 输入正文采用公共资源池管理，不按主快照重复保存：正文按 SHA-256 去重，响应形成稳定资源记录；每个主/辅助快照保存正向引用，公共资源索引保存引用该资源的快照 ID。主快照“完整证据”表示引用集合完整，不表示复制公共正文。
+- fetch/XHR 等解释器输入必须在导航前安装固定用途的请求—DOM 应用跟踪器：记录请求 URL、调用栈摘要、完成状态，以及响应完成后关联时间窗内发生变化的呈现容器路径；关联属于可审计的运行时因果线索，不得伪装为绝对业务语义。
+- 请求—DOM 应用跟踪器只能由公共固定 API 安装和导出，不得向调用方暴露任意 JavaScript/CDP 文本；记录数量、变更数量和字符串长度必须有上限，避免长期页面运行造成无界内存增长。
+- 请求与呈现容器无法稳定关联时不得猜测或阻断快照：输出必须明确标记 `unknown` 并说明等待后续文档/JavaScript 控件解释器或人工指定；存在时间邻近容器时也只能标记 `candidate`，不得写成确定映射。
+- `unknown` 记录必须进入独立的下一阶段用户指定任务清单；清单只保存请求身份、待处理状态和空容器路径，后续宿主由 C# 加载、校验并让用户选择控件，XAML 不直接读取或修改该文件。
+- 所有连续访问 `CoreWebView2` 的公共证据 API 必须保留调用方 STA/UI `SynchronizationContext`；不得使用 `ConfigureAwait(false)` 把后续 WebView2 调用切到线程池。真实宿主启动必须验证导航成功而不是只验证编译。
+
+## 实施状态
+
+- [x] 实现 `CoreWebView2` 公共 HTTP 证据会话及安全清单/正文输出。
+- [x] 实现公共完整页面证据包采集器及固定 DOM/CSS/脚本/事件/资源容器 API。
+- [x] 更新 WebView2 权威文档和 SampleHost 接入说明。
+- [x] 补齐 WebView2 原项目发布文档，并挂载主设计清单、文档索引、安装发布索引和 Release Notes。
+- [x] DoubaoUIClone 完成公共 API 迁移并删除重复抓取实现。
+- [x] Runtime 与 DoubaoUIClone Debug/Release、WinUI RID 和现有测试全部通过，0 警告、0 错误。
+- [x] 实现共享 HTTP 输入资源池、正文哈希去重、快照正向引用和资源反向引用，并迁移 Doubao 抓取调用。
+- [x] 实现 fetch/XHR 申请模块与响应后 DOM 呈现容器的固定跟踪、`candidate`/`unknown` 语义、用户指定任务清单、证据导出、宿主接线和功能验证。
+- [ ] 修复完整页面证据与请求—DOM 跟踪器的 WebView2 UI 线程保持，并通过真实 RawCapture 导航验证。
+
+## 2026-07-20 HTTP 公共资源库与页面引用修订
+
+- HTTP 文档、JSON 及其他允许保存的响应从 WebView2 宿主启动时开始持续写入独立公共资源库；快照不得承担首次保存公共正文的职责。
+- 公共资源记录与正文按稳定记录 ID/SHA-256 去重；资源可以暂时没有任何页面引用，不能因为尚未抓取快照而丢失。
+- 主/辅助快照只从当前页面的 document URL、Performance/DOM 资源 URL、fetch/XHR 跟踪记录中判定所引用的公共资源，并写入正向引用；公共目录同步维护反向引用。
+- 页面引用必须同时输出资源到呈现容器的关联：DOM 直接资源属性为 `linked`，时间窗内请求—DOM 变化为 `candidate`，无法判定统一写 `unknown`。
+- `unknown` 不得导致快照失败；必须进入待用户指定清单，容器路径保持空值，后续由 C# 加载和校验。
+- HTTP 单项正文读取失败作为公共资源缺失信息记录，不得把已经成功的 DOM/UI 快照整体判为失败。
+
+### 实施状态
+
+- [x] 公共 HTTP 会话启动即持久化资源，快照仅建立页面引用。
+- [x] 页面资源引用和容器映射使用 `linked / candidate / unknown` 契约。
+- [x] Runtime 文档、发布说明、DoubaoUIClone 接线和测试同步完成。
+
+### 可视化调试状态
+
+- 公共 HTTP 会话提供只读内存状态快照，至少包含观察响应数、已完成记录数、正文数/字节数、失败数、活动复制数、网络事件数、公共库路径和最近错误。
+- 状态读取不得访问 WebView2 COM 对象、不得读取正文或敏感头，允许 WPF/WinUI 宿主定时展示。
+- RawCapture 正常界面不显示内部调试面板；只保留用户需要的页面、采集进度和完成/失败状态。HTTP 详细状态供 CLI、后台诊断和测试读取。
+
+实施状态：Runtime 只读状态 API已完成；RawCapture 内部调试面板已按用户要求移除，详细数据仅供后台诊断。
+
+# 2026-07-20 Runtime Data 单程序集强制升级
+
+- Runtime 数据能力只保留一个活动程序集和命名空间：`Iwesun.Runtime.Data.dll` /
+  `Iwesun.Runtime.Data`；不得继续构建、发布或引用 `Iwesun.Data.dll` / `Iwesun.Data`。
+- `RecordStoreV2<TValue,TPrimaryKey>` 及其 Definition、索引、约束、Clone、View、发布、序列化和访问 Gate
+  源码迁入 `Iwesun.Runtime.Data`，并晋升为唯一 RecordStore 实现；不得提供旧命名空间类型转发或兼容别名。
+- DList 已从活动源码删除；`RecordStore<TKey,TValue>` V1 及其旧 Schema/Publication API 必须移出活动编译，
+  进入归档和 AI 忽略边界，不得继续通过项目默认 Compile 项回流。
+- Runtime Diagnostics、WebView2、CLI、SampleHost、测试、Release、Setup 和安装自检必须删除
+  `Iwesun.Data` 项目/程序集依赖，只引用 `Iwesun.Runtime.Data`。
+- AIGateway、DDNS Snap、Aether 等源码及安装引用消费者必须一次性改用 `Iwesun.Runtime.Data`；旧引用必须
+  产生明确编译错误，不允许静默回退到旧 DLL。
+- 强制升级验收包含 Runtime Data V2 测试、Runtime Debug/Release 与功能场景，以及三个消费者的
+  Debug/Release 构建和相关测试；不得覆盖各仓库已有未提交业务变更。

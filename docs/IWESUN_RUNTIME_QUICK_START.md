@@ -52,15 +52,12 @@ C:\Program Files\Iwesun\Runtime\samples\templates\RuntimeHost.Startup.Minimal.Te
   <Reference Include="Iwesun.Runtime.Data">
     <HintPath>$(RuntimeRoot)\lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll</HintPath>
   </Reference>
-  <Reference Include="Iwesun.Data">
-    <HintPath>$(RuntimeRoot)\lib\Iwesun.Data\Iwesun.Data.dll</HintPath>
-  </Reference>
 </ItemGroup>
 ```
 
-`Iwesun.Data.dll` 是 Diagnostics 当前使用的RecordStore V2基础依赖，不能只复制Diagnostics DLL。
-完整资料安装在`docs\Iwesun.Data\`；首次接入至少阅读README、V2对外API、DList/V1迁移指南和
-发布状态。根`docs`下同时保留这些常用入口。V2仍是隔离类型，不得因安装包携带而改名晋升。
+`Iwesun.Runtime.Data.dll` 同时提供 Runtime 数据契约和 RecordStore V2；不得再引用 `Iwesun.Data.dll`。
+完整资料安装在`docs\Iwesun.Runtime.Data\`；首次接入至少阅读README、V2对外API和发布状态。
+根`docs`下同时保留这些常用入口。
 
 然后删除宿主项目旧的 `bin`、`obj`、`publish`，防止继续加载旧副本。
 
@@ -285,7 +282,7 @@ iwrt --pipe=YourProduct.RuntimeDiagnostics pipe.list
 迁移完成必须全部满足：
 
 - [ ] 新 `Program.cs` 使用 `Start`、`Activate` 和协调退出流程；
-- [ ] Debug/Release 分别引用对应 Diagnostics DLL，并同时引用当前 `Iwesun.Runtime.Data.dll` 与 `Iwesun.Data.dll`，没有宿主私有旧副本；
+- [ ] Debug/Release 分别引用对应 Diagnostics DLL，并只引用当前 `Iwesun.Runtime.Data.dll`，不存在 `Iwesun.Data.dll` 或宿主私有旧副本；
 - [ ] eligible 的 Process/Thread/轻量 Task 及字段、集合、返回类型已迁移；
 - [ ] 普通 async、`Task<T>`、UI/STA/COM/message-pump 场景未被误替换；
 - [ ] 诊断、监视、断点和反射白名单符合安全规则，默认静默；

@@ -140,7 +140,7 @@ static class FunctionalParentRunner
             "pipe-registry", "tree-process", "cli", "cli-context-shell", "cli-transport-failure",
             "file-output-filter", "file-registry", "file-output-e2e", "switchboard-config",
             "file-output-format-variants", "data-stream-recorder", "sample-host-random-state", "sample-host-cli-full",
-            "web-runtime-script",
+            "web-runtime-script", "shared-http-evidence", "request-dom-application",
 #if DEBUG
             "tree", "numeric-breakpoint", "cli-numeric-breakpoint", "breakpoint-safety", "bp-process-cli",
 #endif
@@ -354,6 +354,8 @@ static class FunctionalChildRunner
                 "sample-host-cli-full" => SampleHostCliFullScenario.RunAsync(),
 				"web-runtime-script" => WebRuntimeScriptScenario.RunAsync(),
 				"data-stream-recorder" => DataStreamRecorderScenario.RunAsync(),
+				"shared-http-evidence" => SharedHttpEvidenceStoreScenario.RunAsync(),
+				"request-dom-application" => RequestDomApplicationTrackerScenario.RunAsync(),
 				"probe" => RunProbeScenario(provider),
                 _ => Task.FromResult(FunctionalScenarioResult.Fail(options.Scenario, Array.Empty<string>(), new[] { $"Unknown scenario: {options.Scenario}" }))
             });

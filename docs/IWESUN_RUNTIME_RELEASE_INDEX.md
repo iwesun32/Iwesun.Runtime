@@ -14,12 +14,10 @@
 
 ## RecordStore V2
 
-- [公共 API](Iwesun.Data/docs/02-api/RECORD_STORE_V2_PUBLIC_API.md)
-- [DList 迁移指南](Iwesun.Data/docs/02-api/DLIST_TO_RECORD_STORE_V2_MIGRATION.md)
-- [1.0.25 迁移指南](Iwesun.Data/docs/02-api/RECORD_STORE_1_0_25_TO_V2_MIGRATION.md)
-- [统一设计](Iwesun.Data/docs/01-design/RECORD_STORE_DESIGN_V2.md)
-- [发布状态](Iwesun.Data/docs/RELEASE_STATUS.md)
-- [安全与性能报告](Iwesun.Data/docs/03-reference/RECORD_STORE_V2_COMPLETE_SAFETY_AND_PERFORMANCE_REPORT_2026-07-18.md)
+- [公共 API](Iwesun.Runtime.Data/docs/02-api/RECORD_STORE_V2_PUBLIC_API.md)
+- [统一设计](Iwesun.Runtime.Data/docs/01-design/RECORD_STORE_DESIGN_V2.md)
+- [发布状态](Iwesun.Runtime.Data/docs/RELEASE_STATUS.md)
+- [安全与性能报告](Iwesun.Runtime.Data/docs/03-reference/RECORD_STORE_V2_COMPLETE_SAFETY_AND_PERFORMANCE_REPORT_2026-07-18.md)
 
 > V2 当前仍是隔离开发类型；本安装包携带当前实现和验证资料，不表示替换正式 1.0.25 API。
 
@@ -37,6 +35,9 @@
 - [WebView2 控制手册](WEB_RUNTIME_CONTROL.md)
 - [DOM 真快照 API](DOM_SNAPSHOT_API.md)
 - [数据流记录器](DATA_STREAM_MONITOR_RECORDER.md)
+- [完整页面与 HTTP 输入证据 API](FULL_PAGE_EVIDENCE_API.md)
+- [WebView2 1.0.30 证据 API 源码候选说明](WEBVIEW2_1.0.30_EVIDENCE_RELEASE.md)
+- [WebView2 发布状态](WEBVIEW2_RELEASE_STATUS.md)
 - [WebView2 SampleHost](WEBVIEW2_SAMPLE_HOST.md)
 - [Runtime 接入技能](../skills/iwesun-runtime-integration/SKILL.md)
 - [示例与模板](../samples/)

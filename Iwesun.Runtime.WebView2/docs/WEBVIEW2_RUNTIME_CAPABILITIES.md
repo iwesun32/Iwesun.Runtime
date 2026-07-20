@@ -81,6 +81,14 @@ WebView2 运行时控制面属于 Service 正式功能。Tester、外部脚本�
 
 ### 2.3 DOM 与 XPath
 
+#### 完整页面与 HTTP 输入证据（公共 C# API）
+
+`WebRuntimeNetworkEvidenceSession` 和 `WebRuntimePageEvidenceCapture` 提供面向已初始化 `CoreWebView2` 的固定证据面。前者必须在导航前启动，后者按 checkpoint 聚合 DOM 真快照、计算样式、CSS、脚本、事件、资源容器、CDP DOM、MHTML 和结构化 HTTP 正文。
+
+`WebRuntimeSharedHttpEvidenceStore` 提供公共外部数据管理：正文按 SHA-256 去重，响应生成稳定记录，消费快照写正向引用，公共 catalog 写反向引用。业务 UI 主锚点由 DOM 制作流程确定，不由网络批次确定。
+
+该能力不属于通用 `eval` 或 CDP 转发：调用方不能传入脚本或协议方法名，也不包含页面组、快捷键、XAML 和站点业务语义。权威契约见 [FULL_PAGE_EVIDENCE_API.md](FULL_PAGE_EVIDENCE_API.md)。
+
 职责：按 DOM/XPath 读取元素、展开节点树、定位按钮和文档块。
 
 现有动作：

@@ -12,16 +12,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtim
 
 每次发布必须提供新的 `ProductVersion`。所有 DLL、CLI 配置、文档、技能、样例和脚本均从当前源码重新收集，不复用旧 staging 或旧 MSI。
 
-唯一入口还会先执行 Iwesun.Networks 与 Iwesun.Data 的 Debug/Release 测试，以及 Runtime Debug/Release
+唯一入口还会先执行 Iwesun.Networks 与 Runtime Data 的 Debug/Release 测试，以及 Runtime Debug/Release
 完整功能场景。任一上游基础库或 Runtime 场景失败都阻止 staging 和 MSI 生成。
 
-Iwesun.Data文档以两种布局发布：根`docs`保留V2设计、API、两份迁移指南、发布状态和复验报告等常用
-入口；`docs/Iwesun.Data/`保存Data根README，`docs/Iwesun.Data/docs/`保存完整文档目录结构和可用
+RecordStore文档以两种布局发布：根`docs`保留V2设计、API、两份迁移指南、发布状态和复验报告等常用
+入口；`docs/Iwesun.Runtime.Data/`保存Data根README，`docs/Iwesun.Runtime.Data/docs/`保存完整 V2 文档目录结构和可用
 相对链接。安装验证必须同时检查两个入口，并拒绝旧的`RECORD_STORE_API.md`、
 `RECORD_STORE_GUIDE.md`等已删除入口重新混入发布清单。
 
-`Iwesun.Data.dll`的唯一库入口是`app/lib/Iwesun.Data/Iwesun.Data.dll`。Diagnostics Debug/Release和
-WebView2库目录不得保留传递发布产生的第二份Data DLL；应用程序bin目录可保留运行所需的本地副本，
+`Iwesun.Runtime.Data.dll`的唯一库入口是`app/lib/Iwesun.Runtime.Data/Iwesun.Runtime.Data.dll`。
+发布树不得出现`Iwesun.Data.dll`。Diagnostics Debug/Release和 WebView2库目录不得保留传递发布产生的第二份Data DLL；应用程序bin目录可保留运行所需的本地副本，
 但其SHA-256必须与唯一库入口一致。
 
 `Iwesun.Runtime.WebView2` 是全量 Runtime 发布的固定组成部分。每次执行统一打包入口时必须从当前源码重新构建 WebView2 DLL，同步复制 WebView2 控制手册、能力状态和 JSON 管道/CLI 规划文档，并验证 WebView2 DLL 的 `FileVersion` 与本次 Diagnostics DLL 完全一致。即使某次没有修改 WebView2 源码，也不得复用上一次 staging 中的旧 DLL；发布结果必须让用户能够从安装目录判断本次 WebView2 能力状态。
@@ -68,7 +68,6 @@ dotnet build Iwesun.Runtime.Setup\Iwesun.Runtime.Setup.wixproj -c Release
 
 - `Iwesun.Runtime.Diagnostics.dll`
 - `Iwesun.Runtime.Data.dll`
-- `Iwesun.Data.dll`（RecordStore 数据基础库）
 - `Iwesun.Networks.dll`（独立版本 1.2.0 的网络基础库）
 - `Iwesun.Runtime.WebView2.dll`
 - `WEBVIEW2_RELEASE_STATUS.md`、`WEB_RUNTIME_CONTROL.md`、`WEBVIEW2_RUNTIME_CAPABILITIES.md` 和 `WEBVIEW2_JSON_PIPE_CLI_PLAN.md`，用于区分本次发布状态、控制接口、已实现能力和后续边界。
@@ -113,7 +112,6 @@ artifacts/release/Iwesun.Runtime/
 ├─ lib/
 │  ├─ Iwesun.Runtime.Diagnostics/
 │  ├─ Iwesun.Runtime.Data/
-│  ├─ Iwesun.Data/
 │  ├─ Iwesun.Networks/
 │  └─ Iwesun.Runtime.WebView2/
 ├─ config/

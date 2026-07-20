@@ -1,7 +1,7 @@
 # Iwesun Runtime 完整设计文档
 
-> **状态**: CURRENT | **最后更新**: 2026-07-11  
-> **源码参考**: `Iwesun.Runtime.Diagnostics/`, `Iwesun.Runtime.Cli/`, `Iwesun.Runtime.Data/`  
+> **状态**: CURRENT | **最后更新**: 2026-07-20
+> **源码参考**: `Iwesun.Runtime.Diagnostics/`, `Iwesun.Runtime.Cli/`, `Iwesun.Runtime.Data/`, `Iwesun.Runtime.WebView2/`
 > **定位**: 本文是整个 Runtime 框架的权威设计入口，其他文档均为专题展开。
 
 ---
@@ -50,10 +50,23 @@ Iwesun.Runtime.Diagnostics
 │   ├── E1. RuntimeStateManager（生命周期状态机）
 │   └── E2. IRManagedState（业务细粒度状态扩展）
 │
-└── F. 管道服务（HubMonitor）
-	├── F1. RuntimeDiagnosticHub（命名管道服务端）
-	└── F2. ReflectionRuntimeDiagnosticTarget（反射目标访问）
+├── F. 管道服务（HubMonitor）
+│   ├── F1. RuntimeDiagnosticHub（命名管道服务端）
+│   └── F2. ReflectionRuntimeDiagnosticTarget（反射目标访问）
+│
+└── G. WebView2 运行时证据（WebRuntimeEvidence）
+    ├── G1. WebRuntimeDomSnapshot（可恢复 DOM 真快照）
+    ├── G2. WebRuntimeNetworkEvidenceSession（导航前 HTTP 输入记录）
+    └── G3. WebRuntimePageEvidenceCapture（DOM/CSS/脚本/事件/CDP/MHTML 聚合证据）
 ```
+
+### 2.3 WebView2 证据基础层
+
+`Iwesun.Runtime.WebView2` 负责站点无关的浏览器运行时事实采集。HTTP 会话在导航前绑定现有 `CoreWebView2`；页面采集器随后按 checkpoint 输出完整页面证据包。宿主只提供浏览器、`IWebRuntimeScriptSession`、本机输出目录和受限选项，不复制事件订阅、固定脚本或 CDP 调用。
+
+外部文档、JSON 和其他 HTTP 输入采用公共内容寻址管理：正文按 SHA-256 去重，响应记录具有稳定 ID；消费快照保存正向引用，公共目录保存反向引用。页面/UI 主锚点由业务宿主依据 DOM 制作流程决定，网络批次不构成新 UI 锚点。
+
+公开面不接收任意 JavaScript 或 CDP 方法名，不包含豆包 XPath、页面版本、快捷键、XAML 或业务正文解释。API、输出文件和失败语义统一见 [FULL_PAGE_EVIDENCE_API.md](../Iwesun.Runtime.WebView2/docs/FULL_PAGE_EVIDENCE_API.md)，源码候选发布边界见 [WEBVIEW2_1.0.30_EVIDENCE_RELEASE.md](../Iwesun.Runtime.WebView2/docs/WEBVIEW2_1.0.30_EVIDENCE_RELEASE.md)。
 
 ### 2.2 功能基础类对照
 

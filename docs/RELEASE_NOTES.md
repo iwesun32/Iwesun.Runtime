@@ -1,5 +1,18 @@
 # Iwesun Runtime 发布更新记录
 
+## 1.0.30（2026-07-20）
+
+- Data 强制收口为单程序集：RecordStore V2 源码和公共基础类型并入 `Iwesun.Runtime.Data`；
+  `Iwesun.Data.dll`、DList 和 RecordStore V1 从活动工程与发布清单移除，不提供兼容别名。
+- AIGateway、DDNS Snap 与 Aether 的源码引用及命名空间统一升级为 `Iwesun.Runtime.Data`，遗漏引用
+  以编译错误暴露。
+- WebView2 新增 `WebRuntimeNetworkEvidenceSession` 和 `WebRuntimePageEvidenceCapture`，统一完整 DOM、计算样式、CSS、脚本、事件、CDP、MHTML、请求/响应元数据及结构化 HTTP 正文证据。
+- 默认过滤 Cookie、Authorization、Token、Secret、API Key 等敏感头；正文保存失败、超限或等待超时不返回伪成功。
+- DoubaoUIClone 已删除本地完整页面和 HTTP 抓取实现，改为调用 Runtime 公共 API；业务项目继续负责快捷键、页面版本、XAML 和 WinUI。
+- 1.0.30 staging 与 MSI 已从当前源码重建并通过安装树自检；最终文件哈希随发布交付记录提供。
+- 发布树明确拒绝 `Iwesun.Data.dll`，并验证全部 `Iwesun.Runtime.Data.dll` 副本版本与哈希一致。
+- 外部文档/JSON 改为共享内容寻址资源池：正文只保存一次，主/辅助快照通过稳定资源 ID 引用，公共索引反向记录所有消费快照。
+
 ## 1.0.29（2026-07-19）
 
 - 全量发布新增 `Iwesun.Networks` 1.2.0：从 Networks 当前源码构建程序集，并携带完整文档、1.2.0

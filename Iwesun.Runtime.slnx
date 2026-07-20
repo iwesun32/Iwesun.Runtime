@@ -12,9 +12,6 @@
   <Project Path="Iwesun.Runtime.Diagnostics/Iwesun.Runtime.Diagnostics.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
-  <Project Path="../Data/Iwesun.Data/Iwesun.Data.csproj">
-    <Platform Solution="*|x64" Project="x64" />
-  </Project>
   <Project Path="Iwesun.Runtime.RemoteConsole.Protocol/Iwesun.Runtime.RemoteConsole.Protocol.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>

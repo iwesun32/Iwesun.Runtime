@@ -1,6 +1,17 @@
-# Iwesun.Runtime.WebView2 1.0.29 统一发布状态
+# Iwesun.Runtime.WebView2 发布状态
 
-> 本文是安装包中 WebView2 当前发布状态的权威入口。数据流记录器在 1.0.26 功能线完成，当前随 Runtime 1.0.29 从源码统一重建。
+> 当前安装版仍为 Runtime 1.0.29。2026-07-20 已形成 1.0.30 页面与 HTTP 输入证据 API 源码候选，但 staging 与 MSI 尚未重建。候选说明见 [WEBVIEW2_1.0.30_EVIDENCE_RELEASE.md](WEBVIEW2_1.0.30_EVIDENCE_RELEASE.md)。
+
+## 1.0.30 源码候选（未进入安装包）
+
+- 新增 `WebRuntimeNetworkEvidenceSession`，在导航前记录全部请求/响应元数据和固定 CDP Network 事件；
+- 对 JSON、文本、Markdown、HTML、XML、PDF 和 Office 响应保存正文、长度和 SHA-256；
+- 新增 `WebRuntimePageEvidenceCapture`，统一生成 DOM 真快照、完整计算样式、CSS、脚本、事件、资源容器、CDP DOM、DOMSnapshot 和 MHTML；
+- 敏感头默认清除，正文失败或等待超时明确失败；
+- DoubaoUIClone 已迁移为公共 API 消费方并删除重复抓取器；
+- 外部文档/JSON 采用 `WebRuntimeSharedHttpEvidenceStore` 公共资源池，正文按 SHA-256 去重，快照与资源维护双向引用；
+- 新增导航前固定安装的 `WebRuntimeResourceApplicationTracker`，用有界时间窗口记录 fetch/XHR 申请模块与后续 DOM 呈现容器关联；
+- 当前只宣称源码候选，1.0.29 安装包中不包含这些 API 和新文档。
 
 ## 1.0.26 功能线（已纳入 1.0.29）
 
@@ -61,4 +72,6 @@
 6. DOM_SNAPSHOT_API.md：完整 DOM 快照；
 7. DATA_STREAM_MONITOR_RECORDER.md：数据流记录器 API、JSON 和 CLI；
 8. WEBVIEW2_1.0.26_UPGRADE.md：升级、配置兼容与回退；
-9. 安全审计报告、答复报告、完整整改方案：历史问题、设计依据及后续测试清单。
+9. FULL_PAGE_EVIDENCE_API.md：完整页面与 HTTP 输入证据公共 API；
+10. WEBVIEW2_1.0.30_EVIDENCE_RELEASE.md：源码候选发布范围、兼容边界和正式发布清单；
+11. 安全审计报告、答复报告、完整整改方案：历史问题、设计依据及后续测试清单。

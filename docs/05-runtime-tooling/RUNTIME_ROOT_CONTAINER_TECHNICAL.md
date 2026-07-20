@@ -6,7 +6,7 @@
 
 ## 1. 主存储
 
-`RuntimeRootTable` 使用 `RecordStore<string,RuntimeRootEntryEnvelope>`：
+`RuntimeRootTable` 使用 `RecordStoreV2<RuntimeRootEntryEnvelope,string>`：
 
 - 分组键为 `Id`；
 - 新条目使用 `Append`；
@@ -15,7 +15,7 @@
 - 不使用 Add 自动合并、节点引用、按键隐式删除或 Source 原地排序。
 
 `RuntimeRootContainer` 的文件路径表使用
-`RecordStore<string,RuntimeFilePathDescriptor>`，分组键为 `FilePathName`。主记录唯一化和
+`RecordStoreV2<RuntimeFilePathDescriptor,string>`，分组键为 `FilePathName`。主记录唯一化和
 输出排序由 Runtime 层明确执行。
 
 ## 2. 索引
