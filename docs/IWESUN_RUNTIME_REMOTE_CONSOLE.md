@@ -19,7 +19,7 @@
 
 ## 2. 发布前源码声明
 
-服务身份和默认授权在 `Iwesun.Runtime.RemoteConsole/Program.cs` 集中声明：
+服务身份和默认授权在 `modules/RemoteConsole/src/Iwesun.Runtime.RemoteConsole/Program.cs` 集中声明：
 
 ```csharp
 var remoteConsoleOptions = new RemoteConsoleOptions
@@ -47,14 +47,14 @@ Debug 构建另有 `--test-current-user`，仅供本机自动化测试：它把�
 ## 3. 发布服务
 
 ```powershell
-dotnet publish .\Iwesun.Runtime.RemoteConsole\Iwesun.Runtime.RemoteConsole.csproj `
+dotnet publish .\modules\RemoteConsole\src\Iwesun.Runtime.RemoteConsole\Iwesun.Runtime.RemoteConsole.csproj `
   -c Release -r win-x64 --self-contained false
 ```
 
 发布目录：
 
 ```text
-Iwesun.Runtime.RemoteConsole\bin\Release\net10.0\win-x64\publish
+modules\RemoteConsole\src\Iwesun.Runtime.RemoteConsole\bin\Release\net10.0\win-x64\publish
 ```
 
 安装机必须满足 Runtime 发布包声明的 .NET 运行时依赖。
@@ -183,17 +183,17 @@ console.policy.set Manual
 无需 SCM 的 Debug 调试：
 
 ```powershell
-dotnet run --project .\Iwesun.Runtime.RemoteConsole -c Debug -- `
+dotnet run --project .\modules\RemoteConsole\src\Iwesun.Runtime.RemoteConsole\Iwesun.Runtime.RemoteConsole.csproj -c Debug -- `
   --console --test-current-user --pipe=Iwesun.Runtime.RemoteConsole.Debug
 
-dotnet run --project .\Iwesun.Runtime.Cli -c Debug -- `
+dotnet run --project .\modules\Cli\src\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.csproj -c Debug -- `
   --server=. --pipe=Iwesun.Runtime.RemoteConsole.Debug console.info
 ```
 
 自动化验收场景：
 
 ```powershell
-dotnet run --project .\Iwesun.Runtime.FunctionalTests -c Debug -- `
+dotnet run --project .\modules\Diagnostics\tests\Iwesun.Runtime.FunctionalTests\Iwesun.Runtime.FunctionalTests.csproj -c Debug -- `
   --child --scenario remote-console-cli
 ```
 

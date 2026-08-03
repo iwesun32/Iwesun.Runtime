@@ -11,6 +11,7 @@ TestResults/
 *.jsonl
 artifacts/
 logs/
+_ai_ignore/
 Iwesun.Runtime.Cli/Iwesun.Runtime.Cli.user.v2.json
 .codex/
 .agents/
@@ -30,3 +31,4 @@ Iwesun.Runtime.Cli/Iwesun.Runtime.Cli.user.v2.json
 *.dmp
 *.tmp
 *.bak
+.archive/

@@ -44,7 +44,6 @@
 
 ## 6. 关联文档
 
-- 项目总览：`PROJECT_SUMMARY.md`
 - 运行时诊断：`RUNTIME_DIAGNOSTICS.md`
 - CLI 手册：`IWESUN_RUNTIME_CLI.md`
-- AI 规则复核：`AI_ACCESS_RECHECK.md`
+- 文档总索引：`README.md`

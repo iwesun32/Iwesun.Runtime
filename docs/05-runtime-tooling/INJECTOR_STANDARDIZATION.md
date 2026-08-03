@@ -1,7 +1,7 @@
 # 注入器标准化
 
 > **状态**: DRAFT | **最后更新**: 2026-07-09
-> **源码参考**: `Iwesun.Runtime.Diagnostics/RuntimeDiagnosticsServiceCollectionExtensions.cs`, `Iwesun.Runtime.Diagnostics/RuntimeOutput.cs`, `Iwesun.Runtime.Diagnostics/RuntimeDiagnosticHub.cs`, `Iwesun.Runtime.Diagnostics/RuntimeExecutionManagement.cs`, `Iwesun.Runtime.Diagnostics/RuntimeStateManager.cs`, `Iwesun.Runtime.Diagnostics/DiagnosticAssemblyAttributes.cs`, `Iwesun.Runtime.SampleHost/Program.cs`
+> **源码参考**: `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/`、`modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/Program.cs`
 
 本文定义 Runtime.Diagnostics 的六大类标准化注入器，以及如何把“启动/退出”收敛成一个任何程序都直接使用的固定模板，把“输出/断点/数据/线程任务”收敛成业务源代码里的标准标注化注入。
 
@@ -235,7 +235,6 @@ await host.RunAsync();
 
 ## 相关文档
 
-- 技术方案 → [INJECTOR_STANDARDIZATION_PLAN.md](INJECTOR_STANDARDIZATION_PLAN.md)
-- 任务书 → [INJECTOR_STANDARDIZATION_TASKS.md](INJECTOR_STANDARDIZATION_TASKS.md)
+- 历史实施计划与任务书已移入 `docs/archive/`。
 - 运行时诊断 → [../RUNTIME_DIAGNOSTICS.md](../RUNTIME_DIAGNOSTICS.md)
 - 样板宿主 → [SAMPLE_HOST.md](SAMPLE_HOST.md)

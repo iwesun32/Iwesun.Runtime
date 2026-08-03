@@ -37,25 +37,23 @@ C:\Program Files\Iwesun\Runtime\samples\templates\RuntimeHost.Startup.Minimal.Te
 ```xml
 <PropertyGroup>
   <RuntimeRoot>$(ProgramFiles)\Iwesun\Runtime</RuntimeRoot>
+  <RuntimeLibraryVariant Condition="'$(Configuration)' == 'Debug'">Debug</RuntimeLibraryVariant>
+  <RuntimeLibraryVariant Condition="'$(Configuration)' != 'Debug'">Release</RuntimeLibraryVariant>
 </PropertyGroup>
-<ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <Reference Include="Iwesun.Runtime.Diagnostics">
-    <HintPath>$(RuntimeRoot)\lib\Iwesun.Runtime.Diagnostics\Debug\Iwesun.Runtime.Diagnostics.dll</HintPath>
-  </Reference>
-</ItemGroup>
-<ItemGroup Condition="'$(Configuration)' == 'Release'">
-  <Reference Include="Iwesun.Runtime.Diagnostics">
-    <HintPath>$(RuntimeRoot)\lib\Iwesun.Runtime.Diagnostics\Release\Iwesun.Runtime.Diagnostics.dll</HintPath>
-  </Reference>
-</ItemGroup>
 <ItemGroup>
+  <Reference Include="Iwesun.Runtime.Diagnostics">
+    <HintPath>$(RuntimeRoot)\lib\Iwesun.Runtime.Diagnostics\$(RuntimeLibraryVariant)\Iwesun.Runtime.Diagnostics.dll</HintPath>
+  </Reference>
   <Reference Include="Iwesun.Runtime.Data">
-    <HintPath>$(RuntimeRoot)\lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll</HintPath>
+    <HintPath>$(RuntimeRoot)\lib\Iwesun.Runtime.Data\$(RuntimeLibraryVariant)\Iwesun.Runtime.Data.dll</HintPath>
+  </Reference>
+  <Reference Include="Iwesun.Runtime.Networks">
+    <HintPath>$(RuntimeRoot)\lib\Iwesun.Runtime.Networks\$(RuntimeLibraryVariant)\Iwesun.Runtime.Networks.dll</HintPath>
   </Reference>
 </ItemGroup>
 ```
 
-`Iwesun.Runtime.Data.dll` 同时提供 Runtime 数据契约和 RecordStore V2；不得再引用 `Iwesun.Data.dll`。
+`Iwesun.Runtime.Data.dll` 同时提供 Runtime 数据契约和 RecordStore；不得再引用 `Iwesun.Data.dll`。
 完整资料安装在`docs\Iwesun.Runtime.Data\`；首次接入至少阅读README、V2对外API和发布状态。
 根`docs`下同时保留这些常用入口。
 

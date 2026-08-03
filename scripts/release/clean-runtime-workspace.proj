@@ -1,0 +1,75 @@
+<Project>
+  <PropertyGroup>
+    <RepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..'))</RepositoryRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <GeneratedDirectory Include="$(RepositoryRoot)\artifacts" Condition="'$(CleanReleaseArtifacts)' == 'true'" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\logs" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\.vs" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Cli" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Data" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Data.ScaleTest" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Data.Tests" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Diagnostics" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.FunctionalTests" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Networks" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Networks.Examples" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Networks.Tests" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Networks.WfpValidation" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Release" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.RemoteConsole" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.RemoteConsole.Protocol" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.SampleHost" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.Setup" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.WebView2" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\Iwesun.Runtime.WebView2.SampleHost" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Cli\src\Iwesun.Runtime.Cli\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Cli\src\Iwesun.Runtime.Cli\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Data\src\Iwesun.Runtime.Data\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Data\src\Iwesun.Runtime.Data\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Data\tests\Iwesun.Runtime.Data.Tests\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Data\tests\Iwesun.Runtime.Data.Tests\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Data\tools\Iwesun.Runtime.Data.ScaleTest\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Data\tools\Iwesun.Runtime.Data.ScaleTest\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\src\Iwesun.Runtime.Diagnostics\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\src\Iwesun.Runtime.Diagnostics\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\tests\Iwesun.Runtime.FunctionalTests\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\tests\Iwesun.Runtime.FunctionalTests\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\samples\Iwesun.Runtime.SampleHost\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\samples\Iwesun.Runtime.SampleHost\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\samples\Iwesun.Runtime.SampleHost\installed\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\samples\Iwesun.Runtime.SampleHost\installed\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\samples\Iwesun.Runtime.SampleHost\template-validation\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\samples\Iwesun.Runtime.SampleHost\template-validation\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Networks\src\Iwesun.Runtime.Networks\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Networks\src\Iwesun.Runtime.Networks\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Networks\samples\Iwesun.Runtime.Networks.Examples\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Networks\samples\Iwesun.Runtime.Networks.Examples\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Networks\tests\Iwesun.Runtime.Networks.Tests\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Networks\tests\Iwesun.Runtime.Networks.Tests\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Networks\validation\Iwesun.Runtime.Networks.WfpValidation\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Networks\validation\Iwesun.Runtime.Networks.WfpValidation\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\WebView2\src\Iwesun.Runtime.WebView2\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\WebView2\src\Iwesun.Runtime.WebView2\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\WebView2\samples\Iwesun.Runtime.WebView2.SampleHost\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\WebView2\samples\Iwesun.Runtime.WebView2.SampleHost\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\RemoteConsole\src\Iwesun.Runtime.RemoteConsole\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\RemoteConsole\src\Iwesun.Runtime.RemoteConsole\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\RemoteConsole\protocol\Iwesun.Runtime.RemoteConsole.Protocol\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\RemoteConsole\protocol\Iwesun.Runtime.RemoteConsole.Protocol\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Packaging\release\Iwesun.Runtime.Release\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Packaging\release\Iwesun.Runtime.Release\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Packaging\setup\Iwesun.Runtime.Setup\bin" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Packaging\setup\Iwesun.Runtime.Setup\obj" />
+    <GeneratedDirectory Include="$(RepositoryRoot)\modules\Diagnostics\samples\Iwesun.Runtime.SampleHost\logs" />
+    <LocalFile Include="$(RepositoryRoot)\modules\Diagnostics\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj.user" />
+  </ItemGroup>
+
+  <Target Name="CleanRuntimeWorkspace">
+    <Message Importance="high" Text="Cleaning generated Runtime workspace content under $(RepositoryRoot)" />
+    <RemoveDir Directories="@(GeneratedDirectory)" />
+    <Delete Files="@(LocalFile)" />
+  </Target>
+</Project>

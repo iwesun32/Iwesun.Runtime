@@ -75,6 +75,13 @@ iwrt lifecycle.status
 iwrt lifecycle.shutdown true
 ```
 
+`lifecycle.shutdown` 未显式携带 `timeoutMs/countdownMs` 时，采用宿主
+`RuntimeWindowsServiceOptions.ShutdownTimeout`；命令结果中的 `timeoutMs` 是本次协调退出实际使用的总期限。
+
+`graceful` 当前必须为 `true`。`false` 返回 `NON_GRACEFUL_SHUTDOWN_NOT_SUPPORTED`，不会绕过托管单元清理。CLI 连接断开或调用方取消等待不取消已经接受的退出操作，首次冻结的 deadline 保持有效。
+到期仍有阻塞单元时宿主返回 124。`Completed/Timeout` 已是退出终态，Runtime 不再允许登记新的
+`RTask`、`RThread` 或 `RProcess`。
+
 ### 5.2 诊断开关板
 
 ```powershell
@@ -154,11 +161,30 @@ iwrt web.navigate openai-web https://chatgpt.com/
 iwrt web.mouse.click openai-web 640 480
 iwrt web.keyboard.press openai-web Enter
 iwrt web.keyboard.type openai-web "hello"
+iwrt web.network.evidence.status doubao-web doubao-web
+iwrt web.network.evidence.policy doubao-web doubao-web
+iwrt web.network.evidence.export doubao-web doubao-web C:\Evidence\doubao-http 0
 ```
 
-`web.dom.snapshot <targetId>` 一条命令返回当前 WebView2 的完整结果态 DOM 真快照。它不同于用于人工概览的 `web.snapshot`：不依赖截图或 CSS，而是逐节点返回全部 attribute、当前 primitive property、可访问 iframe 和开放 shadow root。恢复与链接命令为 `web.dom.restore-link <targetId> <snapshot-json> <link-plan-json>`；大快照通常由业务程序直接调用公共 C# API，避免 shell 参数长度限制。完整 JSON、响应接收和 C# 样例见 [WebView2 完整运行时 DOM 真快照手册](../Iwesun.Runtime.WebView2/docs/DOM_SNAPSHOT_API.md)。
+`web.dom.snapshot <targetId>` 一条命令返回当前 WebView2 的完整结果态 DOM 真快照。它不同于用于人工概览的 `web.snapshot`：不依赖截图或 CSS，而是逐节点返回全部 attribute、当前 primitive property、可访问 iframe 和开放 shadow root。恢复与链接命令为 `web.dom.restore-link <targetId> <snapshot-json> <link-plan-json>`；大快照通常由业务程序直接调用公共 C# API，避免 shell 参数长度限制。完整 JSON、响应接收和 C# 样例见 [WebView2 完整运行时 DOM 真快照手册](../modules/WebView2/docs/DOM_SNAPSHOT_API.md)。
 
 CLI 不直接连接 WebRuntime 管道。请求先进入 RuntimeDiagnostics，再由 `diagnostics.proxy` 根据 `RuntimePipeRegistry` 中的 `WebRuntime` 租约解析真实 `ResolvedPipeName`，转发标准 `RuntimeDiagnosticFrame`。代理参数固定采用 `module=WebRuntime / pipe=WebRuntime / targetId=<backend> / domain=web.runtime / proxyAction=<action>`；业务参数和 ProgramId 继续作为 typed Args 转发。
+
+`web.network.evidence.status` 与 `policy` 是只读命令；`export` 把当前宿主持有的 HTTP 证据写入宿主本机目录，参数依次为 `targetId backendId outputDirectory afterSequence`。会话必须由业务宿主在首次 `Navigate` 前创建并注册，CLI 不负责创建第二个浏览器或补抓已经错过的导航响应。正文包括页面复现需要的 CSS/脚本、结构化数据、文档、图像/图标和字体，清单区分 `Captured / SkippedByPolicy / CaptureFailed`。完整 typed Frame 和响应 JSON 见 [WebView2 / CLI 集成说明](IWESUN_RUNTIME_WEBVIEW2_CLI_INTEGRATION.md)。
+
+Shell 中可以保存目标和宿主本机输出目录，避免重复输入：
+
+```text
+iwrt shell
+set webTarget doubao-web
+set evidenceRoot C:\Evidence\doubao-http
+web.network.evidence.status $webTarget $webTarget
+web.network.evidence.policy $webTarget $webTarget
+web.network.evidence.export $webTarget $webTarget $evidenceRoot 0
+exit
+```
+
+`exit` 只关闭 Shell，不停止业务宿主或 HTTP 证据会话。
 
 ## 6. 配置结构
 

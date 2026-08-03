@@ -1,0 +1,59 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Iwesun Runtime" Manufacturer="Iwesun" Version="$(var.ProductVersion)" ProductCode="$(var.ProductCode)" UpgradeCode="7B2C38BC-6DC7-4C07-8EEF-CABF8A8A0A5F" Scope="perMachine">
+    <MajorUpgrade Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer version of Iwesun Runtime is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!--
+      RemoveFolderEx runs before file costing, when MSI directory properties do not
+      exist yet. Use the native 64-bit Program Files environment variable so the
+      cleanup target is available early and cannot drift into ProgramData.
+    -->
+    <Property Id="RUNTIME_INSTALL_ROOT_TO_CLEAN" Value="%ProgramW6432%\Iwesun\Runtime" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="IwesunProgramDirectory" Name="Iwesun">
+        <Directory Id="INSTALLFOLDER" Name="Runtime">
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="IwesunDataDirectory" Name="Iwesun">
+        <Directory Id="DATAROOT" Name="Runtime">
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="RuntimeFeature" Title="Iwesun Runtime" Level="1">
+      <Files Directory="INSTALLFOLDER" Include="$(var.ReleaseAppRoot)\**" />
+      <Files Directory="DATAROOT" Include="$(var.ReleaseDataRoot)\**" />
+      <ComponentGroupRef Id="RuntimePathComponents" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="RuntimePathComponents" Directory="INSTALLFOLDER">
+      <Component Id="RuntimeInstallCleanupComponent" Guid="6D583CC0-13E8-42F2-A6FE-03004057EE1E">
+        <!--
+          Clean unmanaged files and subdirectories only for a new product install
+          (including a major upgrade). Never run this during repair or uninstall.
+        -->
+        <util:RemoveFolderEx Id="CleanPreviousRuntimeInstall"
+                             Property="RUNTIME_INSTALL_ROOT_TO_CLEAN"
+                             On="install"
+                             Condition="NOT Installed" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Iwesun\Runtime"
+                       Name="InstallCleanup"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+      <Component Id="RuntimePathComponent" Guid="B26BCA87-919D-4B83-9A60-24BDAD60820B">
+        <Environment Id="RuntimePath" Name="PATH" Value="[INSTALLFOLDER]bin\Iwesun.Runtime.Cli" Permanent="no" Part="last" Action="set" System="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

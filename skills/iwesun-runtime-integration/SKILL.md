@@ -17,9 +17,9 @@ Read only the references needed for the request:
 - Implement state, events, guardians, or shutdown: [references/state-shutdown-events.md](references/state-shutdown-events.md)
 - Work with frames, named pipes, or CLI: [references/json-cli.md](references/json-cli.md)
 - Install or operate the approved remote command service: [references/remote-console.md](references/remote-console.md)
-- Work with WebView2 script evaluation, audit, network rules, filters, or XPath evidence: [references/webview2-runtime.md](references/webview2-runtime.md)
+- Work with WebView2 script evaluation, HTTP response-body evidence, audit, network rules, filters, or XPath evidence: [references/webview2-runtime.md](references/webview2-runtime.md)
 - Migrate RuntimeRoot/history storage or diagnose missing Data dependencies: [references/record-store.md](references/record-store.md)
-- Consume the bundled Iwesun.Networks endpoints or preserve its independent version boundary: [references/networks.md](references/networks.md)
+- Consume the bundled Iwesun.Runtime.Networks endpoints or preserve its independent version boundary: [references/networks.md](references/networks.md)
 
 For a full host migration, read the references in the order listed above.
 

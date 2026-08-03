@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>AnyCPU;x86;x64</Platforms>
+    <AssemblyName>Iwesun.Runtime.Data.ScaleTest</AssemblyName>
+    <RootNamespace>Iwesun.Runtime.Data.ScaleTest</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" />
+  </ItemGroup>
+</Project>

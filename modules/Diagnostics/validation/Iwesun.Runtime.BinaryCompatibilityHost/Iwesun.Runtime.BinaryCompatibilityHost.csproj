@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <BaselineRuntimeRoot Condition="'$(BaselineRuntimeRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\artifacts\release\Iwesun.Runtime\app</BaselineRuntimeRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Iwesun.Runtime.Diagnostics" HintPath="$(BaselineRuntimeRoot)\lib\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.dll" Private="false" />
+    <Reference Include="Iwesun.Runtime.Data" HintPath="$(BaselineRuntimeRoot)\lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll" Private="false" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+  </ItemGroup>
+
+  <Target Name="RequireBaselineRuntime" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(BaselineRuntimeRoot)\lib\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.dll')"
+           Text="A pre-1.0.43 Runtime baseline is required at $(BaselineRuntimeRoot)." />
+  </Target>
+</Project>

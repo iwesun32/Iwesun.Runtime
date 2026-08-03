@@ -8,7 +8,7 @@ The current fast-adaptation release provides the service and CLI. A management U
 
 ## Source declarations
 
-Before publishing the service, set `PipeName`, `SubmitterPrincipals`, `ApproverPrincipals`, and `ApprovalMode` together in `Iwesun.Runtime.RemoteConsole/Program.cs`.
+Before publishing the service, set `PipeName`, `SubmitterPrincipals`, `ApproverPrincipals`, and `ApprovalMode` together in `modules/RemoteConsole/src/Iwesun.Runtime.RemoteConsole/Program.cs`.
 
 Use Windows account names or SID strings. The service resolves them during startup and refuses invalid or empty role sets. Production submitters and approvers should be different identities. Runtime creates only pipe ACLs; an administrator must create the real account, assign “Log on as a service,” and install the service with an interactively supplied credential.
 
@@ -79,7 +79,7 @@ The fast-adaptation release does not guarantee termination of an external child 
 ## Verification
 
 ```powershell
-dotnet run --project Iwesun.Runtime.FunctionalTests -c Debug -- --child --scenario remote-console-cli
+dotnet run --project modules/Diagnostics/tests/Iwesun.Runtime.FunctionalTests/Iwesun.Runtime.FunctionalTests.csproj -c Debug -- --child --scenario remote-console-cli
 ```
 
 For a real SCM smoke test, install under the designated service account, run `whoami` through `console.submit`, verify the returned identity, then stop/start the service and confirm SCM state. If administrator authority or interactive credentials are unavailable, mark this test environment-blocked.

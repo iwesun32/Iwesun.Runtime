@@ -1,7 +1,7 @@
 # 进程与线程标准注入
 
 > **状态**: CURRENT | **最后更新**: 2026-07-09
-> **源码参考**: `Iwesun.Runtime.Diagnostics/RThread.cs`, `Iwesun.Runtime.Diagnostics/RProcess.cs`, `Iwesun.Runtime.Diagnostics/RuntimeHostTemplate.cs`
+> **源码参考**: `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/RThread.cs`, `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/RProcess.cs`, `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/RuntimeHostTemplate.cs`
 
 本文定义 Runtime 的进程/线程标准注入方式，目标是通过“前缀类 + 全文替换”实现低成本接入。
 

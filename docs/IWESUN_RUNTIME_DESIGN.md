@@ -1,7 +1,7 @@
 # Iwesun Runtime 完整设计文档
 
 > **状态**: CURRENT | **最后更新**: 2026-07-20
-> **源码参考**: `Iwesun.Runtime.Diagnostics/`, `Iwesun.Runtime.Cli/`, `Iwesun.Runtime.Data/`, `Iwesun.Runtime.WebView2/`
+> **源码参考**: `modules/Diagnostics/`, `modules/Cli/`, `modules/Data/`, `modules/WebView2/`
 > **定位**: 本文是整个 Runtime 框架的权威设计入口，其他文档均为专题展开。
 
 ---
@@ -66,7 +66,7 @@ Iwesun.Runtime.Diagnostics
 
 外部文档、JSON 和其他 HTTP 输入采用公共内容寻址管理：正文按 SHA-256 去重，响应记录具有稳定 ID；消费快照保存正向引用，公共目录保存反向引用。页面/UI 主锚点由业务宿主依据 DOM 制作流程决定，网络批次不构成新 UI 锚点。
 
-公开面不接收任意 JavaScript 或 CDP 方法名，不包含豆包 XPath、页面版本、快捷键、XAML 或业务正文解释。API、输出文件和失败语义统一见 [FULL_PAGE_EVIDENCE_API.md](../Iwesun.Runtime.WebView2/docs/FULL_PAGE_EVIDENCE_API.md)，源码候选发布边界见 [WEBVIEW2_1.0.30_EVIDENCE_RELEASE.md](../Iwesun.Runtime.WebView2/docs/WEBVIEW2_1.0.30_EVIDENCE_RELEASE.md)。
+公开面不接收任意 JavaScript 或 CDP 方法名，不包含豆包 XPath、页面版本、快捷键、XAML 或业务正文解释。API、输出文件和失败语义统一见 [FULL_PAGE_EVIDENCE_API.md](../modules/WebView2/docs/FULL_PAGE_EVIDENCE_API.md)。
 
 ### 2.2 功能基础类对照
 
@@ -335,6 +335,21 @@ var result = await shutdown.ShutdownAsync(TimeSpan.FromSeconds(10));
 Environment.ExitCode = result.ExitCode;
 await DiagnosticSwitchboard.ShutdownAsync();
 ```
+
+### 5.6 大规模分支服务的协调退出边界
+
+AIGateway Server、代理、路由器和并发采集器会维护较多动态分支。Runtime 对这类宿主采用“中央准入门 + 单一总期限”，不允许每个分支自行建立退出倒计时：
+
+1. `RuntimeShutdownCoordinator` 只接受第一次 shutdown 请求，并冻结 `RequestId`、实际 `timeout` 和 `deadlineUtc`；重复或并发请求观察同一个操作。
+2. 协调器先把全局状态原子推进到退出域，再广播 `Stop`/`Wakeup`。`Stop`、`Exit`、`Completed`、`Timeout` 均不可回到运行域。
+3. `RuntimeManagedRegistry.Register` 是唯一中央准入点；准入判断、UnitId 唯一性和登记在同一临界区完成。退出开始或 UnitId 已有活动所有者时，`RTask`、`RThread`、`RProcess` 和直接登记都同步失败。
+4. 每个包装器只有一次 Start 所有权。重复或并发 Start 在接触底层执行体前失败，不能回滚首个调用的登记。底层启动失败时释放本次命令处理器、反射目标和分支管道，并把 Execution 投影保留为 `Faulted` 终态证据，而不是伪装成仍活动的执行体。
+5. 已登记且 `BlocksShutdown=true` 的业务分支共享同一个 deadline 完成 `CleanupRequested`、取消、释放和反登记。`RThread`、`RProcess` 可通过对象初始化器设置 `BlocksShutdown=false`；纯观察器不进入退出屏障，但仍不能在退出域内新建。
+6. 所有阻塞登记清空时宿主退出码为 0；总期限到达仍有阻塞登记时为 124。CLI 成功提交请求本身返回 0，不代表宿主已经完成清理。
+
+这使监管器可以在正常运行时补建故障分支，但一旦中央退出门关闭，就只能清理现有现场，不能通过重启策略延长或逃逸退出期限。
+
+调用方的 `CancellationToken` 只取消该调用方等待，不取消已经接受的全局退出。真正的协调任务继续使用冻结 deadline 运行，避免 CLI 断开或宿主 token 取消后留下永久 Stop 状态。`graceful=false` 当前明确返回 `NON_GRACEFUL_SHUTDOWN_NOT_SUPPORTED`；Runtime 不提供绕过清理合同的强杀入口。
 
 ---
 
@@ -644,7 +659,7 @@ iwrt web.invoke -module web.runtime -command reload
 | `docs/UNIFIED_INTERFACE.md` | 术语与命名约定 |
 | `docs/05-runtime-tooling/INJECTOR_STANDARDIZATION.md` | 注入器六大类详细说明 |
 | `docs/05-runtime-tooling/THREAD_TASK_MANAGEMENT.md` | RThread/RTask/RProcess 详细用法 |
-| `Iwesun.Runtime.SampleHost/Program.cs` | 完整宿主接入示例 |
+| `modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/Program.cs` | 完整宿主接入示例 |
 
 ---
 

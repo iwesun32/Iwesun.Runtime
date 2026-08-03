@@ -5,7 +5,7 @@
 > command/state 控制面使用固定宽度匿名共享 FIFO：主控 FIFO 深度 128，逐单元 FIFO 深度 64。状态发送 `RuntimeState.Code`，控制发送 `RuntimeManagedCommandKind`；复杂内容继续走诊断管道。旧的命名 command/state MMF 和字符串/Base64 帧已退出活动实现。
 
 > **状态**: CURRENT | **最后更新**: 2026-07-09
-> **源码参考**: `Iwesun.Runtime.Diagnostics/`, `Iwesun.Runtime.Cli/`
+> **源码参考**: `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/`, `modules/Cli/src/Iwesun.Runtime.Cli/`
 
 宿主应用（如 DDNS Snap）通过 `Iwesun.Runtime.Diagnostics` 路由运行时诊断输出，替代直接的控制台/文件调试日志。正常运行时保持静默，直到监控器显式启用输出。
 
@@ -147,17 +147,9 @@ RuntimeOutput.TracePoint("pipeline.stage", "DnsUpdateStage",
 - CLI 使用 → [IWESUN_RUNTIME_CLI.md](IWESUN_RUNTIME_CLI.md)
 - 状态分类基础类型 → [05-runtime-tooling/STATE_CLASSIFICATION.md](05-runtime-tooling/STATE_CLASSIFICATION.md)
 - 状态分类在线业务实现 → [05-runtime-tooling/STATE_CLASSIFICATION_ONLINE.md](05-runtime-tooling/STATE_CLASSIFICATION_ONLINE.md)
-- 状态分类实施计划 → [05-runtime-tooling/STATE_CLASSIFICATION_PLAN.md](05-runtime-tooling/STATE_CLASSIFICATION_PLAN.md)
-- 状态分类任务书 → [05-runtime-tooling/STATE_CLASSIFICATION_TASKS.md](05-runtime-tooling/STATE_CLASSIFICATION_TASKS.md)
 - 线程与任务管理 → [05-runtime-tooling/THREAD_TASK_MANAGEMENT.md](05-runtime-tooling/THREAD_TASK_MANAGEMENT.md)
-- 线程与任务管理实施计划 → [05-runtime-tooling/THREAD_TASK_MANAGEMENT_PLAN.md](05-runtime-tooling/THREAD_TASK_MANAGEMENT_PLAN.md)
 - 独立样板宿主 → [05-runtime-tooling/SAMPLE_HOST.md](05-runtime-tooling/SAMPLE_HOST.md)
 - 注入器标准化 → [05-runtime-tooling/INJECTOR_STANDARDIZATION.md](05-runtime-tooling/INJECTOR_STANDARDIZATION.md)
-- 注入器标准化技术方案 → [05-runtime-tooling/INJECTOR_STANDARDIZATION_PLAN.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_PLAN.md)
-- 注入器标准化任务书 → [05-runtime-tooling/INJECTOR_STANDARDIZATION_TASKS.md](05-runtime-tooling/INJECTOR_STANDARDIZATION_TASKS.md)
 - 守护代理与管道注册中心设计 → [05-runtime-tooling/GUARDIAN_PIPE_REGISTRY_DESIGN.md](05-runtime-tooling/GUARDIAN_PIPE_REGISTRY_DESIGN.md)
-- 注入器静态方案（旧方案保留）→ [05-runtime-tooling/INJECTOR_STATIC_SCHEME.md](05-runtime-tooling/INJECTOR_STATIC_SCHEME.md)
-- 注入器动态缓冲池方案（对象级登记与回收）→ [05-runtime-tooling/INJECTOR_DYNAMIC_POOL_SCHEME.md](05-runtime-tooling/INJECTOR_DYNAMIC_POOL_SCHEME.md)
 - 统一界面规范 → [UNIFIED_INTERFACE.md](UNIFIED_INTERFACE.md)
-- AI 访问规则复核 → [AI_ACCESS_RECHECK.md](AI_ACCESS_RECHECK.md)
 - 仓库内 AI 访问规则由 `.github/instructions` 单独维护，不属于运行时安装文档。

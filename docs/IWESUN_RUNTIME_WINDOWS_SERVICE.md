@@ -253,7 +253,7 @@ Working
 
 执行入口收到退出信号后重新读取共享状态，根据状态返回退出码，并在真实出口的 `finally` 中自动从 Root 反登记。
 
-业务细分状态通过 `SetDetail`、`TransitionTo`、`TryTransitionTo` 或子任务状态 DLIST 汇报，不另建退出状态体系。
+业务细分状态通过 `SetDetail`、`TransitionTo`、`TryTransitionTo` 或 `RuntimeStateHistory` 汇报，不另建退出状态体系。
 
 ## 7. SCM 与 CLI 的统一流程
 

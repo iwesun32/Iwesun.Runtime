@@ -2,12 +2,12 @@
 
 > **状态**：CURRENT
 > **最后更新**：2026-07-20
-> **源码**：`Iwesun.Runtime.Data/`
+> **源码**：`modules/Data/src/Iwesun.Runtime.Data/`
 
 ## 1. 单一 Data 项目边界
 
 - `Iwesun.Runtime.Data` 同时承载 Runtime 专属值类型、协议和通用
-  `RecordStoreV2<TValue,TPrimaryKey>` 数据引擎。
+  `RecordStore<TValue,TPrimaryKey>` 数据引擎。
 - `Iwesun.Data` 程序集与命名空间已经废止；不提供类型转发、别名或兼容包。
 - DList 与 RecordStore V1 只保存在 Data 仓库忽略目录的本地历史存档中，不参与工程、编译和发布。
 
@@ -46,7 +46,7 @@ Runtime 当前使用 RecordStore 的范围只有：
 
 RuntimeRoot当前不启用添加时自动合并，继续由容器锁、`StoreRecordId`和业务索引完成Upsert/主记录
 归一。V2的Definition只冻结多个Key与业务主键；过滤、限制、Merge、唯一约束和Publish格式属于Store
-实例配置。完整公共契约见随安装包发布的`RECORD_STORE_V2_PUBLIC_API.md`。
+实例配置。完整公共契约见随安装包发布的`RECORD_STORE_PUBLIC_API.md`。
 
 ## 4. 克隆和所有权
 
@@ -60,6 +60,6 @@ RecordStore 要求结构值中的可变引用具有明确深复制策略：
 
 ## 5. 资料
 
-- 上游API：`D:\Git Space\Data\docs\02-api\RECORD_STORE_V2_PUBLIC_API.md`
-- 上游设计：`D:\Git Space\Data\docs\01-design\RECORD_STORE_DESIGN_V2.md`
-- 发布状态：`D:\Git Space\Data\docs\RELEASE_STATUS.md`
+- 公共 API：`D:\Git Space\Runtime\docs\Iwesun.Runtime.Data\02-api\RECORD_STORE_PUBLIC_API.md`
+- 统一设计：`D:\Git Space\Runtime\docs\Iwesun.Runtime.Data\01-design\RECORD_STORE_DESIGN.md`
+- 发布状态：`D:\Git Space\Runtime\docs\Iwesun.Runtime.Data\RELEASE_STATUS.md`

@@ -4,7 +4,7 @@
 
 - Global lifecycle: `RuntimeManagedRegistry.GlobalLifecycleState` and `RuntimeStateManager`.
 - Managed unit state: `IRManagedState.TransitionTo` / `TryTransitionTo`.
-- Business detail: `SetDetail`, `TryGetDetail`, and subtask-state DLIST history.
+- Business detail: `SetDetail`, `TryGetDetail`, and `RuntimeStateHistory` backed by RecordStore.
 
 ```csharp
 unit.State.SetDetail("scanPhase", "enumerating");
@@ -33,7 +33,7 @@ Instance hooks use weak references. Explicitly detach static events during shutd
 
 Every process, thread, or task guardian must support both:
 
-1. Polling the global Stop/Exit state as a fallback.
+1. Polling the global Stop/Exit/Completed/Timeout shutdown domain as a fallback.
 2. Receiving FIFO Stop/Wakeup for prompt event-driven response.
 
 Make cleanup idempotent because both paths may trigger nearly simultaneously.
@@ -45,9 +45,13 @@ Make cleanup idempotent because both paths may trigger nearly simultaneously.
 3. Each flat Root registration transitions through Requested and Draining while all CleanupRequested handlers run; no handlers means immediate completion.
 4. Transition to Completed and release the lightweight exit signal after cleanup, or transition to Timeout at the single controller deadline.
 5. The managed entry point reads the shared state, returns 0 or 124, and deregisters only after actual completion.
-6. Wait until process/thread/task registrations and relevant DLIST containers are empty; return 0. If the deadline expires with pending units, return 124.
+6. Wait until process/thread/task registrations and relevant Runtime state histories are empty; return 0. If the deadline expires with pending units, return 124.
 
 Only registrations with `BlocksShutdown=true` participate in the exit barrier. Shutdown watchers and dispatch infrastructure must register with `blocksShutdown: false`; they remain observable but cannot create a wait-for-self cycle.
+
+Active `UnitId` values are unique. A duplicate registration or a repeated/concurrent `Start` on the same wrapper is rejected before it can replace or unregister the current owner. `RThread` and `RProcess` expose an init-only `BlocksShutdown` property for observer infrastructure.
+
+Caller cancellation only cancels that caller's wait. Once accepted, coordinated shutdown continues independently to the first frozen deadline. Non-graceful termination is not part of this contract.
 
 Use the same async cleanup hook on `RProcess`, `RThread`, and `RTask`:
 

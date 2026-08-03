@@ -2,7 +2,7 @@
 
 ## Standard entry point
 
-Use `Iwesun.Runtime.SampleHost/Program.cs` as the canonical executable example.
+Use `modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/Program.cs` as the canonical executable example.
 
 ```csharp
 var builder = Host.CreateApplicationBuilder(args);

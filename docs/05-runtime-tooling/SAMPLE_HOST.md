@@ -1,7 +1,7 @@
 # 独立样板宿主
 
 > **状态**: CURRENT | **最后更新**: 2026-07-09
-> **源码参考**: `Iwesun.Runtime.SampleHost/Program.cs`, `Iwesun.Runtime.SampleHost/SampleHostProfile.cs`, `Iwesun.Runtime.SampleHost/SampleHostState.cs`, `Iwesun.Runtime.SampleHost/SampleHostWorker.cs`, `Iwesun.Runtime.Diagnostics/RuntimeDiagnosticsServiceCollectionExtensions.cs`
+> **源码参考**: `modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/`, `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/RuntimeDiagnosticsServiceCollectionExtensions.cs`
 
 本文描述一个与 DDNS Snap 解耦的独立样板宿主。它只依赖 `Iwesun.Runtime.Diagnostics`，用于验证运行时诊断接入、代码注入、静态/动态数据类、状态切换、线程/任务登记、输出监视点、断点和反射目标暴露方式，并可作为后续发布模板。
 
@@ -62,7 +62,7 @@
 ## 运行方式
 
 ```powershell
-dotnet run --project Iwesun.Runtime.SampleHost/Iwesun.Runtime.SampleHost.csproj -c Release
+dotnet run --project modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/Iwesun.Runtime.SampleHost.csproj -c Release
 ```
 
 宿主启动后可通过 `Iwesun.Runtime.Cli` 连接运行时诊断管道，观察 `sample.host` 和 `runtime.state`。

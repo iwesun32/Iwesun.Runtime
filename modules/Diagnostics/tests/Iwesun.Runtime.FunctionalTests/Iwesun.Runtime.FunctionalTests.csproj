@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	<OutputType>Exe</OutputType>
+	<TargetFramework>net10.0</TargetFramework>
+	<ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+	<RootNamespace>Iwesun.Runtime.FunctionalTests</RootNamespace>
+	<AssemblyName>Iwesun.Runtime.FunctionalTests</AssemblyName>
+	<Platforms>AnyCPU;x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+	<ProjectReference Include="..\..\..\Data\src\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" />
+	<ProjectReference Include="..\..\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" />
+	<ProjectReference Include="..\..\..\RemoteConsole\protocol\Iwesun.Runtime.RemoteConsole.Protocol\Iwesun.Runtime.RemoteConsole.Protocol.csproj" />
+	<ProjectReference Include="..\..\..\RemoteConsole\src\Iwesun.Runtime.RemoteConsole\Iwesun.Runtime.RemoteConsole.csproj" />
+	<ProjectReference Include="..\..\samples\Iwesun.Runtime.SampleHost\Iwesun.Runtime.SampleHost.csproj" />
+	<ProjectReference Include="..\..\..\WebView2\src\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+	<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+  </ItemGroup>
+
+</Project>

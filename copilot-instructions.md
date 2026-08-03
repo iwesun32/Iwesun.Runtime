@@ -47,15 +47,17 @@ When relevant, consult these repository-local files:
 
 ## Build And Validation
 
-- Build: `dotnet build Iwesun.Runtime.slnx -c Release`
-- This repository currently does **not** have a dedicated unit test project in the solution. Validate changes with focused builds unless or until tests are added.
+- Release build: `dotnet build Iwesun.Runtime.slnx -c Release`
+- Focused work: use the domain `.slnx` under `modules/<Domain>/`; unit, functional, scale, sample, and validation projects live beside their implementation domain.
 
 ## Repository Structure
 
-- `Iwesun.Runtime.Diagnostics/` - Core diagnostics library + standardized host template (`RuntimeHostTemplate`, `RuntimeInjector`) + managed execution wrappers (`RProcess`/`RThread`/`RTask`)
-- `Iwesun.Runtime.SampleHost/` - Standalone Exe demonstrating the standard startup/shutdown injection template (canonical `Program.cs`)
-- `Iwesun.Runtime.Cli/` - Standalone command-line client for diagnostics and WebRuntime control
-- `Iwesun.Runtime.WebView2/` - Shared WebRuntime models and pipe client used by the CLI
+- `modules/Diagnostics/` - Core diagnostics library, functional tests, and canonical SampleHost
+- `modules/Data/` - Runtime data library, tests, scale tool, and authoritative domain docs
+- `modules/Networks/` - Network library, tests, samples, WFP validation, and authoritative domain docs
+- `modules/WebView2/` - Shared WebRuntime library, sample host, and domain docs
+- `modules/Cli/`, `modules/RemoteConsole/` - Command-line and remote-control applications
+- `modules/Packaging/` - Release aggregation and MSI setup projects
 - `docs/` - Active Chinese documentation (see `docs/HANDOFF_*` and `docs/REQUIREMENTS_ACTIVE.md` for current injector-standardization work)
 
 ## Host Template And Injector (standardized flow)
@@ -66,7 +68,7 @@ Host integration goes through `RuntimeHostTemplate` extension methods — prefer
 - `provider.Activate(hostAssembly)` (starts pipe + builds registries)
 - `RuntimeShutdownCoordinator.ShutdownAsync(timeout, payload)` (coordinated shutdown)
 
-Business code injects through the `RuntimeInjector` static facade (`Output` / `Watch` / `Break` / `Data` / `Thread` / `Task`), and may wrap primitives with `RProcess` / `RThread` / `RTask` for auto-registration with `RuntimeExecutionManager`. See `Iwesun.Runtime.SampleHost/Program.cs`.
+Business code injects through the `RuntimeInjector` static facade (`Output` / `Watch` / `Break` / `Data` / `Thread` / `Task`), and may wrap primitives with `RProcess` / `RThread` / `RTask` for auto-registration with `RuntimeExecutionManager`. See `modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/Program.cs`.
 
 ## Runtime-Specific Rules
 
@@ -94,4 +96,4 @@ Business code injects through the `RuntimeInjector` static facade (`Output` / `W
 
 ## Relationship To Host Repositories
 
-This repository is consumed by host applications such as DDNS Snap via `ProjectReference`. Runtime design rules live here. Host repositories should reference Runtime as an external library and should not duplicate Runtime implementation documents.
+This repository is consumed by host applications such as DDNS Snap through the versioned DLLs installed under `C:\Program Files\Iwesun\Runtime`; cross-repository `ProjectReference` entries are forbidden. Runtime design rules live here. Host repositories should reference Runtime as an external library and should not duplicate Runtime implementation documents.

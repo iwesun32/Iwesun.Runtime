@@ -1,15 +1,190 @@
 # Iwesun Runtime 发布更新记录
 
+## 1.0.43-beta.1（2026-08-01，普通β已安装验证）
+
+- shutdown 期限统一采用 `timeoutMs > countdownMs > host ShutdownTimeout > 30s`；标准 CLI 公开期限和 payload；
+- 第一次退出请求冻结唯一 RequestId、实际期限与 deadline，并发重复请求复用同一操作；
+- Stop、Exit、Completed、Timeout 形成不可逆中央准入门，退出后真实拒绝 RTask、RThread、RProcess 和直接登记；
+- 活动 UnitId 原子唯一；包装器只允许一个 Start 所有者，启动失败释放活动资源且保留 Faulted Execution 证据；
+- Registry 冻结首次 deadline，调用方取消只取消等待；`graceful=false` 明确拒绝；
+- AIGateway 等大分支服务共享一个总 deadline 清理现场，退出后监管器不得补建业务分支；
+- 恢复两个公共 Target 的旧构造函数签名，并增加旧 1.0.42 二进制宿主替换验证；
+- 根解决方案双配置 0 警告、0 错误；Diagnostics Debug 29/29、Release 24/24，Data 各 101/101、Networks 各 202/202、WebView2 各 34/34；
+- Web 组件继续不进入发布载荷，Networks 保持 `3.0.0-beta.4` 独立版本。
+- 7 项不可变候选交付物已生成；staging 与 Program Files 官方自检通过，Aether 安装版
+  Release 测试 242/242、DNS/DoH 精确匹配 36/36，零错配、零失败。
+
+发布说明见[1.0.43-beta.1普通β发布说明](IWESUN_RUNTIME_1.0.43_BETA_RELEASE_GUIDE.md)，
+迁移细节见[协调退出修正与迁移说明](IWESUN_RUNTIME_1.0.43_SHUTDOWN_MIGRATION.md)，
+交付物见[发布清单](IWESUN_RUNTIME_1.0.43_BETA_RELEASE_MANIFEST.md)。
+
+## 1.0.42-beta.1（2026-07-30，普通β准备）
+
+- 实时单节点操作使用 CDP `DOM.performSearch` 直接解析浏览器当前 XPath，不注入 JavaScript；
+- 搜索结果执行唯一性、document scope、当前 URL、`nodeId/backendNodeId` 和树 revision 核对；
+- 完整节点树增加整页、iframe、SPA History API 导航失效，并提供显式失效/刷新入口；
+- 新 revision 发布前不再暴露旧树；失效 nodeId 自动刷新、重新解析并只重试一次；
+- 批量证据读取固定同一树 revision，导航期间禁止把旧树和新 DOMSnapshot 拼接；
+- WebView2 合同 Debug/Release 各 34/34；
+- 不覆盖或重打既有 `1.0.41-beta.1`，Web 组件继续不进入发布载荷。
+
+发布说明见[1.0.42-beta.1普通β发布说明](IWESUN_RUNTIME_1.0.42_BETA_RELEASE_GUIDE.md)，
+交付物见[发布清单](IWESUN_RUNTIME_1.0.42_BETA_RELEASE_MANIFEST.md)。
+
+## 1.0.41-beta.1（2026-07-30，普通β准备）
+
+- 精确点击从未裁剪 box 中心升级为可见 content quad + CSS 视口裁剪；
+- 中心和内缩采样点通过 `DOM.getNodeForLocation` 验证目标/后代命中，鼠标移动后再次验证；
+- 命中祖先、兄弟、覆盖层或无可见区域时明确失败，不再报告输入已发送即成功；
+- 点击结果增加实际输入坐标和 HitNodeId/HitBackendNodeId 证据；
+- WebView2 Debug/Release 各 25/25，根 Runtime 双配置零警告零错误；
+- Web 暂停发布边界和 Networks `3.0.0-beta.4` 独立版本保持不变。
+
+发布说明见[1.0.41-beta.1普通β发布说明](IWESUN_RUNTIME_1.0.41_BETA_RELEASE_GUIDE.md)，
+交付物见[发布清单](IWESUN_RUNTIME_1.0.41_BETA_RELEASE_MANIFEST.md)。
+
+## 1.0.40-beta.1（2026-07-30，普通β准备）
+
+> 已由 1.0.41-beta.1 取代。实机确认其固定点击仍缺少可见区域裁剪和实际命中证明，
+> 不应继续作为精确点击测试基线。
+
+- 固定 CDP 点击严格采用“滚入视区 → 读取 content quad → mousePressed →
+  mouseReleased”，确保滚动容器外的精确目标进入可命中区域；
+- 保留调用方记录 XPath 的选择语义，禁止父节点替代、首项匹配和 JavaScript 后备点击；
+- 新增严格调用顺序、同一 nodeId 和滚动失败短路合同，WebView2 Debug/Release 各 22/22；
+- Web/WebView2 单向依赖和零 Web 发布载荷边界保持不变；
+- Networks 继续使用独立版本 `3.0.0-beta.4`。
+
+发布说明见[1.0.40-beta.1普通β发布说明](IWESUN_RUNTIME_1.0.40_BETA_RELEASE_GUIDE.md)，
+交付物见[发布清单](IWESUN_RUNTIME_1.0.40_BETA_RELEASE_MANIFEST.md)。
+
+## 1.0.39-beta.1（2026-07-30，普通β准备）
+
+- WebView2 平台层建立 CDP DOM 节点树，以当前 revision 的 `nodeId/backendNodeId` 执行固定
+  DOM 访问；XPath 保持兼容定位能力，不再作为正式执行通道；
+- HTML/XAML 组合、`HtmlRuntime*`、Web 对象映射和脚本 DOM 诊断全部归回未发布的 Web 项目；
+- WebView2 删除对 Web 的项目和程序集依赖，平台节点树改用自身
+  `WebRuntimeDomTreeElement` 合同；
+- 分层后 WebView2 Debug/Release 合同各 21/21，Web 组合层 Debug/Release 合同各
+  305/305，均零失败；
+- 发布载荷继续包含 Diagnostics、Data、Networks、WebView2 和工具，递归拒绝
+  `Iwesun.Runtime.Web.dll`、符号、源码和传递依赖；
+- Networks 继续使用已审计的 `3.0.0-beta.4`。
+
+发布说明见[1.0.39-beta.1普通β发布说明](IWESUN_RUNTIME_1.0.39_BETA_RELEASE_GUIDE.md)，
+交付物见[发布清单](IWESUN_RUNTIME_1.0.39_BETA_RELEASE_MANIFEST.md)。
+
+## 1.0.38-beta.1（2026-07-28，普通β候选）
+
+- 撤回误带调试中`Iwesun.Runtime.Web.dll`的1.0.37候选；
+- WebView2解除对Web项目的反向依赖，Web专属DOM属性填充适配器回归未发布Web组件；
+- Diagnostics、Data、Networks、WebView2及工具继续全量发布；
+- 安装验证新增递归Web DLL/PDB和项目源拒绝门禁；
+- Networks继续使用已审计的`3.0.0-beta.4`。
+
+发布说明见[1.0.38-beta.1普通β发布说明](IWESUN_RUNTIME_1.0.38_BETA_RELEASE_GUIDE.md)，
+交付物见[发布清单](IWESUN_RUNTIME_1.0.38_BETA_RELEASE_MANIFEST.md)。
+
+## 1.0.37-beta.1（2026-07-28，普通β候选）
+
+> 当前状态：`WITHDRAWN_UNRELEASED_WEB_DEPENDENCY`。首次候选误带仍在调试的
+> `Iwesun.Runtime.Web.dll`，不得分发或安装。
+
+完整说明见[1.0.37-beta.1普通β发布说明](IWESUN_RUNTIME_1.0.37_BETA_RELEASE_GUIDE.md)，
+交付物见[发布清单](IWESUN_RUNTIME_1.0.37_BETA_RELEASE_MANIFEST.md)。
+
+- Networks升级为`3.0.0-beta.4`，显式区分IPv4/IPv6裸字节入口并修正ICMPv6 ABI；
+- 协议端点使用请求级并发启动和请求私有路由快照；
+- HTTP/DoH使用有界租约连接池；
+- IP/MAC值增加.NET 10 UTF-8 Span泛型接口；
+- Aether源码候选迁移测试242/242、DNS/DoH E2E 15/15通过。
+
+## 1.0.36-beta.1（2026-07-25，普通 β）
+
+> 当前状态：`GENERAL_BETA_READY_FORMAL_BLOCKED`。允许通过统一β交付目录分发MSI、便携载荷和
+> Networks本地包；不上传公共NuGet源，剩余真实网络、长期统计和干净环境门禁继续阻止正式版冻结。
+
+完整变更、强制迁移、双配置DLL布局和β测试重点见
+[1.0.36-beta.1普通β发布说明](IWESUN_RUNTIME_1.0.36_BETA_RELEASE_GUIDE.md)；
+交付物及验证摘要见[发布清单](IWESUN_RUNTIME_1.0.36_BETA_RELEASE_MANIFEST.md)。
+
+- Data合入MergeAdd继承表合同、显式委托/事件、订阅领取、Source Clear、null更新和派生恢复加固，
+  继续只发布`Iwesun.Runtime.Data.dll`与无版本后缀`RecordStore`。
+- Networks升级为`3.0.0-beta.3`：统一17字节`IpAddressValue`和7字节`MacAddressValue`，
+  删除`BinaryIpAddress`，ARP/IPv6邻居记录不再暴露字符串地址。
+- Networks全部低层入口同步拒绝空RequestId，UDP长期池补齐安全空闲回收；活动和未到期隔离槽不得回收。
+- WebView2补齐证据会话启动失败回滚和Program停止补偿清理，并携带当前CSS双源与HTTP资源证据资料。
+- 修正`RTask`完成与await继续之间的清理竞态：await现在覆盖Managed注销闭环，运行中Dispose在实际
+  完成后安全释放底层Task，不再偶发遗留任务注册。
+- Runtime四个公共库统一发布Debug/Release目录；文件名和公共API一致，仅配置与可查询版本证据不同。
+- 唯一发布入口生成版本化MSI、便携ZIP、Networks nupkg/snupkg、发布说明、发布清单和SHA-256清单，
+  集中到`artifacts\packages\Iwesun.Runtime.1.0.36-beta.1\`。
+
+## 1.0.35-beta.1（2026-07-23，普通 β）
+
+> 当前状态：`GENERAL_BETA_READY_FORMAL_BLOCKED`。允许通过 MSI、便携载荷和内部文件源安装及分发；
+> 不上传公共 NuGet 源，剩余 M11 与干净环境门禁继续阻止正式版冻结。
+
+完整消费合同、Debug/Release布局及已知限制见
+[1.0.35-beta.1普通β发布说明](IWESUN_RUNTIME_1.0.35_BETA_RELEASE_GUIDE.md)。
+
+- Networks升级为`3.0.0-beta.2`，修正三轴终态、精确接口IPv6 Ping、组播目标/响应方证据和压缩原生结构解析。
+- 新增`NetworkFlowSerial : uint`内部高速索引；对外绝对身份仍为四级非空GUID链。
+- 通用UDP迁移到长期Socket/端口租约，严格校验实际远端，提供迟到隔离、容量拒绝、池指标与可替换数据面合同。
+- Networks Debug/Release测试门禁提升到各126项；Data维持各86项。
+- Runtime同时发布Diagnostics、Data、Networks、WebView2的Debug与Release DLL，文件名和公共API保持一致。
+- WebView2 HTTP 证据正文策略扩展为页面复现默认集，统一保存 CSS/脚本、结构化数据、文档、图像/图标和字体；
+  新增 `network.evidence.status / policy / export` 公共分发器与 CLI v3 命令，响应清单明确正文捕获、策略跳过和失败状态。
+- MSI ProductVersion提升至1.0.35，升级时清理Program Files旧树并保留ProgramData用户数据。
+
+## 1.0.34-beta.1（2026-07-22，已阻断的私有测试基线）
+
+> 当前状态：`CORRECTION_REQUIRED_PRIVATE_BETA_BLOCKED`。真实IPv6组播联调确认Networks三轴终态和精确接口证据错误；
+> 本版已失去候选资格，只能保留为失效基线或回归输入，不得继续生成、分发或安装为消费候选。
+
+完整交付边界、标准 DLL 引用模板和正式版阻塞项见
+[1.0.34-beta.1 私有测试版交付说明](IWESUN_RUNTIME_1.0.34_BETA_RELEASE_GUIDE.md)。
+
+- Runtime发布载荷已切换为从Networks源码构建`3.0.0-beta.1`，程序集版本固定为`3.0.0.0`；
+  不复制Networks实现，也不把Runtime版本注入解释为Networks API版本。
+- Networks 源码、107 项测试、示例、WFP 验证和文档并入 Runtime 仓库；程序集、命名空间和项目统一为
+  `Iwesun.Runtime.Networks`，不再发布 `Iwesun.Networks.dll`。
+- 安装文档同步携带3.0最终设计、迁移矩阵、四级GUID跟踪与精确访问控制说明；安装验证改为检查
+  当前3.0合同文件。
+- Diagnostics、Data、Networks、WebView2 统一发布顶层 Release 兼容 DLL 与 `Debug`、`Release` 配置目录；
+  文件名、程序集名、命名空间和公共类型名不因配置变化。
+- Runtime Data 正式类型统一为 `RecordStore<TValue,TPrimaryKey>`、`RecordStoreOrigin` 和
+  `RecordStoreSchemaRegistry`；源码、测试、文档及自有消费者不再保留 RecordStore 版本后缀，旧名不提供兼容别名。
+- Aether 与 DDNS Snap 的 Runtime/Networks 外部依赖改为安装目录 DLL 引用，不再直接引用源码工程或 NuGet 包；
+  被移除的 V2/V3 API 不提供兼容别名，以编译错误强制迁移。
+- 移除安装根目录下重复的 `Iwesun.Runtime.WebView2\docs` 兼容副本，WebView2 文档只发布到统一 `docs` 目录。
+- Setup 在首次安装或 MajorUpgrade 时递归清理 Program Files 下的旧 Runtime 树，再铺设完整 staging；
+  ProgramData 用户数据不参与清理。
+- 本版原用于私有β验证；当前除管理员WFP和完整网络矩阵外，三轴终态修复、全协议审计及真实组播回归均为前置门禁。
+
+## 1.0.32（2026-07-21）
+
+- WebView2 页面快照新增 CSS 双源状态恢复证据：运行态结果源由 `complete-dom-properties.json` 和 `layout-state.json` 组成；原始定义源由 `style-provenance.json` 和 `maximum-template.css` 组成。消费方按元素路径综合两源，原始布局语义优先，最终计算值和绝对几何用于校准。
+- 页面证据 manifest schema 升级为 `iwesun.webview2.page-evidence/1.2`，相关能力已进入本版安装包。
+- 嵌入 `Iwesun.Networks` 2.0.1：请求—响应端点只保留 GUID 唯一跟踪的 `Tracked*V2` 标准；
+  被取代的 HTTP、DoH、TCP、Ping、UDP、PTR、NBNS V1 公开类型全部移除。
+- IPv6 Ping精确路由会跳过不支持IPv6属性查询并返回10043的Windows适配器；初始/重试路由解析异常
+  统一进入请求失败闭环，不再终止Networks发送线程或宿主进程。DDNS Snap地址守护真实CLI复测通过。
+- PowerShell、Process、ARP、IPv6 邻居快照等无法等价转换为请求—响应模型的特殊端点继续保留，
+  但统一采用同一异步端点生命周期和批量 FIFO 格式。
+- Networks Debug/Release 各 29/29、Runtime Data Debug/Release 各 86/86、Runtime Debug 28 个与
+  Release 23 个完整功能场景全部通过；staging、自检、安装版 SampleHost 双配置及 MSI Rebuild 通过。
+
 ## 1.0.31（2026-07-20）
 
 - 在 1.0.30 单数据程序集强制升级基础上执行全量再发布，默认发布器和 WiX ProductVersion 统一升级到 1.0.31。
-- RecordStore V2 明确为唯一活动 RecordStore 实现；发布索引、安装说明与集成技能不再保留“隔离类型/正式 1.0.25 API”旧状态。
+- RecordStore 明确为唯一活动 RecordStore 实现；发布索引、安装说明与集成技能不再保留“隔离类型/正式 1.0.25 API”旧状态。
 - Networks、Runtime Data、Runtime Debug/Release、完整功能场景、staging、自检、安装版 SampleHost 双配置与 MSI 均由唯一入口从当前源码重新验证。
 - 安装树继续强制拒绝 `Iwesun.Data.dll`、DList 与 RecordStore V1，并核对全部 `Iwesun.Runtime.Data.dll` 副本的版本和哈希。
 
 ## 1.0.30（2026-07-20）
 
-- Data 强制收口为单程序集：RecordStore V2 源码和公共基础类型并入 `Iwesun.Runtime.Data`；
+- Data 强制收口为单程序集：RecordStore 源码和公共基础类型并入 `Iwesun.Runtime.Data`；
   `Iwesun.Data.dll`、DList 和 RecordStore V1 从活动工程与发布清单移除，不提供兼容别名。
 - AIGateway、DDNS Snap 与 Aether 的源码引用及命名空间统一升级为 `Iwesun.Runtime.Data`，遗漏引用
   以编译错误暴露。
@@ -24,7 +199,7 @@
 
 - 全量发布新增 `Iwesun.Networks` 1.2.0：从 Networks 当前源码构建程序集，并携带完整文档、1.2.0
   发布状态和可编译示例；Networks 仍保持独立 `System.*` 基础库边界。
-- 同步当前 Iwesun.Data：正式兼容面仍为 1.0.25，RecordStore V2 继续作为隔离类型随文档和验证结果
+- 同步当前 Iwesun.Data：正式兼容面仍为 1.0.25，RecordStore 继续作为隔离类型随文档和验证结果
   交付；固定 50 万条 Source 内存仍高于 1.25 倍门槛，不宣称 V2 正式晋升。
 - WebView2 的 DOM 真快照、数据流记录器、请求/响应交换、复合条件、匹配委托、CLI v3 命令和
   SampleHost 由当前源码重新构建，发布状态同步到 1.0.29。
@@ -45,7 +220,7 @@
 
 ## 1.0.27 候选版（2026-07-18）
 
-- Iwesun.Data RecordStore V2完成稳定内部索引节点：成功Key迁移、Update和Deprecate产生的空桶按
+- Iwesun.Data RecordStore完成稳定内部索引节点：成功Key迁移、Update和Deprecate产生的空桶按
   `IndexEntryHandle`即时退出哈希链并归还Arena槽，提交阶段不重新调用用户比较器。
 - Data Debug/Release各121项通过；10万次Key迁移、1万条全索引废止、混合操作、128/256 MiB发布矩阵、
   HotPath及100万次Churn通过。

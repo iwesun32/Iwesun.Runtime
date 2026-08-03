@@ -32,7 +32,7 @@
   2. `host.Services.Activate(Assembly.GetExecutingAssembly())`
   3. 注册静态线程/任务和反射目标
 - 结束页统一收口：
-  - 守护循环同时查询全局 Stop/Exit 状态并消费本单元 FIFO 的 Stop 命令
+  - 守护循环同时查询全局 Stop/Exit/Completed/Timeout 退出域并消费本单元 FIFO 的 Stop 命令
   - 在 `finally` 中执行持久化/清理、更新本单元状态并调用 `RuntimeManagedRegistry.Unregister(...)`
   - 主控统一调用 `RuntimeShutdownCoordinator.ShutdownAsync(...)`；登记表清空返回 `0`，倒计时超时返回 `124`
 
@@ -195,8 +195,9 @@ await RuntimeInjector.Break(
 - 代码构建：
   - `dotnet build Iwesun.Runtime.slnx -c Release -p:UseSharedCompilation=false`
 - 单元/功能检查：
-  - `dotnet test Iwesun.Runtime.slnx -c Release --no-restore`
-  - `dotnet run --project Iwesun.Runtime.FunctionalTests/Iwesun.Runtime.FunctionalTests.csproj -- --scenario cli`
+  - `dotnet test modules/Data/tests/Iwesun.Runtime.Data.Tests/Iwesun.Runtime.Data.Tests.csproj -c Release`
+  - `dotnet test modules/Networks/tests/Iwesun.Runtime.Networks.Tests/Iwesun.Runtime.Networks.Tests.csproj -c Release`
+  - `dotnet run --project modules/Diagnostics/tests/Iwesun.Runtime.FunctionalTests/Iwesun.Runtime.FunctionalTests.csproj -c Release -- --scenario cli`
 - 发布产物检查：
   - 模板文件是否进入发布目录（`templates/`）
   - CLI 文档与配置是否进入发布目录（`docs/` + `cli/`）

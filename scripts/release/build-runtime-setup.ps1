@@ -1,28 +1,53 @@
 [CmdletBinding()]
 param(
-    [string]$ProductVersion = "1.0.31"
+    [string]$ProductVersion = "1.0.43",
+    [string]$NetworksVersion = "3.0.0-beta.4"
 )
 
 $ErrorActionPreference = "Stop"
 if ($ProductVersion -notmatch '^\d+\.\d+\.\d+$') {
     throw "ProductVersion must use numeric major.minor.patch format."
 }
+if ($NetworksVersion -notmatch '^\d+\.\d+\.\d+-beta\.\d+$') {
+    throw "NetworksVersion must use major.minor.patch-beta.number format."
+}
 $assemblyVersion = "$ProductVersion.0"
+$informationalVersion = "$ProductVersion-beta.1"
+$productCodeSeed = [System.Text.Encoding]::UTF8.GetBytes("Iwesun.Runtime/$ProductVersion")
+$productCodeHasher = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $productCodeHash = $productCodeHasher.ComputeHash($productCodeSeed)
+}
+finally {
+    $productCodeHasher.Dispose()
+}
+$productCode = ([Guid]::new([byte[]]$productCodeHash[0..15])).ToString("D").ToUpperInvariant()
 $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $solutionPath = Join-Path $repositoryRoot "Iwesun.Runtime.slnx"
-$dataSolutionPath = Join-Path (Split-Path -Parent $repositoryRoot) "Data\Data.slnx"
-$networksSolutionPath = Join-Path (Split-Path -Parent $repositoryRoot) "Networks\Networks.slnx"
-$releaseProject = Join-Path $repositoryRoot "Iwesun.Runtime.Release\Iwesun.Runtime.Release.csproj"
-$setupProject = Join-Path $repositoryRoot "Iwesun.Runtime.Setup\Iwesun.Runtime.Setup.wixproj"
+$dataTestsProject = Join-Path $repositoryRoot "modules\Data\tests\Iwesun.Runtime.Data.Tests\Iwesun.Runtime.Data.Tests.csproj"
+$networksTestsProject = Join-Path $repositoryRoot "modules\Networks\tests\Iwesun.Runtime.Networks.Tests\Iwesun.Runtime.Networks.Tests.csproj"
+$webView2TestsProject = Join-Path $repositoryRoot "modules\WebView2\tests\Iwesun.Runtime.WebView2.Tests\Iwesun.Runtime.WebView2.Tests.csproj"
+$functionalTestsProject = Join-Path $repositoryRoot "modules\Diagnostics\tests\Iwesun.Runtime.FunctionalTests\Iwesun.Runtime.FunctionalTests.csproj"
+$binaryCompatibilityProject = Join-Path $repositoryRoot "modules\Diagnostics\validation\Iwesun.Runtime.BinaryCompatibilityHost\Iwesun.Runtime.BinaryCompatibilityHost.csproj"
+$networksProject = Join-Path $repositoryRoot "modules\Networks\src\Iwesun.Runtime.Networks\Iwesun.Runtime.Networks.csproj"
+$setupProject = Join-Path $repositoryRoot "modules\Packaging\setup\Iwesun.Runtime.Setup\Iwesun.Runtime.Setup.wixproj"
 $verifyScript = Join-Path $repositoryRoot "scripts\release\verify-runtime-install.ps1"
 $releaseAppRoot = Join-Path $repositoryRoot "artifacts\release\Iwesun.Runtime\app"
 $releaseDataRoot = Join-Path $repositoryRoot "artifacts\release\Iwesun.Runtime\data"
 $msiPath = Join-Path $repositoryRoot "artifacts\setup\Iwesun.Runtime.Setup.msi"
+$portablePackagePath = Join-Path $repositoryRoot "artifacts\packages\Iwesun.Runtime.$informationalVersion.zip"
+$networksPackagePath = Join-Path $repositoryRoot "artifacts\packages\Iwesun.Runtime.Networks.$NetworksVersion.nupkg"
+$networksSymbolsPath = Join-Path $repositoryRoot "artifacts\packages\Iwesun.Runtime.Networks.$NetworksVersion.snupkg"
+$releaseGuidePath = Join-Path $repositoryRoot "docs\IWESUN_RUNTIME_1.0.43_BETA_RELEASE_GUIDE.md"
+$releaseManifestPath = Join-Path $repositoryRoot "docs\IWESUN_RUNTIME_1.0.43_BETA_RELEASE_MANIFEST.md"
+$bundleRoot = Join-Path $repositoryRoot "artifacts\packages\Iwesun.Runtime.$informationalVersion"
 
 Push-Location $repositoryRoot
 try {
     & dotnet build-server shutdown
     if ($LASTEXITCODE -ne 0) { throw "Build server shutdown failed." }
+    & dotnet build $binaryCompatibilityProject -c Release --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false "/p:BaselineRuntimeRoot=$releaseAppRoot"
+    if ($LASTEXITCODE -ne 0) { throw "Previous-release binary compatibility host build failed." }
     & dotnet clean $solutionPath -c Debug /m:1 /nr:false
     if ($LASTEXITCODE -ne 0) { throw "Debug solution cleanup failed." }
     & dotnet clean $solutionPath -c Release /m:1 /nr:false
@@ -30,33 +55,81 @@ try {
     & dotnet clean $setupProject -c Release /m:1 /nr:false
     if ($LASTEXITCODE -ne 0) { throw "Setup cleanup failed." }
     foreach ($configuration in @("Debug", "Release")) {
-        & dotnet test $networksSolutionPath -c $configuration --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false
+        & dotnet test $networksTestsProject -c $configuration --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false
         if ($LASTEXITCODE -ne 0) { throw "Networks $configuration tests failed." }
-        & dotnet test $dataSolutionPath -c $configuration --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false
+        & dotnet test $dataTestsProject -c $configuration --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false
         if ($LASTEXITCODE -ne 0) { throw "Data $configuration tests failed." }
+        & dotnet test $webView2TestsProject -c $configuration --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false
+        if ($LASTEXITCODE -ne 0) { throw "WebView2 $configuration tests failed." }
     }
-    & dotnet build $solutionPath -c Debug --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false "/p:Version=$ProductVersion" "/p:AssemblyVersion=$assemblyVersion" "/p:FileVersion=$assemblyVersion" "/p:InformationalVersion=$ProductVersion"
+    & dotnet build-server shutdown
+    if ($LASTEXITCODE -ne 0) { throw "Post-test build server shutdown failed." }
+    & dotnet build $solutionPath -c Debug --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false "/p:Version=$ProductVersion" "/p:AssemblyVersion=$assemblyVersion" "/p:FileVersion=$assemblyVersion" "/p:InformationalVersion=$informationalVersion"
     if ($LASTEXITCODE -ne 0) { throw "Debug solution build failed." }
-    & dotnet build $solutionPath -c Release --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false "/p:Version=$ProductVersion" "/p:AssemblyVersion=$assemblyVersion" "/p:FileVersion=$assemblyVersion" "/p:InformationalVersion=$ProductVersion"
+    & dotnet build-server shutdown
+    if ($LASTEXITCODE -ne 0) { throw "Post-Debug build server shutdown failed." }
+    & dotnet build $solutionPath -c Release --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false "/p:Version=$ProductVersion" "/p:AssemblyVersion=$assemblyVersion" "/p:FileVersion=$assemblyVersion" "/p:InformationalVersion=$informationalVersion"
     if ($LASTEXITCODE -ne 0) { throw "Release solution build failed." }
     foreach ($configuration in @("Debug", "Release")) {
-        & dotnet run --project (Join-Path $repositoryRoot "Iwesun.Runtime.FunctionalTests\Iwesun.Runtime.FunctionalTests.csproj") -c $configuration --no-build
+        & dotnet run --project $functionalTestsProject -c $configuration --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false
         if ($LASTEXITCODE -ne 0) { throw "Runtime $configuration functional tests failed." }
     }
-    & dotnet msbuild $releaseProject /t:PublishRuntimeRelease /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false /p:Configuration=Release "/p:Version=$ProductVersion" "/p:AssemblyVersion=$assemblyVersion" "/p:FileVersion=$assemblyVersion" "/p:InformationalVersion=$ProductVersion"
+    $binaryCompatibilityHost = Join-Path $repositoryRoot "modules\Diagnostics\validation\Iwesun.Runtime.BinaryCompatibilityHost\bin\Release\net10.0\Iwesun.Runtime.BinaryCompatibilityHost.dll"
+    $previousBinaryCompatibilityHost = $env:IWESUN_RUNTIME_BINARY_COMPAT_HOST
+    try {
+        $env:IWESUN_RUNTIME_BINARY_COMPAT_HOST = $binaryCompatibilityHost
+        & dotnet run --project $functionalTestsProject -c Release --no-build -- --child --scenario binary-compatibility
+        if ($LASTEXITCODE -ne 0) { throw "Previous-release binary host failed against the current Runtime." }
+    }
+    finally {
+        $env:IWESUN_RUNTIME_BINARY_COMPAT_HOST = $previousBinaryCompatibilityHost
+    }
+    & dotnet build $solutionPath -c Publish --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false "/p:Version=$ProductVersion" "/p:AssemblyVersion=$assemblyVersion" "/p:FileVersion=$assemblyVersion" "/p:InformationalVersion=$informationalVersion"
     if ($LASTEXITCODE -ne 0) { throw "Full Runtime staging failed." }
     & powershell -NoProfile -ExecutionPolicy Bypass -File $verifyScript -InstallRoot $releaseAppRoot -DataRoot $releaseDataRoot
     if ($LASTEXITCODE -ne 0) { throw "Runtime staging verification failed." }
-    & dotnet build $setupProject -c Release -t:Rebuild --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false "/p:ProductVersion=$ProductVersion"
+    & dotnet pack $networksProject -c Release --disable-build-servers /m:1 /nr:false "/p:Version=$NetworksVersion" "/p:AssemblyVersion=3.0.0.0" "/p:FileVersion=3.0.0.0" "/p:InformationalVersion=$NetworksVersion"
+    if ($LASTEXITCODE -ne 0) { throw "Networks beta package build failed." }
+    & dotnet build $setupProject -c Release -t:Rebuild --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false "/p:ProductVersion=$ProductVersion" "/p:ProductCode=$productCode"
     if ($LASTEXITCODE -ne 0) { throw "Runtime MSI rebuild failed." }
-    if (-not (Test-Path -LiteralPath $msiPath)) { throw "Runtime MSI was not generated: $msiPath" }
+    foreach ($requiredArtifact in @($msiPath, $portablePackagePath, $networksPackagePath, $networksSymbolsPath, $releaseGuidePath, $releaseManifestPath)) {
+        if (-not (Test-Path -LiteralPath $requiredArtifact)) {
+            throw "Required beta artifact was not generated: $requiredArtifact"
+        }
+    }
+    if (Test-Path -LiteralPath $bundleRoot) {
+        throw "Beta bundle already exists; refusing to overwrite an existing candidate: $bundleRoot"
+    }
+    $null = New-Item -ItemType Directory -Path $bundleRoot
+    $bundleFiles = @(
+        @{ Source = $msiPath; Destination = (Join-Path $bundleRoot "Iwesun.Runtime.$informationalVersion.msi") },
+        @{ Source = $portablePackagePath; Destination = (Join-Path $bundleRoot "Iwesun.Runtime.$informationalVersion.zip") },
+        @{ Source = $networksPackagePath; Destination = (Join-Path $bundleRoot ([System.IO.Path]::GetFileName($networksPackagePath))) },
+        @{ Source = $networksSymbolsPath; Destination = (Join-Path $bundleRoot ([System.IO.Path]::GetFileName($networksSymbolsPath))) },
+        @{ Source = $releaseGuidePath; Destination = (Join-Path $bundleRoot ([System.IO.Path]::GetFileName($releaseGuidePath))) },
+        @{ Source = $releaseManifestPath; Destination = (Join-Path $bundleRoot "RELEASE_MANIFEST.md") }
+    )
+    foreach ($bundleFile in $bundleFiles) {
+        Copy-Item -LiteralPath $bundleFile.Source -Destination $bundleFile.Destination
+    }
+    $checksumLines = foreach ($bundleFile in $bundleFiles) {
+        $item = Get-Item -LiteralPath $bundleFile.Destination
+        $itemHash = Get-FileHash -LiteralPath $bundleFile.Destination -Algorithm SHA256
+        "$($itemHash.Hash)  $($item.Name)"
+    }
+    $checksumPath = Join-Path $bundleRoot "SHA256SUMS.txt"
+    [System.IO.File]::WriteAllLines($checksumPath, $checksumLines, [System.Text.UTF8Encoding]::new($false))
     $msi = Get-Item -LiteralPath $msiPath
     $hash = Get-FileHash -LiteralPath $msiPath -Algorithm SHA256
     Write-Host "Runtime full package completed."
     Write-Host "Version: $ProductVersion"
+    Write-Host "Product: {$productCode}"
+    Write-Host "Networks: $NetworksVersion"
     Write-Host "MSI:     $($msi.FullName)"
     Write-Host "Bytes:   $($msi.Length)"
     Write-Host "SHA256:  $($hash.Hash)"
+    Write-Host "Bundle:  $bundleRoot"
+    Write-Host "Checksums: $checksumPath"
 }
 finally {
     Pop-Location

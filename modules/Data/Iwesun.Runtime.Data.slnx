@@ -1,0 +1,28 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x86" />
+    <Platform Name="x64" />
+    <Config Name="Debug" Platform="Any CPU" />
+    <Config Name="Release" Platform="Any CPU" />
+    <Config Name="Debug" Platform="x86" />
+    <Config Name="Release" Platform="x86" />
+    <Config Name="Debug" Platform="x64" />
+    <Config Name="Release" Platform="x64" />
+  </Configurations>
+  <Project Path="src/Iwesun.Runtime.Data/Iwesun.Runtime.Data.csproj">
+    <Platform Solution="*|Any CPU" Project="AnyCPU" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="tests/Iwesun.Runtime.Data.Tests/Iwesun.Runtime.Data.Tests.csproj">
+    <Platform Solution="*|Any CPU" Project="AnyCPU" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="tools/Iwesun.Runtime.Data.ScaleTest/Iwesun.Runtime.Data.ScaleTest.csproj">
+    <Platform Solution="*|Any CPU" Project="AnyCPU" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+</Solution>

@@ -15,7 +15,8 @@ The ignore boundary for Copilot is defined by:
 
 ## Quick Start
 
-- **Build**: `dotnet build Iwesun.Runtime.slnx -c Release`
+- **Release build**: `dotnet build Iwesun.Runtime.slnx -c Release`
+- **Focused development**: open the domain solution under `modules/<Domain>/Iwesun.Runtime.<Domain>.slnx`
 - **Host scope**: DDNS Snap is an active consumer of this repository; reference the active docs instead of duplicating design changes in host repos.
 - **Language**: C# (.NET 10), `LangVersion=latest`, `Nullable=enable`, `ImplicitUsings=enable`
 - **Private fields**: `_camelCase` with underscore prefix
@@ -64,7 +65,7 @@ The ignore boundary for Copilot is defined by:
 
 ## Host Integration (standardized template)
 
-`RuntimeHostTemplate` (in `RuntimeHostTemplate.cs`) provides the fixed host-side startup/shutdown flow as extension methods. Prefer this over calling `AddRuntimeDiagnostics`/`UseRuntimeDiagnostics`/`BuildDiagnosticRegistries` directly. See `Iwesun.Runtime.SampleHost/Program.cs` for the canonical example.
+`RuntimeHostTemplate` (in `RuntimeHostTemplate.cs`) provides the fixed host-side startup/shutdown flow as extension methods. Prefer this over calling `AddRuntimeDiagnostics`/`UseRuntimeDiagnostics`/`BuildDiagnosticRegistries` directly. See `modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/Program.cs` for the canonical example.
 
 ```csharp
 // Program.cs
@@ -95,10 +96,13 @@ host.Run();
 ## Project Structure
 
 ```text
-Iwesun.Runtime.Diagnostics/  -> Core diagnostics library + host template + managed wrappers (referenced by DDNS Snap)
-Iwesun.Runtime.SampleHost/   -> Standalone Exe demonstrating the standard startup/shutdown injection template
-Iwesun.Runtime.WebView2/     -> WebRuntime pipe client models (referenced only by Cli)
-Iwesun.Runtime.Cli/          -> Standalone CLI tool (not referenced by DDNS Snap)
+modules/Diagnostics/   -> Core diagnostics, functional tests, and SampleHost
+modules/Data/          -> Runtime data implementation, tests, scale tool, and docs
+modules/Networks/      -> Network implementation, tests, samples, validation, and docs
+modules/WebView2/      -> WebRuntime implementation, sample host, and docs
+modules/Cli/           -> Standalone CLI tool
+modules/RemoteConsole/ -> Remote console implementation and protocol
+modules/Packaging/     -> Release aggregation and MSI setup
 ```
 
 **Dependency graph**:
@@ -171,6 +175,6 @@ All docs are in Chinese under `docs/`:
 
 ## Relationship to DDNS Snap
 
-This repository is referenced by the DDNS Snap project (at `D:\Git Space\Ddns Snap`) via cross-repo `ProjectReference`. DDNS Snap passes `C:\ProgramData\DdnsSnap` as the `runtimeDirectory` and uses the pipe name `DdnsSnap.RuntimeDiagnostics` (compiled default). The DDNS Snap repo contains a [runtime-diagnostics.instructions.md](../Ddns%20Snap/.github/instructions/runtime-diagnostics.instructions.md) that covers usage from the consumer side.
+This repository is consumed by DDNS Snap (at `D:\Git Space\Ddns Snap`) through the versioned DLLs installed under `C:\Program Files\Iwesun\Runtime`; cross-repository `ProjectReference` entries are forbidden. DDNS Snap passes `C:\ProgramData\DdnsSnap` as the `runtimeDirectory` and uses the pipe name `DdnsSnap.RuntimeDiagnostics` (compiled default). The DDNS Snap repo contains a [runtime-diagnostics.instructions.md](../Ddns%20Snap/.github/instructions/runtime-diagnostics.instructions.md) that covers usage from the consumer side.
 
 DDNS Snap may keep usage guidance for Runtime, but Runtime implementation rules and AI instruction boundaries belong in this repository.

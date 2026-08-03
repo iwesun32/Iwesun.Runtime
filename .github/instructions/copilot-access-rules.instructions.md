@@ -21,7 +21,8 @@ Read only what is necessary for the current task. Prefer the smallest local code
    - Examples: `git reset --hard`, `git clean -f`, `Remove-Item -Force`, `del /s /q`, `rd /s /q`.
 3. **Search first, read second.** Use targeted search before opening files.
 4. **Build outputs are not source code.** Ignore generated artifacts, caches, and package outputs.
-5. **Ignore binaries and oversized files by default.** Do not read binary files. For miscellaneous or experimental non-source files larger than 10 KB (10240 bytes), read at most the first 20 lines unless the user explicitly requests deeper reading. Source files and `.md` documents are exempt from this threshold.
+5. **Ignore all binary files completely.** Never read or attempt to process binary files (`.dll`, `.exe`, `.pdb`, `.so`, `.dylib`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.zip`, `.tar`, `.gz`, `.7z`, `.rar`, `.bin`, `.dat`, `.mp3`, `.mp4`, `.avi`, etc.).
+6. **Text file read limit: 200 lines maximum per read.** For all text-based files (source code, `.md`, `.json`, `.xml`, `.yaml`, `.yml`, `.config`, `.txt`, etc.), never read more than 200 lines in a single `read_file` call. If more content is needed, use multiple sequential reads with non-overlapping line ranges.
 
 ## Off-Limits Zones
 
@@ -47,9 +48,13 @@ Only these locations should normally be read without explicit user permission:
 
 | Path | Content |
 |------|---------|
-| `Iwesun.Runtime.Diagnostics/` | Core diagnostics library |
-| `Iwesun.Runtime.Cli/` | Standalone CLI host |
-| `Iwesun.Runtime.WebView2/` | Shared WebRuntime models and client |
+| `modules/Diagnostics/` | Core diagnostics, tests, and sample host |
+| `modules/Data/` | Runtime data, tests, tools, and docs |
+| `modules/Networks/` | Network implementation, tests, samples, validation, and docs |
+| `modules/Cli/` | Standalone CLI host |
+| `modules/WebView2/` | Shared WebRuntime models, sample, and docs |
+| `modules/RemoteConsole/` | Remote console and protocol |
+| `modules/Packaging/` | Release and setup projects |
 | `docs/` | Active design and usage documentation |
 | `.github/` | AI instructions and agent configuration |
 | `AGENTS.md` | Repository entrypoint for coding agents |
@@ -59,10 +64,11 @@ Only these locations should normally be read without explicit user permission:
 ## File Reading Strategy
 
 1. **Read no more than 2-5 files by default.** Expand only when the current hypothesis cannot be tested locally.
-2. **Use minimal line ranges.** Read only the surrounding lines needed for the current task.
-3. **For miscellaneous or experimental non-source files larger than 10 KB, preview only the first 20 lines by default.** Source files and `.md` documents are exempt from this threshold.
-4. **Prefer one nearby hop over broad exploration.** If the first file only forwards behavior, step once to the owning implementation.
-5. **Use subagents only for broad read-only exploration.**
+2. **Maximum 200 lines per read operation.** For all text files, never read more than 200 lines in a single `read_file` call. Use multiple sequential reads for larger files.
+3. **Use minimal line ranges.** Read only the surrounding lines needed for the current task.
+4. **Binary files are completely off-limits.** Never attempt to read or process any binary file type.
+5. **Prefer one nearby hop over broad exploration.** If the first file only forwards behavior, step once to the owning implementation.
+6. **Use subagents only for broad read-only exploration.**
 
 ## Requirements-First Workflow
 

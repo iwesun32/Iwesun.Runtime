@@ -1,7 +1,7 @@
 # 分层状态机基础设计
 
 > **状态**: CURRENT | **最后更新**: 2026-07-09
-> **源码参考**: `Iwesun.Runtime.Diagnostics/RuntimeState.cs`, `Iwesun.Runtime.Diagnostics/RuntimeStateCatalog.cs`, `Iwesun.Runtime.Diagnostics/RuntimeStateManager.cs`, `Iwesun.Runtime.Diagnostics/RuntimeStateTransitionEngine.cs`
+> **源码参考**: `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/`
 
 本文定义“分层状态枚举 + 专门状态机类”的基础设计，用于统一进程、线程、任务三类执行单元的状态表达与跃迁约束。
 

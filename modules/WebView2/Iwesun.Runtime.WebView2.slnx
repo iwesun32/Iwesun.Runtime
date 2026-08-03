@@ -1,0 +1,35 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x86" />
+    <Platform Name="x64" />
+    <Config Name="Debug" Platform="Any CPU" />
+    <Config Name="Release" Platform="Any CPU" />
+    <Config Name="Debug" Platform="x64" />
+    <Config Name="Release" Platform="x64" />
+  </Configurations>
+  <Project Path="src/Iwesun.Runtime.WebView2/Iwesun.Runtime.WebView2.csproj">
+    <Platform Solution="*|Any CPU" Project="AnyCPU" />
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="src/Iwesun.Runtime.WebView2.WinUI/Iwesun.Runtime.WebView2.WinUI.csproj">
+    <Platform Solution="*|Any CPU" Project="x64" />
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="samples/Iwesun.Runtime.WebView2.SampleHost/Iwesun.Runtime.WebView2.SampleHost.csproj">
+    <Platform Solution="*|Any CPU" Project="AnyCPU" />
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="tests/Iwesun.Runtime.WebView2.Tests/Iwesun.Runtime.WebView2.Tests.csproj">
+    <Platform Solution="*|Any CPU" Project="AnyCPU" />
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="../Data/src/Iwesun.Runtime.Data/Iwesun.Runtime.Data.csproj">
+    <Platform Solution="*|Any CPU" Project="AnyCPU" />
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="../Diagnostics/src/Iwesun.Runtime.Diagnostics/Iwesun.Runtime.Diagnostics.csproj">
+    <Platform Solution="*|Any CPU" Project="AnyCPU" />
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+</Solution>

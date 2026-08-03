@@ -69,6 +69,11 @@ All steps must use one endpoint. Composites do not provide workflow branches, lo
 
 ## Current focused commands
 
+- `web.network.evidence.status <targetId> <backendId>` reads live HTTP evidence counters and policy.
+- `web.network.evidence.policy <targetId> <backendId>` reads body kinds plus additional MIME/extension rules.
+- `web.network.evidence.export <targetId> <backendId> <host-local-directory> [afterSequence]` writes an evidence manifest and captured application response bodies on the host. The host must attach the session before navigation; CLI cannot recover missed responses.
+
+In `iwrt shell`, use `set webTarget <id>` and `set evidenceRoot <host-local-directory>`, then pass `$webTarget` and `$evidenceRoot` to the three commands. `exit` closes only the Shell and leaves the host evidence session running.
 - `reflection.get <target> [member]` routes directly to an explicitly registered target.
 - Debug-only `reflection.invoke <target> <member>` calls only a parameterless method explicitly listed in `InvokableMembers`; Release Diagnostics does not compile the invoke route.
 - `switchboard.point.list [id]` queries compiled and runtime-discovered points.

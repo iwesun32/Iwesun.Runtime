@@ -1,0 +1,18 @@
+<Project Sdk="WixToolset.Sdk/7.0.0">
+  <PropertyGroup>
+    <AcceptEula>wix7</AcceptEula>
+    <OutputType>Package</OutputType>
+    <Configurations>Debug;Release</Configurations>
+    <Platforms>x64</Platforms>
+    <Platform>x64</Platform>
+    <OutputName>Iwesun.Runtime.Setup</OutputName>
+    <RepositoryRoot>$(MSBuildThisFileDirectory)..\..\..\..\</RepositoryRoot>
+    <OutputPath>$(RepositoryRoot)artifacts\setup\</OutputPath>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">1.0.42</ProductVersion>
+    <ProductCode Condition="'$(ProductCode)' == ''">AB6C65E5-9D38-0053-A566-B56D264A6AD4</ProductCode>
+    <DefineConstants>ReleaseAppRoot=$(RepositoryRoot)artifacts\release\Iwesun.Runtime\app;ReleaseDataRoot=$(RepositoryRoot)artifacts\release\Iwesun.Runtime\data;ProductVersion=$(ProductVersion);ProductCode=$(ProductCode)</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="7.0.0" />
+  </ItemGroup>
+</Project>

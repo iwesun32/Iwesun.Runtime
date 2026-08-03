@@ -110,6 +110,8 @@ release/
 # Put large generated references, captures, screenshots, and historical material here.
 ai-ignore/
 ai-ignore/**
+_ai_ignore/
+_ai_ignore/**
 
 # ========== 7. Test output and snapshots
 **/TestResults/

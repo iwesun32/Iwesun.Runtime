@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>AnyCPU;x64</Platforms>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Data\src\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" />
+    <ProjectReference Include="..\..\..\Diagnostics\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" />
+    <ProjectReference Include="..\..\..\RemoteConsole\protocol\Iwesun.Runtime.RemoteConsole.Protocol\Iwesun.Runtime.RemoteConsole.Protocol.csproj" />
+    <ProjectReference Include="..\..\..\WebView2\src\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="RuntimeCliSystemConfig.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="RuntimeCliSystemMetadata.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="RuntimeCliUserConfig.example.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <EmbeddedResource Include="RuntimeCliSystemConfig.json" />
+    <EmbeddedResource Include="RuntimeCliSystemMetadata.json" />
+  </ItemGroup>
+</Project>

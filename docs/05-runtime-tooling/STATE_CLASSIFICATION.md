@@ -1,7 +1,7 @@
 # 状态分类基础类型设计
 
 > **状态**: CURRENT | **最后更新**: 2026-07-09
-> **源码参考**: `Iwesun.Runtime.Diagnostics/RuntimeState.cs`, `Iwesun.Runtime.Diagnostics/RuntimeStateCatalog.cs`, `Iwesun.Runtime.Diagnostics/RuntimeStateContracts.cs`, `Iwesun.Runtime.Diagnostics/RuntimeStateManager.cs`, `Iwesun.Runtime.Diagnostics/RuntimeDiagnosticsServiceCollectionExtensions.cs`, `Iwesun.Runtime.Diagnostics/RuntimeOutput.cs`
+> **源码参考**: `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/`
 
 本文定义一种可扩展的运行时状态分类基础类型，用来描述“粗粒度状态”和“细粒度子状态”的同时存在关系。
 
@@ -206,10 +206,10 @@ Is(parent) -> bool
 
 本文所述基础类型与目录管理能力**已实现**，对应源码位于：
 
-- `Iwesun.Runtime.Diagnostics/RuntimeState.cs`
-- `Iwesun.Runtime.Diagnostics/RuntimeStateCatalog.cs`
-- `Iwesun.Runtime.Diagnostics/RuntimeStateContracts.cs`
-- `Iwesun.Runtime.Diagnostics/RuntimeStateManager.cs`
+- `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/RuntimeState.cs`
+- `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/RuntimeStateCatalog.cs`
+- `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/RuntimeStateContracts.cs`
+- `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/RuntimeStateManager.cs`
 
 已完成的关键点：
 
@@ -224,5 +224,5 @@ Is(parent) -> bool
 ## 相关文档
 
 - 线程与任务管理 → [THREAD_TASK_MANAGEMENT.md](THREAD_TASK_MANAGEMENT.md)
-- 线程与任务管理实施计划 → [THREAD_TASK_MANAGEMENT_PLAN.md](THREAD_TASK_MANAGEMENT_PLAN.md)
+- 线程与任务管理当前设计 → [THREAD_TASK_MANAGEMENT.md](THREAD_TASK_MANAGEMENT.md)
 - 运行时诊断总览 → [../RUNTIME_DIAGNOSTICS.md](../RUNTIME_DIAGNOSTICS.md)

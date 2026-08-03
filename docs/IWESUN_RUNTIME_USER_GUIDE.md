@@ -89,7 +89,7 @@ builder.Services.StartWindowsService(
     startupRuntimeDiagnosticsPipeName: "MyProduct.RuntimeDiagnostics");
 ```
 
-其余 `AddHostedService`、`Build`、`Activate` 和 `RunAsync` 完全相同。SCM Stop/Shutdown 会先进入 `RuntimeShutdownCoordinator`，完成 Root 广播、清理事件、状态与反登记，再由标准 `WindowsServiceLifetime` 停止 Host。CLI shutdown 与 SCM Stop 共用同一幂等任务。该入口具有 Windows Service 上下文检测，服务程序在控制台直接运行时不会误接管控制台 Lifetime。
+其余 `AddHostedService`、`Build`、`Activate` 和 `RunAsync` 完全相同。SCM Stop/Shutdown 会先进入 `RuntimeShutdownCoordinator`，完成 Root 广播、清理事件、状态与反登记，再由标准 `WindowsServiceLifetime` 停止 Host。CLI shutdown 与 SCM Stop 共用同一幂等任务；CLI 未显式提供期限时同样采用这里的 `ShutdownTimeout`，不会退回固定 5 秒。该入口具有 Windows Service 上下文检测，服务程序在控制台直接运行时不会误接管控制台 Lifetime。
 
 如果服务身份不希望写在 `Program.cs`，固定主程序调用 `StartConfiguredWindowsService(...)`，业务 DI 模块通过 `ConfigureRuntimeWindowsService(options => ...)` 提供 `ServiceName/DisplayName/Description/ShutdownTimeout`。Runtime 不知道业务服务名，也不提供默认名称。
 
@@ -456,20 +456,20 @@ C:\Program Files\Iwesun\Runtime\lib\Iwesun.Runtime.Diagnostics\
 </PropertyGroup>
 
 <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
-  <DiagnosticsVariant>Debug</DiagnosticsVariant>
+  <RuntimeLibraryVariant>Debug</RuntimeLibraryVariant>
 </PropertyGroup>
 
 <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-  <DiagnosticsVariant>Release</DiagnosticsVariant>
+  <RuntimeLibraryVariant>Release</RuntimeLibraryVariant>
 </PropertyGroup>
 
 <ItemGroup>
   <Reference Include="Iwesun.Runtime.Diagnostics">
-    <HintPath>$(IwesunRuntimeRoot)\lib\Iwesun.Runtime.Diagnostics\$(DiagnosticsVariant)\Iwesun.Runtime.Diagnostics.dll</HintPath>
+    <HintPath>$(IwesunRuntimeRoot)\lib\Iwesun.Runtime.Diagnostics\$(RuntimeLibraryVariant)\Iwesun.Runtime.Diagnostics.dll</HintPath>
     <Private>true</Private>
   </Reference>
   <Reference Include="Iwesun.Runtime.Data">
-    <HintPath>$(IwesunRuntimeRoot)\lib\Iwesun.Runtime.Data\Iwesun.Runtime.Data.dll</HintPath>
+    <HintPath>$(IwesunRuntimeRoot)\lib\Iwesun.Runtime.Data\$(RuntimeLibraryVariant)\Iwesun.Runtime.Data.dll</HintPath>
     <Private>true</Private>
   </Reference>
 </ItemGroup>
@@ -477,11 +477,11 @@ C:\Program Files\Iwesun\Runtime\lib\Iwesun.Runtime.Diagnostics\
 
 `Private=true` 会把选中的 DLL 复制到宿主输出目录。Debug 应用如果错误加载 Release DLL，`#if DEBUG` 已在 Runtime DLL 编译期裁掉的断点服务无法通过 JSON、CLI 或运行时开关恢复。
 
-`Iwesun.Runtime.Data.dll` 同时提供 Runtime 数据契约和 RecordStore V2；安装版宿主必须显式引用并复制它，且必须删除任何 `Iwesun.Data.dll` 旧副本。
+`Iwesun.Runtime.Data.dll` 同时提供 Runtime 数据契约和 RecordStore；安装版宿主必须显式引用并复制它，且必须删除任何 `Iwesun.Data.dll` 旧副本。
 
-安装目录`docs\Iwesun.Runtime.Data\`保存RecordStore V2完整文档树；公共接口见
-`docs\Iwesun.Runtime.Data\docs\02-api\RECORD_STORE_V2_PUBLIC_API.md`，当前边界见
-`docs\Iwesun.Runtime.Data\docs\RELEASE_STATUS.md`。
+安装目录`docs\Iwesun.Runtime.Data\`保存RecordStore完整文档树；公共接口见
+`docs\Iwesun.Runtime.Data\02-api\RECORD_STORE_PUBLIC_API.md`，当前边界见
+`docs\Iwesun.Runtime.Data\RELEASE_STATUS.md`。
 
 从源码开发引用迁移到安装版 DLL 时，必须执行：
 
@@ -498,11 +498,11 @@ C:\Program Files\Iwesun\Runtime\lib\Iwesun.Runtime.Diagnostics\
 
 ```powershell
 # 源码开发模式（默认）
-dotnet build Iwesun.Runtime.SampleHost/Iwesun.Runtime.SampleHost.csproj -c Debug
+dotnet build modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/Iwesun.Runtime.SampleHost.csproj -c Debug
 
 # 已安装 Runtime DLL 模式（独立项目，避免复用 ProjectReference 的恢复缓存）
-dotnet build Iwesun.Runtime.SampleHost/installed/Iwesun.Runtime.SampleHost.Installed.csproj -c Debug
-dotnet build Iwesun.Runtime.SampleHost/installed/Iwesun.Runtime.SampleHost.Installed.csproj -c Release
+dotnet build modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/installed/Iwesun.Runtime.SampleHost.Installed.csproj -c Debug
+dotnet build modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/installed/Iwesun.Runtime.SampleHost.Installed.csproj -c Release
 ```
 
 可通过 `-p:IwesunRuntimeRoot=...` 覆盖安装根目录，用于企业镜像或非默认部署路径。
@@ -585,7 +585,7 @@ RuntimeInjector.Data(hub, "my-product.worker", workerState, new RuntimeDiagnosti
 | --- | --- | --- |
 | 全局生命周期 | `RuntimeManagedRegistry.GlobalLifecycleState` / `RuntimeStateManager` | Start、Working、Stop、Exit 等全程序状态 |
 | 单元主状态 | `IRManagedState.TransitionTo` | 进程、线程、任务粗粒度状态 |
-| 业务细分状态 | `SetDetail` / 子任务状态 DLIST | 扫描阶段、队列深度、清理进度等 |
+| 业务细分状态 | `SetDetail` / `RuntimeStateHistory` | 扫描阶段、队列深度、清理进度等 |
 
 ```csharp
 worker.State.SetDetail("scanPhase", "enumerating");
@@ -635,7 +635,13 @@ public sealed record MyWorkerCompletedEventArgs(string BatchId);
 3. 每个守护程序先写 `Requested`，再执行全部 `CleanupRequested` 钩子并写 `Draining`；无人订阅时立即完成。
 4. 钩子全部返回时写 `Completed` 并释放单元退出信号；到达唯一的主控 deadline 时写 `Timeout` 并释放信号。
 5. 执行入口醒来后依据共享状态返回 0 或 124，并在真实结束时销户登记、FIFO handler、管道和反射目标。
-6. 主控持续检查 Root 下的扁平进程/线程/任务登记和相关 DLIST；全部清空后返回 0，deadline 到期仍有待退出单元时返回 124。
+6. 主控持续检查 Root 下的扁平进程/线程/任务登记和相关 RuntimeStateHistory；全部清空后返回 0，deadline 到期仍有待退出单元时返回 124。
+
+`Stop`、`Exit`、`Completed` 和 `Timeout` 均属于退出阶段。进入其中任一状态后，新的托管工作会在注册前被拒绝，避免监督器在退出完成或超时后重新拉起业务线程。
+
+对于 AIGateway Server 这类分支数量较大的宿主，应把真实业务分支登记为阻塞单元，把指标采集、状态投影等纯观察器登记为 `BlocksShutdown=false`。两者都受中央终态准入门约束；`BlocksShutdown=false` 只表示“不等待它”，不表示退出后仍可创建。监管器收到拒绝后必须结束补建循环，不能用新 UnitId 重试绕过门禁。所有业务清理共享首次 shutdown 冻结的唯一 deadline，后续 CLI、SCM 或内部调用不会延长期限。
+
+`RThread` 和 `RProcess` 使用对象初始化器设置非阻塞观察器属性，例如 `new RThread(Observe) { BlocksShutdown = false }`。UnitId 在活动登记期间必须唯一；重复 UnitId 和同一包装器的重复/并发 Start 都会同步抛出 `InvalidOperationException`。
 
 ```csharp
 var shutdown = host.Services.GetRequiredService<RuntimeShutdownCoordinator>();
@@ -646,6 +652,16 @@ var result = await shutdown.ShutdownAsync(
 
 Environment.ExitCode = result.ExitCode;
 ```
+
+标准 CLI 的位置参数为：
+
+```text
+iwrt lifecycle.shutdown [graceful] [timeoutMs] [payload]
+```
+
+期限选择顺序为 `timeoutMs`、兼容字段 `countdownMs`、宿主 `ShutdownTimeout`、30 秒回退值。响应中的 `requestId`、`timeoutMs`、`deadlineUtc` 是协调器实际接受的值；并发重复请求不得回显未采用的新期限。
+
+`graceful` 当前只能为 `true`。传入 `false` 返回 `NON_GRACEFUL_SHUTDOWN_NOT_SUPPORTED`，不会执行未定义的强制终止。`ShutdownAsync` 的调用方 token 只取消等待；一旦请求被接受，协调器仍会在原 deadline 内完成或超时。
 
 ### 4.4 守护程序：轮询保底 + FIFO 唤醒
 
@@ -799,7 +815,7 @@ WebRuntime CLI 命令使用 `diagnostics` endpoint，先进入 `diagnostics.prox
 
 结构化组合命令统一使用 `composites`，由 CLI 将已有 catalog 命令组装为标准 batch Frame；用户别名和命令扩展同样可用。组合步骤不执行脚本文本，也不提供条件、循环或结果绑定。旧 `workflows` 字段、旧 schema、旧命令名和旧式文本 workflow 步骤均已废止。
 
-详细规格参见 [2026-07-13-cli-context-shell-design.md](superpowers/specs/2026-07-13-cli-context-shell-design.md)。当前完整命令表以 `RuntimeCliSystemConfig.json` 为准；当前目录 `RuntimeCliUserConfig.json` 自动加载，`exit/quit` 只退出 Shell。
+历史设计规格已移入 `docs/archive/superpowers/`。当前完整命令表以 `RuntimeCliSystemConfig.json` 为准；当前目录 `RuntimeCliUserConfig.json` 自动加载，`exit/quit` 只退出 Shell。
 
 ### 5.5 CLI 操作标准
 

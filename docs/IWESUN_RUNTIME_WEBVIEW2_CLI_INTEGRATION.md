@@ -2,7 +2,7 @@
 
 ## 1. 权威配置
 
-CLI 的命令路由唯一由 `Iwesun.Runtime.Cli/RuntimeCliSystemConfig.json` 定义，格式为 `iwesun.runtime.cli/3.0`。CLI 文本只是命令名，真正发送的是 `RuntimeDiagnosticFrame`：
+CLI 的命令路由唯一由 `modules/Cli/src/Iwesun.Runtime.Cli/RuntimeCliSystemConfig.json` 定义，格式为 `iwesun.runtime.cli/3.0`。CLI 文本只是命令名，真正发送的是 `RuntimeDiagnosticFrame`：
 
 ```json
 {
@@ -42,6 +42,9 @@ CLI 的命令路由唯一由 `Iwesun.Runtime.Cli/RuntimeCliSystemConfig.json` �
 | `web.script.audit` | `script.audit.list` |
 | `web.network.rule.add` | `network.rule.add` |
 | `web.network.rule.clear` | `network.rule.clear` |
+| `web.network.evidence.status` | `network.evidence.status` |
+| `web.network.evidence.policy` | `network.evidence.policy` |
+| `web.network.evidence.export` | `network.evidence.export` |
 | `web.monitor.filter.add` | `monitor.filter.add` |
 | `web.monitor.filter.clear` | `monitor.filter.clear` |
 | `web.highlight` | `highlightXPath` |
@@ -61,12 +64,77 @@ CLI 的命令路由唯一由 `Iwesun.Runtime.Cli/RuntimeCliSystemConfig.json` �
 - `WebRuntimeScriptDispatcher`：受控脚本执行，最大 256 KiB。
 - `WebRuntimeScriptAuditLog`：记录动作、长度、结果和错误码，不记录脚本正文或 Cookie 值。
 - `WebRuntimeNetworkRuleRegistry`：阻断/固定响应规则。
+- `WebRuntimeNetworkEvidenceSession`：HTTP 元数据及页面复现正文，默认覆盖 CSS/脚本、文档、图像、图标和字体。
+- `WebRuntimeNetworkEvidenceCommandDispatcher`：把 `status / policy / export` typed actions 路由到宿主持有的证据会话。
 - `WebRuntimeMonitorFilterRegistry`：监控过滤器。
-- `WebRuntimeEvidenceScripts`：XPath 高亮和清理。
+- `WebRuntimeTrackedCdpDomTreeSession`：通过 CDP DOM 事件维护 XPath 与节点身份树。
+- `WebRuntimeCdpDomAccess`：以 `nodeId/backendNodeId` 执行固定 DOM 操作和高亮。
 - `WebRuntimeHostController` / `IWebRuntimeHostAdapter`：宿主接线。
 - `IDataStreamRecorderManager` / `DataStreamRecorderManager`：原始请求/响应数据记录、业务委托、状态和事件。
 
 宿主在 WebView2 STA 线程调用脚本，在 `WebResourceRequested` 事件中应用网络决策。公共库不创建窗口、不保存业务 Cookie、不自行维护业务管道。
+
+### 3.1 HTTP 证据命令 JSON
+
+`web.network.evidence.export doubao-web doubao-web C:\Evidence\doubao-http 0` 生成的代理申请等价于：
+
+```json
+{
+  "header": {
+    "schema": "rtdiag/2.0",
+    "frameType": "request",
+    "category": "instruction",
+    "operation": "export",
+    "requestId": "req-http-export-1",
+    "source": "runtime-cli",
+    "destination": "Product.RuntimeDiagnostics"
+  },
+  "command": {
+    "domain": "proxy",
+    "target": "diagnostics.proxy",
+    "action": "invoke",
+    "args": {
+      "targetId": "doubao-web",
+      "backendId": "doubao-web",
+      "outputDirectory": "C:\\Evidence\\doubao-http",
+      "afterSequence": 0,
+      "module": "WebRuntime",
+      "pipe": "WebRuntime",
+      "proxyAction": "network.evidence.export",
+      "domain": "web.runtime",
+      "programId": "aigateway.webview2"
+    }
+  }
+}
+```
+
+业务 WebRuntime 程序把 typed args 还原为 `WebRuntimeControlRequest`，调用 `WebRuntimeHostController.TryExecuteNetworkEvidenceAsync`。成功数据至少包含：
+
+```json
+{
+  "handled": true,
+  "success": true,
+  "value": {
+    "outputDirectory": "C:\\Evidence\\doubao-http",
+    "afterSequence": 0,
+    "status": {
+      "observedResponseCount": 128,
+      "completedResponseCount": 128,
+      "capturedBodyCount": 96,
+      "capturedBodyBytes": 10485760,
+      "failureCount": 0,
+      "activeBodyCopyCount": 0,
+      "networkEventCount": 256,
+      "skippedBodyCount": 32,
+      "bodyCapturePolicy": {
+        "kinds": "PageReconstruction",
+        "additionalContentTypes": [],
+        "additionalExtensions": []
+      }
+    }
+  }
+}
+```
 
 ## 4. 源码示例项目
 
@@ -104,4 +172,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtim
 
 该脚本依次执行 Debug/Release 全量编译、完整 staging、安装前自检、WiX Rebuild，并输出 MSI 路径和 SHA-256。
 
-1.0.26 在构建前先执行 Debug、Release 和 Setup clean；正式 MSI 只在明确发布时调用该唯一入口。数据记录器完整接口见 `Iwesun.Runtime.WebView2/docs/DATA_STREAM_MONITOR_RECORDER.md`，升级和回退见 `WEBVIEW2_1.0.26_UPGRADE.md`。
+正式 MSI 只通过唯一全量发布入口生成。数据记录器当前完整接口见 `modules/WebView2/docs/DATA_STREAM_MONITOR_RECORDER.md`，历史升级说明已归档。

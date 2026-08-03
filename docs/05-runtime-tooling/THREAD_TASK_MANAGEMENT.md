@@ -1,7 +1,7 @@
 # 线程与任务管理
 
 > **状态**: CURRENT | **最后更新**: 2026-07-09
-> **源码参考**: `Iwesun.Runtime.Diagnostics/RuntimeExecutionManagement.cs`, `Iwesun.Runtime.Diagnostics/RuntimeDiagnosticsServiceCollectionExtensions.cs`, `Iwesun.Runtime.Diagnostics/RuntimeOutput.cs`, `Iwesun.Runtime.Diagnostics/DiagnosticSwitchboard.cs`, `Iwesun.Runtime.Diagnostics/RuntimeDiagnosticHub.cs`, `Iwesun.Runtime.Diagnostics/RuntimeDiagnosticsMonitor.cs`, `Iwesun.Runtime.Diagnostics/DiagnosticAssemblyAttributes.cs`, `Iwesun.Runtime.Diagnostics/RuntimeHostScanModels.cs`, `Iwesun.Runtime.SampleHost/Program.cs`
+> **源码参考**: `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/`、`modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/Program.cs`
 
 本文描述 Iwesun.Runtime.Diagnostics 里的“线程与任务管理”设计目标与当前实现进度。当前活跃实现已经覆盖运行时输出、开关板、断点管理、命名管道监控、反射目标，以及线程/任务管理基础管理器和样板宿主验证入口。样板宿主已演示静态/动态线程表、静态/动态任务表、并行协调/工作/监视循环和动态批次任务，但正式的生命周期登记 API、统一收尾编排和完整测试覆盖仍需继续补齐。
 
@@ -244,7 +244,7 @@ flowchart LR
 ## 相关文档
 
 - 状态分类基础类型 → [STATE_CLASSIFICATION.md](STATE_CLASSIFICATION.md)
-- 实施计划 → [THREAD_TASK_MANAGEMENT_PLAN.md](THREAD_TASK_MANAGEMENT_PLAN.md)
+- 历史实施计划已移入 `docs/archive/`。
 - 进程/线程标准注入 → [PROCESS_THREAD_INJECTION.md](PROCESS_THREAD_INJECTION.md)
 - 运行时诊断总览 → [RUNTIME_DIAGNOSTICS.md](../RUNTIME_DIAGNOSTICS.md)
 - CLI 使用 → [IWESUN_RUNTIME_CLI.md](../IWESUN_RUNTIME_CLI.md)

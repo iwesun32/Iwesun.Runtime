@@ -6,8 +6,7 @@
 
 > 说明：本文件作为“总览与实施计划”保留，不删除。  
 > 方案拆分文档：
-> - 静态方案（旧方案保留）：`INJECTOR_STATIC_SCHEME.md`
-> - 动态方案（对象级缓冲池）：`INJECTOR_DYNAMIC_POOL_SCHEME.md`
+> 历史静态方案和动态缓冲池草案已移入 `docs/archive/`，当前行为以本文和活动源码为准。
 
 ## 1. 背景与问题
 
@@ -239,5 +238,5 @@ monitor.Output(...);
 
 验收：
 1. `dotnet build Iwesun.Runtime.slnx -c Release` 通过。
-2. `dotnet test Iwesun.Runtime.FunctionalTests ...` 通过。
+2. `dotnet run --project modules/Diagnostics/tests/Iwesun.Runtime.FunctionalTests/Iwesun.Runtime.FunctionalTests.csproj -c Release` 通过。
 3. 新增场景全部绿色并可重复运行。

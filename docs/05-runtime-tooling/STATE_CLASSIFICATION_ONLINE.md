@@ -1,7 +1,7 @@
 # 状态分类在线业务实现技术文档
 
 > **状态**: CURRENT | **最后更新**: 2026-07-09
-> **源码参考**: `Iwesun.Runtime.Diagnostics/RuntimeState.cs`, `Iwesun.Runtime.Diagnostics/RuntimeStateCatalog.cs`, `Iwesun.Runtime.Diagnostics/RuntimeStateContracts.cs`, `Iwesun.Runtime.Diagnostics/RuntimeOutput.cs`, `Iwesun.Runtime.Diagnostics/RuntimeDiagnosticHub.cs`, `Iwesun.Runtime.Diagnostics/RuntimeDiagnosticsMonitor.cs`, `Iwesun.Runtime.Diagnostics/RuntimeDiagnosticsServiceCollectionExtensions.cs`
+> **源码参考**: `modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/`
 
 本文描述状态分类基础类型在在线业务里的落地方式。这里的“在线业务”指真实宿主正在运行时的状态流转、登记、查询和收尾，而不是离线定义阶段。
 
@@ -88,5 +88,4 @@
 ## 相关文档
 
 - 基础类型设计 → [STATE_CLASSIFICATION.md](STATE_CLASSIFICATION.md)
-- 实施计划 → [STATE_CLASSIFICATION_PLAN.md](STATE_CLASSIFICATION_PLAN.md)
-- 任务书 → [STATE_CLASSIFICATION_TASKS.md](STATE_CLASSIFICATION_TASKS.md)
+- 历史实施计划与任务书已移入 `docs/archive/`。
