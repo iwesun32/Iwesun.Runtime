@@ -1,11 +1,13 @@
 # iwesun Runtime
 
-**面向 AI 自动调试与服务运行管理的 .NET 公共基础库。**
+**面向 AI 自动调试与服务运行管理的 .NET 接入规范与公共基础库。**
 
-[English](README.en.md) · [使用入门](docs/GETTING_STARTED.md) · [详细指南](docs/IWESUN_RUNTIME_USER_GUIDE.md) · [发布版本](https://github.com/iwesun32/Iwesun.Runtime/releases) · [参与维护](CONTRIBUTING.md) · [许可证](LICENSE)
+[English](README.en.md) · [完整规范与必读路线](docs/SPECIFICATION.md) · [全部文档](docs/DOCUMENTATION_CATALOG.md) · [文档下载](https://github.com/iwesun32/Iwesun.Runtime/releases/tag/docs-v1.0.47-r1) · [发布版本](https://github.com/iwesun32/Iwesun.Runtime/releases) · [参与维护](CONTRIBUTING.md) · [许可证](LICENSE)
 
 iwesun Runtime 提供运行时诊断、服务生命周期管理、小型关系表数据结构、WebView2 访问控制和并行网络接口。
 标准 CLI 与配套 AI 技能把业务现场变成可观察、可访问、可控制的接口，使 AI 在完成接入与授权后连续开展调试，减少人工逐步介入。
+
+这不是只安装 DLL 就能正确使用的零配置工具。接入必须遵守宿主生命周期、受管执行、状态、安全授权、模块 API 与验收规范；[快速入门](docs/GETTING_STARTED.md)只建立最小体验，不能替代[完整规范](docs/SPECIFICATION.md)。
 
 对外名称是 **iwesun**；GitHub 账号使用 `iwesun32`，仓库地址保持不变。
 

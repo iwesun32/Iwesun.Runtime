@@ -1,11 +1,13 @@
 # iwesun Runtime
 
-**A .NET foundation for AI-operated diagnostics and service lifecycle management.**
+**A .NET integration specification and foundation for AI-operated diagnostics and service lifecycle management.**
 
-[中文](README.md) · [User guide](docs/en/USER_GUIDE.md) · [Releases](https://github.com/iwesun32/Iwesun.Runtime/releases) · [Contributing](docs/en/CONTRIBUTING.md) · [License](LICENSE)
+[中文](README.md) · [Specification and required reading](docs/en/SPECIFICATION.md) · [Full catalog](docs/DOCUMENTATION_CATALOG.md) · [Documentation download](https://github.com/iwesun32/Iwesun.Runtime/releases/tag/docs-v1.0.47-r1) · [Releases](https://github.com/iwesun32/Iwesun.Runtime/releases) · [Contributing](docs/en/CONTRIBUTING.md) · [License](LICENSE)
 
 iwesun Runtime connects application diagnostics, managed execution, small in-memory relational tables, WebView2 control and parallel network endpoints through reusable .NET components.
 After host integration and authorization, an AI assistant can inspect state, trace business execution, access permitted object members and run debugging checks through a structured CLI and an integration skill.
+
+This is not a zero-configuration tool. Correct integration requires the lifecycle, managed execution, state, authorization, module API and acceptance contracts. The [user guide](docs/en/USER_GUIDE.md) introduces the system; it does not replace the [complete specification](docs/en/SPECIFICATION.md). Detailed references remain primarily Chinese originals.
 
 Capabilities: [AI diagnostics](docs/en/USER_GUIDE.md#diagnostics) · [Service lifecycle](docs/en/USER_GUIDE.md#diagnostics) · [RecordStore](docs/en/USER_GUIDE.md#data) · [WebView2 automation](docs/en/USER_GUIDE.md#webview2) · [Parallel networking](docs/en/USER_GUIDE.md#networks).
 

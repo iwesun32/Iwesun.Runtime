@@ -4,6 +4,8 @@
 
 Applies to Runtime `1.0.47-beta.1` / Networks `3.0.0-beta.6`. Author and brand: iwesun.
 
+This is an introduction, not a complete integration contract. Follow the [specification framework](SPECIFICATION.md), read the selected module contracts and perform host acceptance. The [full catalog](../DOCUMENTATION_CATALOG.md) links the complete public corpus, primarily Chinese originals.
+
 ## What it does
 
 An integrated, authorized AI assistant or operator can use a structured CLI to inspect application state, trace execution, diagnose failures and check fixes. The same foundation standardizes startup, managed execution and coordinated shutdown.
