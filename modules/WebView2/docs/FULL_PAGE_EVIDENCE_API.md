@@ -100,6 +100,22 @@ await WebRuntimePageEvidenceCapture.CaptureAsync(
 
 设置 `WebRuntimeNetworkEvidenceOptions.SharedStoreDirectory` 后，响应从会话启动时即写入独立公共库，与是否抓取快照无关；正文按 SHA-256 内容寻址并保存一次。单项正文读取失败记录在公共/快照清单的 `bodyFailures` 中，仍保存该响应元数据，不使 DOM/UI 快照失败；需要把正文失败升级为业务采集失败时，由宿主检查 `GetStatus().FailureCount` 或导出清单。
 
+### WinUI 内存重建资源源
+
+WinUI 的 WebView2 SDK 使用 `Microsoft.Web.WebView2.Core.Projection`，不得把它的 `CoreWebView2` 实例强制传给基于桌面 Core 程序集编译的会话。WinUI 宿主应在导航前创建 `WebRuntimeWinUiNetworkEvidenceSession`。该适配器直接订阅 WinUI 投影的 `WebResourceResponseReceived`，把页面重建需要的图像、字体、文本、CSS、脚本和结构化数据保存为不可变内存正文，并实现公共 `IWebRuntimeCapturedHttpBodySource`：
+
+```csharp
+await using var network =
+    await WebRuntimeWinUiNetworkEvidenceSession.StartAsync(coreWebView2);
+
+// 导航、点击和页面稳定检查。
+await network.WaitForPendingBodiesAsync(TimeSpan.FromSeconds(30));
+
+IWebRuntimeCapturedHttpBodySource resourceSource = network;
+```
+
+`TryReadCapturedBody(url, out body)` 只读取本次会话已经捕获的原始应用响应正文，按完整 URL（忽略 fragment）匹配，绝不发起第二次网络请求。DOM→XAML 重建应把该接口挂在 HTML 根资源连接上；`img`、字体和其他 UI 资源从这里创建 WinUI 对象。这样即使原 URL 带短期签名或随后失效，克隆仍使用页面实际显示时获得的同一份数据。URL、MIME、SHA-256 和捕获来源继续作为审计身份，运行时像素尺寸由真实 WinUI 解码结果读取。
+
 多个页面快照应设置 `WebRuntimePageEvidenceOptions.NetworkExport`。快照阶段不重新抓取正文，而是从当前 document、Performance/DOM/CSS/伪元素资源 URL 和 fetch/XHR 跟踪记录判定页面使用的公共资源，写入正向引用并更新公共 `catalog.json` 的反向引用。`resource-container-map.json` 使用 `1.2` 架构，区分 `dom-attribute / responsive-image / responsive-image-candidate / css-computed / css-pseudo`，同时区分 `http / inline-data / blob / other`；HTTP URL 关联时忽略仅用于 SVG 符号选择的 fragment。`response-manifest.json:applications[]` 为每个引用输出 `linked / candidate / unknown`、容器和说明。Runtime 不以 Canvas、截图或重新编码替代 HTTP 正文。快照的完整性由引用集合表达，不要求在每个快照目录重复复制正文。未设置公共库时仍保留独立快照目录导出模式，供单次取证使用。
 
 默认清单会删除 Cookie、Set-Cookie、Authorization、Token、Secret、API Key 和 WebSocket Key 等敏感头。正文仍可能包含账号隐私，因此输出目录必须是调用方明确选择的本机证据目录，不得直接进入源码或发布目录。

@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Platforms>AnyCPU;x86;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
     <AssemblyName>Iwesun.Runtime.WebView2.Tests</AssemblyName>
     <RootNamespace>Iwesun.Runtime.WebView2.Tests</RootNamespace>
   </PropertyGroup>

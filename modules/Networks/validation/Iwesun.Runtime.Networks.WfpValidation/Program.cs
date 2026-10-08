@@ -3,8 +3,18 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Iwesun.Runtime.Networks;
+using Iwesun.Runtime.Diagnostics;
 
-return await WfpValidationProgram.RunAsync(args).ConfigureAwait(false);
+#if DEBUG
+[assembly: DiagnosticBreakpoint("wfp.validation.stage.break", "wfp-validation",
+	"Inspect the live policy lease and socket boundaries.", "Program.cs", Enabled = false)]
+if (args.FirstOrDefault() == "serve-debug")
+	return await WfpValidationDebugHost.RunAsync().ConfigureAwait(false);
+#endif
+
+return args.FirstOrDefault() == "serve-local"
+    ? await LocalStreamValidationHost.RunAsync(args.Skip(1).ToArray()).ConfigureAwait(false)
+    : await WfpValidationProgram.RunAsync(args).ConfigureAwait(false);
 
 internal static class WfpValidationProgram
 {
@@ -12,9 +22,25 @@ internal static class WfpValidationProgram
 
 	public static async Task<int> RunAsync(string[] args)
 	{
+		try { return await RunCoreAsync(args).ConfigureAwait(false); }
+		catch (Exception error) when (error is OperationCanceledException or SocketException or
+			HttpRequestException or IOException or System.Security.Authentication.AuthenticationException)
+		{
+			Write(new { mode = "failure", reason = error is OperationCanceledException ? "timeout" : "network-error",
+				errorType = error.GetType().Name, message = error.Message, cleanupVerification = "run check --policy-id independently" });
+			return 8;
+		}
+	}
+
+	private static async Task<int> RunCoreAsync(string[] args)
+	{
 		if (args.Length == 0) return Usage();
 		var mode = args[0].Trim().ToLowerInvariant();
 		var options = ParseOptions(args.AsSpan(1));
+		if (options.TryGetValue("https-host", out var httpsHost) &&
+			(Uri.CheckHostName(httpsHost) != UriHostNameType.Dns ||
+			(options.TryGetValue("protocol", out var requestedProtocol) &&
+			 !StringComparer.OrdinalIgnoreCase.Equals(requestedProtocol, "tcp")))) return Usage();
 
 		if (mode == "recovery-capability")
 		{
@@ -69,7 +95,30 @@ internal static class WfpValidationProgram
 
 		if (mode is not ("run" or "crash") || !options.ContainsKey(Confirmation[2..]))
 			return Usage();
-		if (!TryCreateRequest(options, out var request, out var socket, out var target))
+		if (mode == "crash" && (options.ContainsKey("diagnostic-app-only") ||
+			options.ContainsKey("diagnostic-target-port-only") ||
+			options.ContainsKey("diagnostic-target-only")))
+			return Usage();
+		if (options.ContainsKey("diagnostic-max-weight") &&
+			(mode != "run" || !options.ContainsKey("diagnostic-app-only") &&
+			 !options.ContainsKey("diagnostic-target-port-only") &&
+			 !options.ContainsKey("diagnostic-target-only"))) return Usage();
+		var diagnosticPolicyBeforeBind = options.ContainsKey("diagnostic-policy-before-bind");
+		if (diagnosticPolicyBeforeBind &&
+			(mode != "run" || !options.ContainsKey("diagnostic-app-only"))) return Usage();
+		var diagnosticTargetPortOnly = options.ContainsKey("diagnostic-target-port-only");
+		var diagnosticTargetOnly = options.ContainsKey("diagnostic-target-only");
+		var diagnosticUnboundSocket = options.ContainsKey("diagnostic-unbound-socket");
+		var diagnosticNextHopOnly = options.ContainsKey("diagnostic-next-hop-setting-only");
+		if (diagnosticNextHopOnly && (mode != "run" || !diagnosticTargetOnly)) return Usage();
+		if (diagnosticUnboundSocket && (mode != "run" || !diagnosticTargetOnly ||
+			diagnosticPolicyBeforeBind)) return Usage();
+		if (diagnosticTargetPortOnly &&
+			(options.ContainsKey("diagnostic-app-only") || diagnosticPolicyBeforeBind || diagnosticTargetOnly)) return Usage();
+		if (diagnosticTargetOnly &&
+			(options.ContainsKey("diagnostic-app-only") || diagnosticPolicyBeforeBind)) return Usage();
+		if (!TryCreateRequest(options, diagnosticPolicyBeforeBind, diagnosticUnboundSocket,
+			out var request, out var socket, out var target))
 			return Usage();
 
 		using (socket)
@@ -81,12 +130,36 @@ internal static class WfpValidationProgram
 				return 2;
 			}
 
-			var acquired = backend.Acquire(request);
+			var diagnosticApplicationOnly = options.ContainsKey("diagnostic-app-only");
+			var diagnosticMaximumWeight = options.ContainsKey("diagnostic-max-weight");
+			var acquired = backend.Acquire(request, diagnosticApplicationOnly, diagnosticMaximumWeight,
+				diagnosticTargetPortOnly, diagnosticTargetOnly, diagnosticNextHopOnly);
 			if (!acquired.Succeeded)
 			{
 				Write(new { mode, acquired.ReasonCode, acquired.PlatformError });
 				return 5;
 			}
+			using (acquired.Lease)
+			{
+#if DEBUG
+			await WfpValidationDebugHost.StageAsync("acquired", new { request, ProcessId = Environment.ProcessId,
+				ApplicationPath = Environment.ProcessPath, LocalEndpoint = socket.LocalEndPoint?.ToString() });
+#endif
+			var readbackQueried = backend.TryPolicyReadback(
+				request.PolicyId, out var policyReadback, out var readbackError);
+			var filtersQueried = backend.TryPolicyFilterReadback(
+				request.PolicyId, out var filterReadback, out var filterReadbackError);
+			var calloutReadback = default(WindowsNetworkWfpConnectionPolicyBackend.NetworkWfpCalloutReadback);
+			var calloutReadbackError = default(NetworkPlatformError);
+			var calloutQueried = filterReadback.Matching is { Length: > 0 } &&
+				backend.TryCalloutReadback(filterReadback.Matching[0].ActionKey,
+					out calloutReadback, out calloutReadbackError);
+			var policyConfigured = readbackQueried && filtersQueried &&
+				filterReadback.Matching is { Length: > 0 } && calloutQueried && calloutReadback.Registered;
+#if DEBUG
+			await WfpValidationDebugHost.StageAsync("readback", new { request.PolicyId, policyConfigured,
+				policyReadback, filterReadback, calloutReadback, readbackError, filterReadbackError, calloutReadbackError });
+#endif
 
 			if (mode == "crash")
 			{
@@ -95,10 +168,28 @@ internal static class WfpValidationProgram
 				Environment.FailFast("Intentional WFP dynamic-session crash-cleanup validation.");
 			}
 
-			using (acquired.Lease)
-			using (var timeout = new CancellationTokenSource(GetInt(options, "timeout-ms", 5000)))
 			{
+#if !DEBUG
+				using var timeout = new CancellationTokenSource(GetInt(options, "timeout-ms", 5000));
+#endif
+				if (diagnosticPolicyBeforeBind)
+					socket.Bind(new IPEndPoint(request.Source.ToIPAddress(),
+						options.TryGetValue("local-port", out var requestedLocalPort) &&
+						ushort.TryParse(requestedLocalPort, out var bindPort) ? bindPort : 0));
+#if DEBUG
+				await WfpValidationDebugHost.StageAsync("connect-before", new { request.PolicyId,
+					LocalEndpoint = socket.LocalEndPoint?.ToString(), Target = target.ToString(), ApplicationPath = Environment.ProcessPath });
+				using (var connectTimeout = new CancellationTokenSource(GetInt(options, "timeout-ms", 5000)))
+					await socket.ConnectAsync(target, connectTimeout.Token).ConfigureAwait(false);
+				await WfpValidationDebugHost.StageAsync("connect-after", new { request.PolicyId,
+					LocalEndpoint = socket.LocalEndPoint?.ToString(), RemoteEndpoint = socket.RemoteEndPoint?.ToString(), socket.Connected });
+				using var timeout = new CancellationTokenSource(GetInt(options, "timeout-ms", 5000));
+#else
 				await socket.ConnectAsync(target, timeout.Token).ConfigureAwait(false);
+#endif
+				object? httpsResult = null;
+				if (httpsHost is not null)
+					httpsResult = await WfpHttpsProbe.ExecuteAsync(socket, httpsHost, target.Port, timeout.Token).ConfigureAwait(false);
 				if (request.Protocol == ProtocolType.Udp)
 					await socket.SendAsync(new byte[] { 0 }, SocketFlags.None, timeout.Token).ConfigureAwait(false);
 				var holdMs = GetInt(options, "hold-ms", 0);
@@ -115,14 +206,37 @@ internal static class WfpValidationProgram
 					request.LocalPort,
 					request.RemotePort,
 					request.Protocol,
+					readbackQueried,
+					policyReadback,
+					readbackError,
+					filtersQueried,
+					filterReadback,
+					filterReadbackError,
+					calloutQueried,
+					calloutReadback,
+					calloutReadbackError,
+					policyConfigured,
+					routeObserved = false,
+					matchMode = diagnosticApplicationOnly ? "application-only-diagnostic" :
+						diagnosticTargetPortOnly ? "target-and-port-diagnostic" :
+						diagnosticTargetOnly ? "target-address-only-diagnostic" : "per-connection",
+					policyWeight = diagnosticMaximumWeight ? "maximum-diagnostic" : "default",
+					bindOrder = diagnosticPolicyBeforeBind ? "policy-before-bind-diagnostic" : "bind-before-policy",
+					binding = diagnosticUnboundSocket ? "unbound-socket-diagnostic" : "explicit-source-bind",
+					settingMode = diagnosticNextHopOnly ? "next-hop-only-diagnostic" : "source-interface-next-hop",
 					localEndpoint = socket.LocalEndPoint?.ToString(),
 					remoteEndpoint = socket.RemoteEndPoint?.ToString(),
-					proof = ProofKind.PolicyEnforced,
+					proof = ProofKind.Inferred,
+					https = httpsResult,
 				});
+			}
 			}
 
 			var cleanupQueried = backend.TryPolicyExists(
 				request.PolicyId, out var remains, out var cleanupError);
+#if DEBUG
+			await WfpValidationDebugHost.StageAsync("cleanup", new { request.PolicyId, cleanupQueried, remains, cleanupError });
+#endif
 			Write(new { mode = "cleanup", request.PolicyId, cleanupQueried, remains, cleanupError });
 			return cleanupQueried && !remains ? 0 : 6;
 		}
@@ -130,6 +244,8 @@ internal static class WfpValidationProgram
 
 	private static bool TryCreateRequest(
 		IReadOnlyDictionary<string, string> options,
+		bool diagnosticPolicyBeforeBind,
+		bool diagnosticUnboundSocket,
 		out NetworkWfpConnectionPolicyRequest request,
 		out Socket socket,
 		out IPEndPoint target)
@@ -155,8 +271,11 @@ internal static class WfpValidationProgram
 		socket = new Socket(destination.AddressFamily, socketType, protocol);
 		var localPort = options.TryGetValue("local-port", out var localPortText) &&
 			ushort.TryParse(localPortText, out var parsedLocalPort) ? parsedLocalPort : (ushort)0;
-		socket.Bind(new IPEndPoint(source, localPort));
-		var actualLocalPort = checked((ushort)((IPEndPoint)socket.LocalEndPoint!).Port);
+		if (!diagnosticPolicyBeforeBind && !diagnosticUnboundSocket)
+			socket.Bind(new IPEndPoint(source, localPort));
+		var actualLocalPort = diagnosticPolicyBeforeBind || diagnosticUnboundSocket
+			? (ushort)(localPort == 0 ? ushort.MaxValue : localPort)
+			: checked((ushort)((IPEndPoint)socket.LocalEndPoint!).Port);
 		target = new IPEndPoint(destination, remotePort);
 		var identity = NetworkExecutionIdentity.ForRequest(Guid.NewGuid())
 			.StartAttempt(Guid.NewGuid()).StartBranch(Guid.NewGuid());
@@ -263,7 +382,7 @@ internal static class WfpValidationProgram
 
 	private static int Usage()
 	{
-		Console.Error.WriteLine("Usage: capability | check --policy-id <guid> | run|crash --confirm-system-mutation --source <ip> (--interface-index <uint32>|--interface-luid <uint64>) --next-hop <ip> --target <ip> --target-port <port> [--local-port <port>] [--protocol tcp|udp] [--policy-id <guid>] [--timeout-ms <ms>] [--hold-ms <ms>] | recovery-capability --interface-index <uint32> --interface-alias <name> | recovery --confirm-system-mutation --action <rs|release6|wait|renew6|restart|snapshot> --interface-index <uint32> --interface-alias <name> [--wait-ms <ms>] [--timeout-ms <ms>]");
+		Console.Error.WriteLine("Usage: capability | check --policy-id <guid> | run|crash --confirm-system-mutation --source <ip> (--interface-index <uint32>|--interface-luid <uint64>) --next-hop <ip> --target <ip> --target-port <port> [--local-port <port>] [--protocol tcp|udp] [--policy-id <guid>] [--timeout-ms <ms>] [--hold-ms <ms>] [--diagnostic-app-only [--diagnostic-max-weight] [--diagnostic-policy-before-bind]] | recovery-capability --interface-index <uint32> --interface-alias <name> | recovery --confirm-system-mutation --action <rs|release6|wait|renew6|restart|snapshot> --interface-index <uint32> --interface-alias <name> [--wait-ms <ms>] [--timeout-ms <ms>]");
 		return 64;
 	}
 

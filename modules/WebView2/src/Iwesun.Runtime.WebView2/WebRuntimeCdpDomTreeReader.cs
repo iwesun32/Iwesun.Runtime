@@ -1,6 +1,12 @@
 using System.Text.Json;
 namespace Iwesun.Runtime.WebView2;
 
+internal sealed class WebRuntimeDomTreeNotReadyException(string scope) :
+	IOException($"CDP document scope '{scope}' has no document element yet.")
+{
+	internal string Scope { get; } = scope;
+}
+
 /// <summary>
 /// Builds the typed DOM object tree exclusively from the CDP DOM domain.
 /// No JavaScript source is accepted or executed by this reader.
@@ -67,8 +73,7 @@ public sealed class WebRuntimeCdpDomTreeReader(
 		var roots = ReadElementChildren(documentNode);
 		if (roots.Count == 0)
 		{
-			throw new InvalidDataException(
-				$"CDP document scope '{scope}' has no document element.");
+			throw new WebRuntimeDomTreeNotReadyException(scope);
 		}
 		var root = roots.SingleOrDefault(static node =>
 			ReadTagName(node).Equals("html", StringComparison.OrdinalIgnoreCase));

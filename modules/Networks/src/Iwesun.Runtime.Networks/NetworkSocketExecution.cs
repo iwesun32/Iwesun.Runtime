@@ -47,7 +47,7 @@ public readonly record struct NetworkSocketExecutionResult(
 }
 
 /// <summary>Executes Automatic and Direct socket operations without changing system routes.</summary>
-public sealed class NetworkSocketExecutor
+public sealed partial class NetworkSocketExecutor
 {
 	private readonly NetworkAccessConstraintResolver _resolver;
 	private readonly INetworkWfpConnectionPolicyBackend _wfpBackend;

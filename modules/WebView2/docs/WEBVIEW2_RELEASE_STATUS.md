@@ -1,5 +1,25 @@
 # Iwesun.Runtime.WebView2 发布状态
 
+## 2026-10-09 当前公开候选：Runtime 1.0.47-beta.1
+
+当前 DOM/CDP、页面证据与资源生命周期实现纳入本候选；合同测试及完整包验证见根版本清单。
+真实宿主页面和长期运行仍需独立验收。以下较早“未发布”说明保留历史语境，不表示本候选遗漏了对应源码。
+
+> 2026-08-05 未发布源码修正：实时 CDP 操作取得节点后，如果结构事件在 content-quad
+> 命中验证前使 `Current` 失效，过去会以 `no current revision` 直接失败。现在该状态与
+> Chromium 明确返回的失效 nodeId 一样进入刷新、原 XPath 重解析和单次重试，不使用旧
+> nodeId。新增两项分类回归合同，WebView2 测试 38/38 通过。消费项目继续直接引用源码，
+> 等待下次 Runtime 正式发布。
+
+> 2026-08-03 未发布源码修正：`WebRuntimeTrackedCdpDomTreeSession.RefreshAsync()`
+> 过去在整树读取期间再次收到结构或导航事件时会放弃该读取结果，但仍正常返回，调用方可能
+> 把尚未发布的新索引误判为刷新成功。现在显式刷新会持续到新的完整 revision 原子发布；
+> 30 次仍无法发布则硬失败。新增并发失效回归合同，WebView2 Debug/Release 各 36/36。
+> SPA 与 iframe
+> 业务导航稳定后要求宿主主动刷新一次，再使用新的 nodeId/backendNodeId/XPath 索引。
+> 本修正尚未进入安装版，消费项目暂时直接引用
+> `D:\Git Space\Runtime\modules\WebView2` 源项目，直到下次 Runtime 正式发布。
+
 > 2026-07-30 导航后树恢复修正正在源码验证：实时单节点操作改为
 > `DOM.performSearch/getSearchResults/describeNode` 直查浏览器当前 DOM，不再把辅助树缓存
 > 当作实时节点来源；完整树继续服务批量采集。跟踪会话新增

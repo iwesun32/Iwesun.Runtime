@@ -5,6 +5,285 @@ namespace Iwesun.Runtime.WebView2.Tests;
 public sealed class WebRuntimeDomQueryIndexTests
 {
 	[Fact]
+	public void CdpSnapshot_ClientRectangle_IsParsedAndGeometryScaled()
+	{
+		const string json = """
+			{
+			  "strings": ["DIV", ""],
+			  "documents": [
+			    {
+			      "nodes": {
+			        "backendNodeId": [41],
+			        "nodeName": [0],
+			        "nodeValue": [1]
+			      },
+			      "layout": {
+			        "nodeIndex": [0],
+			        "bounds": [[0, 0, 718.4, 100]],
+			        "clientRects": [[0, 0, 703.2, 100]],
+			        "scrollRects": [[0, 0, 703.2, 300]],
+			        "styles": [[]]
+			      }
+			    }
+			  ]
+			}
+			""";
+		var parse = typeof(WebRuntimeCdpEvidenceSnapshot).GetMethod(
+			"Parse",
+			System.Reflection.BindingFlags.Static
+				| System.Reflection.BindingFlags.NonPublic);
+		Assert.NotNull(parse);
+		var snapshot = parse.Invoke(
+			null,
+			[new Uri("https://example.test/"), json, Array.Empty<string>(), 2d]);
+		Assert.NotNull(snapshot);
+		var tryGetNode = snapshot.GetType().GetMethod(
+			"TryGetNode",
+			System.Reflection.BindingFlags.Instance
+				| System.Reflection.BindingFlags.NonPublic);
+		Assert.NotNull(tryGetNode);
+		object?[] arguments = [41, null];
+		Assert.True(Assert.IsType<bool>(tryGetNode.Invoke(snapshot, arguments)));
+		var evidence = arguments[1]
+			?? throw new InvalidOperationException("Expected parsed node evidence.");
+		var bounds = Assert.IsAssignableFrom<IReadOnlyList<double>>(
+			evidence.GetType().GetProperty("Bounds")?.GetValue(evidence));
+		var clientRect = Assert.IsAssignableFrom<IReadOnlyList<double>>(
+			evidence.GetType().GetProperty("ClientRect")?.GetValue(evidence));
+		var scrollRect = Assert.IsAssignableFrom<IReadOnlyList<double>>(
+			evidence.GetType().GetProperty("ScrollRect")?.GetValue(evidence));
+
+		Assert.Equal(1436.8, bounds[2], 6);
+		Assert.Equal(1406.4, clientRect[2], 6);
+		Assert.Equal(600, scrollRect[3], 6);
+		Assert.Equal(30.4, bounds[2] - clientRect[2], 6);
+	}
+
+	[Theory]
+	[InlineData("color", true)]
+	[InlineData("font-size", true)]
+	[InlineData("--application-theme", true)]
+	[InlineData("width", false)]
+	[InlineData("height", false)]
+	[InlineData("padding-left", false)]
+	[InlineData("display", false)]
+	public void MatchedStyleInheritance_OnlyAdmitsCssInheritedProperties(
+		string propertyName,
+		bool expected)
+	{
+		var method = typeof(WebRuntimeCdpDomEvidenceReader).GetMethod(
+			"IsInheritedCssProperty",
+			System.Reflection.BindingFlags.Static
+				| System.Reflection.BindingFlags.NonPublic);
+		Assert.NotNull(method);
+		Assert.Equal(expected, method.Invoke(null, [propertyName]));
+	}
+
+	[Theory]
+	[InlineData("fontSize", "font-size")]
+	[InlineData("--LarkSurfaceColor", "--LarkSurfaceColor")]
+	public void CssNameConversion_PreservesCaseSensitiveCustomProperties(
+		string propertyName,
+		string expected)
+	{
+		var method = typeof(WebRuntimeCdpDomEvidenceReader).GetMethod(
+			"ToCssName",
+			System.Reflection.BindingFlags.Static
+				| System.Reflection.BindingFlags.NonPublic);
+		Assert.NotNull(method);
+		Assert.Equal(expected, method.Invoke(null, [propertyName]));
+	}
+
+	[Fact]
+	public void CdpEvidenceCaches_AccumulateWithinRevision_AndResetOnRevision()
+	{
+		var pageUri = new Uri("https://example.test/");
+		var current = new WebRuntimeDomTreeSnapshot(
+			1, pageUri, DateTimeOffset.UtcNow, [], []);
+		var reader = new WebRuntimeCdpDomEvidenceReader(
+			new NoOpDevToolsSession(),
+			() => current);
+		var publishFonts = typeof(WebRuntimeCdpDomEvidenceReader).GetMethod(
+			"PublishPlatformFontEvidence",
+			System.Reflection.BindingFlags.Instance
+				| System.Reflection.BindingFlags.NonPublic);
+		Assert.NotNull(publishFonts);
+		publishFonts.Invoke(reader,
+			[current, FontMap(11, "Font A"), FontRunMap(11, "Font A")]);
+		publishFonts.Invoke(reader,
+			[current, FontMap(12, "Font B"), FontRunMap(12, "Font B")]);
+		Assert.Equal(2, reader.LastPlatformFontRuns.Count);
+
+		var ensureMatched = typeof(WebRuntimeCdpDomEvidenceReader).GetMethod(
+			"EnsureMatchedStyleEvidenceRevision",
+			System.Reflection.BindingFlags.Instance
+				| System.Reflection.BindingFlags.NonPublic);
+		var storeMatched = typeof(WebRuntimeCdpDomEvidenceReader).GetMethod(
+			"StoreMatchedStyleEvidence",
+			System.Reflection.BindingFlags.Instance
+				| System.Reflection.BindingFlags.NonPublic);
+		var tryReadMatched = typeof(WebRuntimeCdpDomEvidenceReader).GetMethod(
+			"TryReadMatchedStyleEvidence",
+			System.Reflection.BindingFlags.Instance
+				| System.Reflection.BindingFlags.NonPublic);
+		Assert.NotNull(ensureMatched);
+		Assert.NotNull(storeMatched);
+		Assert.NotNull(tryReadMatched);
+		var rawType = typeof(WebRuntimeCdpDomEvidenceReader).Assembly.GetType(
+			"Iwesun.Runtime.WebView2.CdpMatchedStyleRawEvidence");
+		Assert.NotNull(rawType);
+		var raw = Activator.CreateInstance(rawType, "{}", "", "");
+		Assert.NotNull(raw);
+		ensureMatched.Invoke(reader, [current]);
+		storeMatched.Invoke(reader, [11, raw]);
+		object?[] readArguments = [11, null];
+		Assert.True(Assert.IsType<bool>(tryReadMatched.Invoke(reader, readArguments)));
+		Assert.Same(raw, readArguments[1]);
+
+		current = current with { Revision = 2 };
+		publishFonts.Invoke(reader,
+			[current, FontMap(13, "Font C"), FontRunMap(13, "Font C")]);
+		Assert.Single(reader.LastPlatformFontRuns);
+		Assert.True(reader.LastPlatformFontRuns.ContainsKey(13));
+		ensureMatched.Invoke(reader, [current]);
+		readArguments = [11, null];
+		Assert.False(Assert.IsType<bool>(tryReadMatched.Invoke(reader, readArguments)));
+	}
+
+	private static IReadOnlyDictionary<int, WebRuntimeCdpPlatformFontEvidence>
+		FontMap(int nodeId, string family) =>
+		new Dictionary<int, WebRuntimeCdpPlatformFontEvidence>
+		{
+			[nodeId] = new(nodeId, family, family, 1, false)
+		};
+
+	private static IReadOnlyDictionary<
+		int,
+		IReadOnlyList<WebRuntimeCdpPlatformFontEvidence>>
+		FontRunMap(int nodeId, string family) =>
+		new Dictionary<int, IReadOnlyList<WebRuntimeCdpPlatformFontEvidence>>
+		{
+			[nodeId] = [new(nodeId, family, family, 1, false)]
+		};
+
+	private sealed class NoOpDevToolsSession : IWebRuntimeDevToolsSession
+	{
+		public string CurrentUrl => "https://example.test/";
+
+		public Task<string> CallDevToolsProtocolMethodAsync(
+			string method,
+			string parametersJson,
+			CancellationToken ct) =>
+			Task.FromException<string>(new InvalidOperationException(
+				$"Unexpected CDP call: {method} {parametersJson}"));
+	}
+
+	[Fact]
+	public void MatchedStyleCascade_ImportantRuleOverridesNormalInlineValue()
+	{
+		var declarations = IndexDeclarations(
+			"""
+			{
+			  "inlineStyle": { "cssProperties": [
+			    { "name": "height", "value": "initial" }
+			  ] },
+			  "matchedCSSRules": [ { "rule": {
+			    "selectorList": { "text": ".fill" },
+			    "style": { "cssProperties": [
+			      { "name": "height", "value": "100%", "important": true }
+			    ] }
+			  } } ]
+			}
+			""");
+
+		var height = ReadDeclaration(declarations, "height");
+		Assert.Equal("100%", height.Value);
+		Assert.True(height.Important);
+	}
+
+	[Fact]
+	public void MatchedStyleCascade_ImportantInlineValueRetainsPriority()
+	{
+		var declarations = IndexDeclarations(
+			"""
+			{
+			  "inlineStyle": { "cssProperties": [
+			    { "name": "height", "value": "40px", "important": true }
+			  ] },
+			  "matchedCSSRules": [ { "rule": {
+			    "selectorList": { "text": ".fill" },
+			    "style": { "cssProperties": [
+			      { "name": "height", "value": "100%", "important": true }
+			    ] }
+			  } } ]
+			}
+			""");
+
+		Assert.Equal(
+			"40px",
+			ReadDeclaration(declarations, "height").Value);
+	}
+
+	[Fact]
+	public void MatchedStyleCascade_HigherPriorityNormalRuleWins()
+	{
+		var declarations = IndexDeclarations(
+			"""
+			{
+			  "matchedCSSRules": [
+			    { "rule": { "selectorList": { "text": ".low" },
+			      "style": { "cssProperties": [
+			        { "name": "height", "value": "initial" }
+			      ] } } },
+			    { "rule": { "selectorList": { "text": ".high" },
+			      "style": { "cssProperties": [
+			        { "name": "height", "value": "100%" }
+			      ] } } }
+			  ]
+			}
+			""");
+
+		Assert.Equal(
+			"100%",
+			ReadDeclaration(declarations, "height").Value);
+	}
+
+	private static object IndexDeclarations(string json)
+	{
+		using var document = System.Text.Json.JsonDocument.Parse(json);
+		var method = typeof(WebRuntimeCdpDomEvidenceReader).GetMethod(
+			"IndexDeclarations",
+			System.Reflection.BindingFlags.Static
+				| System.Reflection.BindingFlags.NonPublic);
+		Assert.NotNull(method);
+		var result = method.Invoke(
+				null,
+				[
+					document.RootElement,
+					new HashSet<string>(["height"], StringComparer.OrdinalIgnoreCase)
+				]);
+		Assert.NotNull(result);
+		return result;
+	}
+
+	private static TestCssDeclaration ReadDeclaration(
+		object declarations,
+		string name)
+	{
+		var item = declarations.GetType().GetProperty("Item");
+		Assert.NotNull(item);
+		var declaration = item.GetValue(declarations, [name]);
+		Assert.NotNull(declaration);
+		var value = declaration.GetType().GetProperty("Value")?.GetValue(declaration);
+		var important = declaration.GetType().GetProperty("Important")?.GetValue(declaration);
+		return new(
+			Assert.IsType<string>(value),
+			Assert.IsType<bool>(important));
+	}
+
+	private sealed record TestCssDeclaration(string Value, bool Important);
+
+	[Fact]
 	public async Task QueryDomPropertiesAsync_PreservesBatchOrder()
 	{
 		var first = Identity("/html/body/div[1]", "id");

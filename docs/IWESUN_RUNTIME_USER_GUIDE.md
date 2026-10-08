@@ -1,5 +1,7 @@
 # Iwesun Runtime 用户手册
 
+[English onboarding guide](en/USER_GUIDE.md) · [中文使用入门](GETTING_STARTED.md)
+
 > **状态**：CURRENT  
 > **适用**：.NET 10 业务宿主  
 > **CLI v3**：CURRENT；复合命令通过协议 batch 一次执行

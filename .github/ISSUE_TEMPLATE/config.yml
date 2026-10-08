@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security / 私密安全报告
+    url: https://github.com/iwesun32/Iwesun.Runtime/security/advisories/new
+    about: 不要在普通 Issue 中公开敏感漏洞或凭据。

@@ -9,10 +9,12 @@ namespace Iwesun.Runtime.WebView2;
 public sealed class CoreWebView2DevToolsSession(CoreWebView2 browser)
 	: IWebRuntimeDevToolsSession
 {
+	private static readonly TimeSpan FixedCallTimeout = TimeSpan.FromSeconds(60);
 	private readonly CoreWebView2 _browser =
 		browser ?? throw new ArgumentNullException(nameof(browser));
 	private readonly SynchronizationContext? _ownerContext =
 		SynchronizationContext.Current;
+	private readonly SemaphoreSlim _callGate = new(1, 1);
 	private string _currentUrl = browser.Source;
 
 	public string CurrentUrl => Volatile.Read(ref _currentUrl);
@@ -25,34 +27,43 @@ public sealed class CoreWebView2DevToolsSession(CoreWebView2 browser)
 		ArgumentException.ThrowIfNullOrWhiteSpace(method);
 		ArgumentNullException.ThrowIfNull(parametersJson);
 		ct.ThrowIfCancellationRequested();
-		if (_ownerContext is null
-			|| ReferenceEquals(SynchronizationContext.Current, _ownerContext))
+		await _callGate.WaitAsync(ct).ConfigureAwait(false);
+		try
 		{
-			Volatile.Write(ref _currentUrl, _browser.Source);
-			return await _browser.CallDevToolsProtocolMethodAsync(
-				method,
-				parametersJson).WaitAsync(ct);
-		}
-		var completion = new TaskCompletionSource<string>(
-			TaskCreationOptions.RunContinuationsAsynchronously);
-		_ownerContext.Post(
-			async _ =>
+			if (_ownerContext is null
+				|| ReferenceEquals(SynchronizationContext.Current, _ownerContext))
 			{
-				try
+				Volatile.Write(ref _currentUrl, _browser.Source);
+				return await _browser.CallDevToolsProtocolMethodAsync(
+					method,
+					parametersJson).WaitAsync(FixedCallTimeout, ct);
+			}
+			var completion = new TaskCompletionSource<string>(
+				TaskCreationOptions.RunContinuationsAsynchronously);
+			_ownerContext.Post(
+				async _ =>
 				{
-					Volatile.Write(ref _currentUrl, _browser.Source);
-					completion.TrySetResult(
-						await _browser.CallDevToolsProtocolMethodAsync(
-							method,
-							parametersJson));
-				}
-				catch (Exception exception)
-				{
-					completion.TrySetException(exception);
-				}
-			},
-			null);
-		return await completion.Task.WaitAsync(ct);
+					try
+					{
+						Volatile.Write(ref _currentUrl, _browser.Source);
+						completion.TrySetResult(
+							await _browser.CallDevToolsProtocolMethodAsync(
+								method,
+								parametersJson));
+					}
+					catch (Exception exception)
+					{
+						completion.TrySetException(exception);
+					}
+				},
+				null);
+			return await completion.Task.WaitAsync(FixedCallTimeout, ct)
+				.ConfigureAwait(false);
+		}
+		finally
+		{
+			_callGate.Release();
+		}
 	}
 
 	public IDisposable SubscribeDevToolsProtocolEvent(

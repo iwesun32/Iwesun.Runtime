@@ -1,5 +1,7 @@
 # Iwesun Runtime 接入速查手册
 
+[English onboarding guide](en/USER_GUIDE.md) · [中文使用入门](GETTING_STARTED.md)
+
 按下面顺序完成宿主、执行对象、诊断、管道、CLI 和 WebRuntime 迁移。完整接口见 `IWESUN_RUNTIME_USER_GUIDE.md`，CLI 命令表见 `IWESUN_RUNTIME_CLI.md`，WebRuntime 规范见同目录 `WEB_RUNTIME_CONTROL.md`。
 
 新架构的边界固定为：

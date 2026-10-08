@@ -124,10 +124,24 @@ public sealed class WebRuntimeTrackedCdpDomTreeSession
 		CancellationToken cancellationToken = default)
 	{
 		await InitializeAsync(cancellationToken).ConfigureAwait(false);
-		await EnsureCurrentAsync(cancellationToken).ConfigureAwait(false);
-		return Current?.Snapshot
-			?? throw new InvalidOperationException(
-				"The CDP DOM tree has not been initialized.");
+		await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+		try
+		{
+			if (Volatile.Read(ref _invalidated) != 0
+				|| Current is null
+				|| LastRefreshError is not null)
+			{
+				await RefreshUntilCurrentWithoutGateAsync(cancellationToken)
+					.ConfigureAwait(false);
+			}
+			return Current?.Snapshot
+				?? throw new InvalidOperationException(
+					"The CDP DOM tree refresh produced no current snapshot.");
+		}
+		finally
+		{
+			_refreshGate.Release();
+		}
 	}
 
 	public async ValueTask<WebRuntimeCdpDomTreeNode> ResolveXPathAsync(
@@ -161,12 +175,26 @@ public sealed class WebRuntimeTrackedCdpDomTreeSession
 		{
 			for (var attempt = 0; ; attempt++)
 			{
-				if (Volatile.Read(ref _invalidated) != 0)
+				if (Volatile.Read(ref _invalidated) != 0 || Current is null)
 				{
-					await RefreshWithoutGateAsync(cancellationToken)
+					await RefreshUntilCurrentWithoutGateAsync(cancellationToken)
 						.ConfigureAwait(false);
 				}
-				var node = Current!.ResolveXPath(documentScope, xpath);
+				var current = Current
+					?? throw new InvalidOperationException(
+						"The tracked CDP DOM tree refresh produced no current tree.");
+				WebRuntimeCdpDomTreeNode node;
+				try
+				{
+					node = current.ResolveXPath(documentScope, xpath);
+				}
+				catch (KeyNotFoundException) when (attempt == 0)
+				{
+					MarkInvalidated();
+					await RefreshUntilCurrentWithoutGateAsync(cancellationToken)
+						.ConfigureAwait(false);
+					continue;
+				}
 				try
 				{
 					return await operation(node, cancellationToken)
@@ -177,7 +205,7 @@ public sealed class WebRuntimeTrackedCdpDomTreeSession
 						&& IsInvalidNodeIdentityException(exception))
 				{
 					MarkInvalidated();
-					await RefreshWithoutGateAsync(cancellationToken)
+					await RefreshUntilCurrentWithoutGateAsync(cancellationToken)
 						.ConfigureAwait(false);
 				}
 			}
@@ -221,12 +249,46 @@ public sealed class WebRuntimeTrackedCdpDomTreeSession
 		await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
 		try
 		{
-			await RefreshWithoutGateAsync(cancellationToken).ConfigureAwait(false);
+			await RefreshUntilCurrentWithoutGateAsync(cancellationToken)
+				.ConfigureAwait(false);
 		}
 		finally
 		{
 			_refreshGate.Release();
 		}
+	}
+
+	private async Task RefreshUntilCurrentWithoutGateAsync(
+		CancellationToken cancellationToken)
+	{
+		for (var attempt = 0; attempt < 30; attempt++)
+		{
+			try
+			{
+				await RefreshWithoutGateAsync(cancellationToken).ConfigureAwait(false);
+			}
+			catch (WebRuntimeDomTreeNotReadyException)
+				when (attempt < 29)
+			{
+				await Task.Delay(
+					TimeSpan.FromMilliseconds(50),
+					cancellationToken).ConfigureAwait(false);
+				continue;
+			}
+			if (Volatile.Read(ref _invalidated) == 0
+				&& Volatile.Read(ref _current) is not null
+				&& LastRefreshError is null)
+			{
+				return;
+			}
+			await Task.Delay(
+				TimeSpan.FromMilliseconds(50),
+				cancellationToken).ConfigureAwait(false);
+		}
+		throw new InvalidOperationException(
+			"The CDP DOM tree refresh did not publish a current node identity "
+				+ "index after 30 attempts.",
+			LastRefreshError);
 	}
 
 	private async Task RefreshWithoutGateAsync(
@@ -438,6 +500,31 @@ public sealed class WebRuntimeTrackedCdpDomTreeSession
 					StringComparison.OrdinalIgnoreCase)
 				|| message.Contains(
 					"Invalid node id",
+					StringComparison.OrdinalIgnoreCase)
+				|| message.Contains(
+					"no current revision",
+					StringComparison.OrdinalIgnoreCase)
+				|| message.Contains(
+					"no current tree",
+					StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	internal static bool IsCurrentTreeUnavailableException(Exception exception)
+	{
+		for (Exception? current = exception;
+			current is not null;
+			current = current.InnerException)
+		{
+			if (current.Message.Contains(
+					"no current revision",
+					StringComparison.OrdinalIgnoreCase)
+				|| current.Message.Contains(
+					"no current tree",
 					StringComparison.OrdinalIgnoreCase))
 			{
 				return true;

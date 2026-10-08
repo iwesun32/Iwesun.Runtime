@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Runtime.InteropServices;
-using System.Security.Principal;
 
 namespace Iwesun.Runtime.Networks;
 
@@ -25,6 +24,7 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 	private static readonly Guid ConditionIpProtocol = new("3971ef2b-623e-4f9a-8cb1-6e79b806b9a7");
 	private static readonly Guid ConditionLocalPort = new("0c1ba1af-5765-453f-af22-a8f791ac775b");
 	private static readonly Guid ConditionRemotePort = new("c35a604d-d22b-4e1a-91b4-68f674ee674b");
+	private static readonly Guid OutboundConnectionPolicyV4Layer = new("037f317a-d696-494a-bba5-bffc265e6052");
 
 	public static INetworkWfpConnectionPolicyBackend CreateDefault() => OperatingSystem.IsWindows()
 		? new WindowsNetworkWfpConnectionPolicyBackend()
@@ -35,22 +35,7 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 		if (!OperatingSystem.IsWindows() || !HasRequiredExports())
 			return new(false, false, NetworkAccessFailureCodes.ExactNextHopBackendUnavailable, default);
 
-		try
-		{
-			using var identity = WindowsIdentity.GetCurrent();
-			var elevated = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-			if (!elevated)
-				return new(false, true, NetworkAccessFailureCodes.PlatformPermissionMissing, default);
-		}
-		catch (Exception ex)
-		{
-			return new(
-				false,
-				true,
-				NetworkAccessFailureCodes.PlatformPermissionMissing,
-				FromException(ex, "wfp-permission-query"));
-		}
-
+		// Windows evaluates delegated WFP access; role membership is not an access check.
 		var session = new FwpmSession();
 		var openError = FwpmEngineOpen0(null, RpcCAuthnWinnt, IntPtr.Zero, in session, out var engine);
 		if (openError != 0)
@@ -74,7 +59,21 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 	}
 
 	public NetworkWfpPolicyAcquireResult Acquire(in NetworkWfpConnectionPolicyRequest request)
+		=> Acquire(request, diagnosticApplicationOnly: false);
+
+	// Validation-only differential probe. Production callers always use every
+	// per-connection condition and cannot request this broader match.
+	internal NetworkWfpPolicyAcquireResult Acquire(
+		in NetworkWfpConnectionPolicyRequest request, bool diagnosticApplicationOnly,
+		bool diagnosticMaximumWeight = false, bool diagnosticTargetAndPortOnly = false,
+		bool diagnosticTargetAddressOnly = false, bool diagnosticNextHopOnly = false)
 	{
+		if ((diagnosticApplicationOnly ? 1 : 0) + (diagnosticTargetAndPortOnly ? 1 : 0) +
+			(diagnosticTargetAddressOnly ? 1 : 0) > 1 ||
+			diagnosticNextHopOnly && !diagnosticTargetAddressOnly ||
+			diagnosticMaximumWeight && !diagnosticApplicationOnly && !diagnosticTargetAndPortOnly &&
+			!diagnosticTargetAddressOnly)
+			return new(null, NetworkAccessFailureCodes.WfpPolicyRequestInvalid, default);
 		if (!request.IsValid)
 			return new(null, NetworkAccessFailureCodes.WfpPolicyRequestInvalid, default);
 
@@ -104,7 +103,7 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 			if (appError != 0)
 				return NativeFailure(appError, "wfp-app-id");
 
-			var settings = CreateSettings(request, memory);
+			var settings = CreateSettings(request, memory, diagnosticNextHopOnly);
 			var settingsPointer = memory.Array(settings);
 			var policySettings = memory.Structure(new FwpmNetworkConnectionPolicySettings
 			{
@@ -120,13 +119,14 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 				Type = NetworkConnectionPolicyContext,
 				Context = policySettings,
 			};
-			var conditions = CreateConditions(request, appId, memory);
+			var conditions = CreateConditions(request, appId, memory, diagnosticApplicationOnly,
+				diagnosticTargetAndPortOnly, diagnosticTargetAddressOnly);
 			var conditionsPointer = memory.Array(conditions);
 			var addError = FwpmConnectionPolicyAdd0(
 				engine,
 				in providerContext,
 				request.Destination.IsIPv4 ? 0 : 1,
-				PolicyWeight,
+				diagnosticMaximumWeight ? ulong.MaxValue : PolicyWeight,
 				checked((uint)conditions.Length),
 				conditionsPointer,
 				IntPtr.Zero);
@@ -150,7 +150,10 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 
 	private static FwpmNetworkConnectionPolicySetting[] CreateSettings(
 		in NetworkWfpConnectionPolicyRequest request,
-		NativeMemoryScope memory) =>
+		NativeMemoryScope memory,
+		bool diagnosticNextHopOnly) => diagnosticNextHopOnly
+		? [new() { Type = 2, Value = AddressValue(request.NextHop, memory) }]
+		:
 	[
 		new() { Type = 0, Value = AddressValue(request.Source, memory) },
 		new() { Type = 1, Value = new FwpValue(FwpDataType.UInt64, memory.UInt64(request.Interface.Luid)) },
@@ -160,15 +163,32 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 	private static FwpmFilterCondition[] CreateConditions(
 		in NetworkWfpConnectionPolicyRequest request,
 		IntPtr appId,
-		NativeMemoryScope memory) =>
-	[
-		new(ConditionAleAppId, new FwpConditionValue(FwpDataType.ByteBlob, appId)),
+		NativeMemoryScope memory,
+		bool diagnosticApplicationOnly,
+		bool diagnosticTargetAndPortOnly,
+		bool diagnosticTargetAddressOnly)
+	{
+		var appCondition = new FwpmFilterCondition(ConditionAleAppId,
+			new FwpConditionValue(FwpDataType.ByteBlob, appId));
+		if (diagnosticApplicationOnly) return [appCondition];
+		if (diagnosticTargetAddressOnly)
+			return [new(ConditionRemoteAddress, ConditionAddressValue(request.Destination, memory))];
+		if (diagnosticTargetAndPortOnly) return
+		[
+			new(ConditionRemoteAddress, ConditionAddressValue(request.Destination, memory)),
+			new(ConditionIpProtocol, new FwpConditionValue(FwpDataType.UInt8, (IntPtr)(byte)request.Protocol)),
+			new(ConditionRemotePort, new FwpConditionValue(FwpDataType.UInt16, (IntPtr)request.RemotePort)),
+		];
+		return
+		[
+		appCondition,
 		new(ConditionLocalAddress, ConditionAddressValue(request.Source, memory)),
 		new(ConditionRemoteAddress, ConditionAddressValue(request.Destination, memory)),
 		new(ConditionIpProtocol, new FwpConditionValue(FwpDataType.UInt8, (IntPtr)(byte)request.Protocol)),
 		new(ConditionLocalPort, new FwpConditionValue(FwpDataType.UInt16, (IntPtr)request.LocalPort)),
 		new(ConditionRemotePort, new FwpConditionValue(FwpDataType.UInt16, (IntPtr)request.RemotePort)),
-	];
+		];
+	}
 
 	private static FwpValue AddressValue(IpAddressValue address, NativeMemoryScope memory) => address.IsIPv4
 		? new(FwpDataType.UInt32, (IntPtr)ToIpv4UInt32(address))
@@ -217,6 +237,10 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 		Marshal.SizeOf<FwpmNetworkConnectionPolicySettings>(),
 		Marshal.SizeOf<FwpmProviderContext>(),
 		Marshal.SizeOf<FwpmFilterCondition>(),
+		Marshal.SizeOf<FwpmFilterEnumTemplate>(),
+		Marshal.SizeOf<FwpmFilterAction>(),
+		Marshal.SizeOf<FwpmFilter>(),
+		checked((int)Marshal.OffsetOf<FwpmFilter>(nameof(FwpmFilter.ProviderContextKey))),
 	];
 
 	internal bool TryPolicyExists(
@@ -257,6 +281,249 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 			FwpmEngineClose0(engine);
 		}
 	}
+
+	internal bool TryPolicyReadback(
+		Guid policyId,
+		out NetworkWfpPolicyReadback readback,
+		out NetworkPlatformError platformError)
+	{
+		readback = default;
+		platformError = default;
+		if (policyId == Guid.Empty || !OperatingSystem.IsWindows()) return false;
+
+		var session = new FwpmSession();
+		var openError = FwpmEngineOpen0(null, RpcCAuthnWinnt, IntPtr.Zero, in session, out var engine);
+		if (openError != 0)
+		{
+			platformError = new("windows-wfp", unchecked((int)openError), 0, "wfp-engine-open-readback");
+			return false;
+		}
+
+		IntPtr contextPointer = IntPtr.Zero;
+		try
+		{
+			var queryError = FwpmProviderContextGetByKey3(engine, in policyId, out contextPointer);
+			if (queryError != 0)
+			{
+				platformError = new("windows-wfp", unchecked((int)queryError), 0, "wfp-provider-context-readback");
+				return false;
+			}
+
+			var context = Marshal.PtrToStructure<FwpmProviderContext>(contextPointer);
+			if (context.Type != NetworkConnectionPolicyContext || context.Context == IntPtr.Zero)
+			{
+				platformError = new("windows-wfp", 0, 0, "wfp-policy-readback-type");
+				return false;
+			}
+
+			var settings = Marshal.PtrToStructure<FwpmNetworkConnectionPolicySettings>(context.Context);
+			if (settings.NumberOfSettings is 0 or > 16 || settings.Settings == IntPtr.Zero)
+			{
+				platformError = new("windows-wfp", 0, 0, "wfp-policy-readback-settings");
+				return false;
+			}
+
+			var values = new NetworkWfpPolicySettingReadback[settings.NumberOfSettings];
+			var size = Marshal.SizeOf<FwpmNetworkConnectionPolicySetting>();
+			for (var index = 0; index < values.Length; index++)
+			{
+				var setting = Marshal.PtrToStructure<FwpmNetworkConnectionPolicySetting>(
+					IntPtr.Add(settings.Settings, index * size));
+				var value = setting.Value.Type switch
+				{
+					FwpDataType.UInt32 => FormatIpv4(unchecked((uint)setting.Value.Value.ToInt64())),
+					FwpDataType.UInt64 when setting.Value.Value != IntPtr.Zero =>
+						unchecked((ulong)Marshal.ReadInt64(setting.Value.Value)).ToString(),
+					FwpDataType.ByteArray16 when setting.Value.Value != IntPtr.Zero =>
+						FormatIpv6(setting.Value.Value),
+					_ => "unsupported"
+				};
+				values[index] = new(setting.Type, (int)setting.Value.Type, value);
+			}
+			readback = new(context.Type, values);
+			return true;
+		}
+		finally
+		{
+			if (contextPointer != IntPtr.Zero) FwpmFreeMemory0(ref contextPointer);
+			FwpmEngineClose0(engine);
+		}
+	}
+
+	private static string FormatIpv4(uint hostOrder)
+	{
+		Span<byte> bytes = stackalloc byte[4];
+		BinaryPrimitives.WriteUInt32BigEndian(bytes, hostOrder);
+		return new IPAddress(bytes).ToString();
+	}
+
+	private static string FormatIpv6(IntPtr pointer)
+	{
+		var bytes = new byte[16];
+		Marshal.Copy(pointer, bytes, 0, bytes.Length);
+		return new IPAddress(bytes).ToString();
+	}
+
+	internal readonly record struct NetworkWfpPolicyReadback(
+		int ContextType, NetworkWfpPolicySettingReadback[] Settings);
+	internal readonly record struct NetworkWfpPolicySettingReadback(int Type, int ValueType, string Value);
+
+	internal bool TryPolicyFilterReadback(
+		Guid policyId,
+		out NetworkWfpPolicyFilterReadback readback,
+		out NetworkPlatformError platformError)
+	{
+		readback = default;
+		platformError = default;
+		if (policyId == Guid.Empty || !OperatingSystem.IsWindows()) return false;
+
+		var session = new FwpmSession();
+		var openError = FwpmEngineOpen0(null, RpcCAuthnWinnt, IntPtr.Zero, in session, out var engine);
+		if (openError != 0)
+		{
+			platformError = new("windows-wfp", unchecked((int)openError), 0, "wfp-filter-engine-open");
+			return false;
+		}
+
+		IntPtr enumerator = IntPtr.Zero;
+		try
+		{
+			var template = new FwpmFilterEnumTemplate
+			{
+				LayerKey = OutboundConnectionPolicyV4Layer,
+				Flags = 0x10, // FWP_FILTER_ENUM_FLAG_INCLUDE_DISABLED
+				ActionMask = uint.MaxValue,
+			};
+			var createError = FwpmFilterCreateEnumHandle0(engine, in template, out enumerator);
+			if (createError != 0)
+			{
+				platformError = new("windows-wfp", unchecked((int)createError), 0, "wfp-filter-enum-create");
+				return false;
+			}
+
+			var matching = new List<NetworkWfpFilterReadback>(4);
+			var observed = new List<NetworkWfpFilterReadback>(8);
+			var inspected = 0;
+			while (inspected < 4096)
+			{
+				IntPtr entries = IntPtr.Zero;
+				try
+				{
+					var enumError = FwpmFilterEnum0(engine, enumerator, 64, out entries, out var returned);
+					if (enumError != 0)
+					{
+						platformError = new("windows-wfp", unchecked((int)enumError), 0, "wfp-filter-enum-page");
+						return false;
+					}
+					for (var index = 0; index < returned; index++)
+					{
+						var pointer = Marshal.ReadIntPtr(entries, checked(index * IntPtr.Size));
+						var filter = Marshal.PtrToStructure<FwpmFilter>(pointer);
+						var summary = new NetworkWfpFilterReadback(filter.FilterId, filter.Flags,
+							filter.NumberOfFilterConditions, filter.Action.Type, filter.Action.FilterType,
+							filter.ProviderContextKey,
+							ReadWeight(filter.Weight), ReadWeight(filter.EffectiveWeight),
+							ReadConditions(filter));
+						if (observed.Count < 8) observed.Add(summary);
+						if (filter.ProviderContextKey == policyId && matching.Count < 4)
+							matching.Add(summary);
+					}
+					inspected += checked((int)returned);
+					if (returned < 64) break;
+				}
+				finally
+				{
+					if (entries != IntPtr.Zero) FwpmFreeMemory0(ref entries);
+				}
+			}
+			readback = new(inspected, matching.ToArray(), observed.ToArray(), inspected >= 4096);
+			return true;
+		}
+		finally
+		{
+			if (enumerator != IntPtr.Zero) FwpmFilterDestroyEnumHandle0(engine, enumerator);
+			FwpmEngineClose0(engine);
+		}
+	}
+
+	private static ulong? ReadWeight(FwpValue weight) =>
+		weight.Type == FwpDataType.UInt64 && weight.Value != IntPtr.Zero
+			? unchecked((ulong)Marshal.ReadInt64(weight.Value)) : null;
+
+	private static NetworkWfpConditionReadback[] ReadConditions(FwpmFilter filter)
+	{
+		if (filter.NumberOfFilterConditions is 0 or > 16 || filter.FilterCondition == IntPtr.Zero)
+			return [];
+		var count = checked((int)filter.NumberOfFilterConditions);
+		var result = new NetworkWfpConditionReadback[count];
+		var size = Marshal.SizeOf<FwpmFilterCondition>();
+		for (var index = 0; index < count; index++)
+		{
+			var condition = Marshal.PtrToStructure<FwpmFilterCondition>(
+				IntPtr.Add(filter.FilterCondition, index * size));
+			var value = condition.ConditionValue.Type switch
+			{
+				FwpDataType.UInt8 => unchecked((byte)condition.ConditionValue.Value.ToInt64()).ToString(),
+				FwpDataType.UInt16 => unchecked((ushort)condition.ConditionValue.Value.ToInt64()).ToString(),
+				FwpDataType.UInt32 => FormatIpv4(unchecked((uint)condition.ConditionValue.Value.ToInt64())),
+				FwpDataType.ByteBlob when condition.ConditionValue.Value != IntPtr.Zero =>
+					"blob:" + Marshal.PtrToStructure<FwpByteBlob>(condition.ConditionValue.Value).Size,
+				_ => "unsupported"
+			};
+			result[index] = new(condition.FieldKey, (int)condition.ConditionValue.Type, value);
+		}
+		return result;
+	}
+
+	internal readonly record struct NetworkWfpPolicyFilterReadback(
+		int Inspected, NetworkWfpFilterReadback[] Matching, NetworkWfpFilterReadback[] Observed, bool Truncated);
+	internal readonly record struct NetworkWfpFilterReadback(
+		ulong FilterId, uint Flags, uint ConditionCount, int ActionType, Guid ActionKey,
+		Guid ProviderContextKey,
+		ulong? Weight, ulong? EffectiveWeight, NetworkWfpConditionReadback[] Conditions);
+	internal readonly record struct NetworkWfpConditionReadback(Guid FieldKey, int ValueType, string Value);
+
+	internal bool TryCalloutReadback(Guid calloutKey, out NetworkWfpCalloutReadback readback,
+		out NetworkPlatformError platformError)
+	{
+		readback = default;
+		platformError = default;
+		if (calloutKey == Guid.Empty || !OperatingSystem.IsWindows()) return false;
+		var session = new FwpmSession();
+		var openError = FwpmEngineOpen0(null, RpcCAuthnWinnt, IntPtr.Zero, in session, out var engine);
+		if (openError != 0)
+		{
+			platformError = new("windows-wfp", unchecked((int)openError), 0, "wfp-callout-engine-open");
+			return false;
+		}
+		try
+		{
+			var getError = FwpmCalloutGetByKey0(engine, in calloutKey, out var pointer);
+			if (getError != 0)
+			{
+				platformError = new("windows-wfp", unchecked((int)getError), 0, "wfp-callout-get");
+				return false;
+			}
+			try
+			{
+				var callout = Marshal.PtrToStructure<FwpmCallout>(pointer);
+				readback = new(callout.CalloutKey, callout.Flags, callout.CalloutId,
+					callout.ApplicableLayer, (callout.Flags & 0x00040000) != 0);
+				return true;
+			}
+			finally
+			{
+				FwpmFreeMemory0(ref pointer);
+			}
+		}
+		finally
+		{
+			FwpmEngineClose0(engine);
+		}
+	}
+
+	internal readonly record struct NetworkWfpCalloutReadback(
+		Guid CalloutKey, uint Flags, uint CalloutId, Guid ApplicableLayer, bool Registered);
 
 	private sealed class Lease(NetworkWfpConnectionPolicyRequest request, IntPtr engine)
 		: INetworkWfpConnectionPolicyLease
@@ -394,6 +661,60 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
+	private struct FwpmFilterEnumTemplate
+	{
+		public IntPtr ProviderKey;
+		public Guid LayerKey;
+		public int EnumType;
+		public uint Flags;
+		public IntPtr ProviderContextTemplate;
+		public uint NumberOfFilterConditions;
+		public IntPtr FilterCondition;
+		public uint ActionMask;
+		public IntPtr CalloutKey;
+	}
+
+	[StructLayout(LayoutKind.Sequential)]
+	private struct FwpmFilterAction
+	{
+		public int Type;
+		public Guid FilterType;
+	}
+
+	[StructLayout(LayoutKind.Sequential)]
+	private struct FwpmFilter
+	{
+		public Guid FilterKey;
+		public FwpmDisplayData DisplayData;
+		public uint Flags;
+		public IntPtr ProviderKey;
+		public FwpByteBlob ProviderData;
+		public Guid LayerKey;
+		public Guid SubLayerKey;
+		public FwpValue Weight;
+		public uint NumberOfFilterConditions;
+		public IntPtr FilterCondition;
+		public FwpmFilterAction Action;
+		public uint ProviderContextAlignment;
+		public Guid ProviderContextKey;
+		public IntPtr Reserved;
+		public ulong FilterId;
+		public FwpValue EffectiveWeight;
+	}
+
+	[StructLayout(LayoutKind.Sequential)]
+	private struct FwpmCallout
+	{
+		public Guid CalloutKey;
+		public FwpmDisplayData DisplayData;
+		public uint Flags;
+		public IntPtr ProviderKey;
+		public FwpByteBlob ProviderData;
+		public Guid ApplicableLayer;
+		public uint CalloutId;
+	}
+
+	[StructLayout(LayoutKind.Sequential)]
 	private readonly struct FwpmFilterCondition(Guid fieldKey, FwpConditionValue value)
 	{
 		public readonly Guid FieldKey = fieldKey;
@@ -433,4 +754,20 @@ internal sealed class WindowsNetworkWfpConnectionPolicyBackend : INetworkWfpConn
 		IntPtr engineHandle,
 		in Guid key,
 		out IntPtr providerContext);
+
+	[DllImport("fwpuclnt.dll", ExactSpelling = true)]
+	private static extern uint FwpmFilterCreateEnumHandle0(
+		IntPtr engineHandle, in FwpmFilterEnumTemplate template, out IntPtr enumHandle);
+
+	[DllImport("fwpuclnt.dll", ExactSpelling = true)]
+	private static extern uint FwpmFilterEnum0(
+		IntPtr engineHandle, IntPtr enumHandle, uint requested,
+		out IntPtr entries, out uint returned);
+
+	[DllImport("fwpuclnt.dll", ExactSpelling = true)]
+	private static extern uint FwpmFilterDestroyEnumHandle0(IntPtr engineHandle, IntPtr enumHandle);
+
+	[DllImport("fwpuclnt.dll", ExactSpelling = true)]
+	private static extern uint FwpmCalloutGetByKey0(
+		IntPtr engineHandle, in Guid key, out IntPtr callout);
 }

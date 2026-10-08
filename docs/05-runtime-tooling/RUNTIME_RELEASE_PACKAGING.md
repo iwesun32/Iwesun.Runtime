@@ -6,7 +6,7 @@
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release\build-runtime-setup.ps1 `
-  -ProductVersion 1.0.38 -NetworksVersion 3.0.0-beta.4
+  -ProductVersion 1.0.46 -NetworksVersion 3.0.0-beta.5
 ```
 
 脚本固定执行完整流程：Data/Networks双配置测试、Runtime Debug/Release构建与功能场景、清空并重建
@@ -37,7 +37,7 @@ SampleHost不得通过项目引用或传递依赖把该DLL/PDB带入staging；�
 Web组件可继续参与源码解决方案编译，但不属于MSI、便携包或Debug/Release公共库清单。
 
 `Iwesun.Runtime.Networks` 以独立产品版本进入 Runtime 套件，源码位于 `D:\Git Space\Runtime\modules\Networks`。
-`Iwesun.Runtime.Networks` 3.0.0-beta.4保留`3.0.0.0`文件版本，当前状态为
+`Iwesun.Runtime.Networks` 3.0.0-beta.5保留`3.0.0.0`文件版本，当前状态为
 `GENERAL_BETA_READY_FORMAL_BLOCKED`。发布入口必须复制完整Networks文档和示例，不得用旧NuGet缓存或手工DLL
 代替源码构建；Runtime的统一版本注入不改写Networks的独立语义版本。剩余M11门禁阻止正式版，不阻止普通β载荷。
 
@@ -95,7 +95,7 @@ dotnet build modules\Packaging\setup\Iwesun.Runtime.Setup\Iwesun.Runtime.Setup.w
 
 - `Iwesun.Runtime.Diagnostics.dll`
 - `Iwesun.Runtime.Data.dll`
-- `Iwesun.Runtime.Networks.dll`（独立版本3.0.0-beta.4，文件版本3.0.0.0）
+- `Iwesun.Runtime.Networks.dll`（独立版本3.0.0-beta.5，文件版本3.0.0.0）
 - `Iwesun.Runtime.WebView2.dll`
 - `WEBVIEW2_RELEASE_STATUS.md`、`WEB_RUNTIME_CONTROL.md`、`WEBVIEW2_RUNTIME_CAPABILITIES.md` 和 `WEBVIEW2_JSON_PIPE_CLI_PLAN.md`，用于区分本次发布状态、控制接口、已实现能力和后续边界。
 

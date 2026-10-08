@@ -5,11 +5,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Platforms>AnyCPU;x86;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
     <AssemblyName>Iwesun.Runtime.Networks.WfpValidation</AssemblyName>
     <RootNamespace>Iwesun.Runtime.Networks.WfpValidation</RootNamespace>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\..\Diagnostics\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <ProjectReference Include="..\..\src\Iwesun.Runtime.Networks\Iwesun.Runtime.Networks.csproj" />
   </ItemGroup>
 </Project>

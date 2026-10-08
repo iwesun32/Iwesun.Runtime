@@ -1,5 +1,27 @@
 # Iwesun Runtime 发布更新记录
 
+## 1.0.47-beta.1（2026-10-09，首次公开源码候选）
+
+- 对外品牌统一为 iwesun；GitHub 项目保持 `iwesun32/Iwesun.Runtime`。
+- 增加中英文首页、非商业源码开放许可、贡献协议、工作组与分支申请、AI 管理规则及 CI。
+- 汇入受管线程退出互斥、停机投递去重、HTTP 请求取消与接口身份修正，Networks 独立产品版本升为 `3.0.0-beta.6`。
+- Tables 不进入公开源码及包；已有 Data 保留。Web 开发工程不进入当前交付。
+- 验证范围和最终结果见 [本版发布清单](IWESUN_RUNTIME_1.0.47_BETA_RELEASE_MANIFEST.md)。下列较早记录仅对应历史版本。
+
+## 1.0.46-beta.1（2026-09-22，全量候选已打包验证）
+
+- 全量 Runtime 发布基线更新为 Diagnostics、Data、Networks、WebView2、CLI、RemoteConsole、
+  SampleHost、配置、技能、样例和技术文档；`Iwesun.Runtime.Web`继续按调试边界排除。
+- Networks 升级为`3.0.0-beta.5`：长期TCP流持有精确下一跳策略至连接释放，Packet Capture/Inject
+  数据面合同为DNS代理、NAT和转发后端预留统一接口。
+- 发布脚本、安装自检、安装文档索引和包清单统一切换到`1.0.46-beta.1`与Networks beta.5；
+  预发布3.0程序集版本仍为`3.0.0.0`，用户须核对产品信息版本而非仅核对程序集版本。
+- 根解决方案构建、Data/Networks/WebView2双配置测试、Diagnostics功能测试、旧二进制宿主兼容、
+  staging自检、ZIP、MSI和SHA-256门禁均已通过；本次仍不安装、不上传公共NuGet源。
+
+发布说明见[1.0.46-beta.1普通β发布说明](IWESUN_RUNTIME_1.0.46_BETA_RELEASE_GUIDE.md)，
+交付物见[发布清单](IWESUN_RUNTIME_1.0.46_BETA_RELEASE_MANIFEST.md)。
+
 ## 1.0.43-beta.1（2026-08-01，普通β已安装验证）
 
 - shutdown 期限统一采用 `timeoutMs > countdownMs > host ShutdownTimeout > 30s`；标准 CLI 公开期限和 payload；

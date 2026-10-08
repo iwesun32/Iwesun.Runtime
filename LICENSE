@@ -1,0 +1,94 @@
+Iwesun Runtime Noncommercial Source-Available License 1.0
+Effective for distributions designated under this license on or after 2026-10-09.
+Copyright (c) 2026 iwesun (GitHub account: iwesun32).
+Official project: https://github.com/iwesun32/Iwesun.Runtime
+
+1. Definitions
+"Licensor" means iwesun and each copyright holder licensing their contributions
+under these terms. "Software" means the original source code, binaries,
+documentation, samples and skills explicitly distributed under this license.
+Separately licensed third-party material remains governed by its own license.
+"Noncommercial" means use not primarily intended for or directed toward commercial
+advantage, compensation or business operations. Selling products, providing paid
+services, commercial SaaS, advertising-funded services and internal business
+production use are commercial, whether or not this Software is charged for.
+Uncompensated personal learning, noncommercial research and noncommercial teaching
+are permitted. The user's organizational form alone does not determine the use.
+Voluntary donations without access, service or other benefits in exchange do not,
+by themselves, make an otherwise noncommercial activity commercial.
+
+2. Noncommercial grant
+Subject to these terms, Licensor grants a worldwide, nonexclusive, royalty-free
+copyright license to obtain, reproduce, run, study and privately modify the
+Software for Noncommercial purposes, and distribute it as permitted in section 4.
+Commercial rights require a separate written agreement from a party entitled to
+grant them. A later policy change does not withdraw the rights of a user who
+continues to comply with this license for a version already obtained.
+
+3. Attribution
+Distributions of the Software or applications containing it must include this
+license, its copyright notices, and applicable third-party notices. Attribution
+may be included in accompanying license files, documentation, or an existing
+third-party notices page; no advertisement or persistent UI banner is required.
+Modified versions must identify the modifier, upstream version and material
+changes, and must not imply that modifications are an official iwesun release.
+
+4. Redistribution and independent derivatives
+Unmodified official source and binary distributions may be redistributed free of
+charge for Noncommercial purposes with their version, origin and notices intact.
+Local modifications and public patches or contribution branches genuinely used
+to propose changes to the upstream project are allowed without individual approval.
+Independently promoting, maintaining or distributing a modified Runtime edition
+requires prior written approval recorded by iwesun or its authorized licensing
+agent, identifying the project and approved release scope. Silence is not approval.
+An approved modified edition must provide its corresponding, buildable modified
+Runtime source, build instructions and notices under these terms and the approval.
+Approval is not a warranty or endorsement. Recipients may use an approved edition
+under these terms without individual applications; another independent modified
+edition requires its own approval. Compliant downstream rights already granted
+are not retrospectively withdrawn solely by stopping new edition approvals.
+An independent application merely using the Software's public API does not need
+derivative-edition approval solely for that use and need not disclose its own
+source. Its use of the Software must still satisfy this license.
+
+5. Hosting-platform permissions and statutory rights
+Nothing here revokes viewing, copying, forking or other permissions already
+granted by Licensor under the terms of its selected public hosting platform.
+Those permissions are separate from independent distribution and commercial use
+outside their scope. Rights and exceptions that cannot lawfully be restricted,
+including applicable copyright exceptions, remain unaffected.
+
+6. Marks and patents
+Accurate attribution is permitted. No right to impersonate the official project,
+use an official certification, or claim endorsement is granted. Other trademark
+use requires separate authorization.
+Each Licensor grants a nonexclusive, worldwide, royalty-free patent license only
+for patent claims it can license that are necessarily infringed by its contribution
+alone or its contribution combined with the Software, solely for uses permitted
+by this license. No rights in third-party patents or unrelated combinations are
+granted or warranted.
+
+7. Compliance and termination
+Activities outside the grant are unauthorized. For a first curable attribution
+or notice breach, rights are reinstated if the breach is remedied within 30 days
+after receiving written notice. Unauthorized commercial use or independent
+distribution requires the relevant additional permission; adding a notice alone
+does not authorize it. Otherwise, material breach terminates the rights of the
+breaching user, subject to applicable law. Compliant recipients retain their
+independently granted rights. Accrued legal rights and attribution obligations
+survive termination.
+
+8. Disclaimer and limitation
+TO THE EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS", WITHOUT
+WARRANTY, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+TITLE OR NON-INFRINGEMENT. NO LICENSOR OR CONTRIBUTOR IS LIABLE FOR DAMAGES
+ARISING FROM THE SOFTWARE OR ITS USE. LIABILITY AND RIGHTS THAT APPLICABLE
+LAW DOES NOT ALLOW TO BE EXCLUDED OR LIMITED ARE NOT EXCLUDED OR LIMITED.
+
+9. Versions and permissions
+This license does not retroactively replace another valid license under which
+an earlier version was already received. Licensor may offer future versions or
+separate permissions on different terms. No governing jurisdiction is imposed
+by this license; applicable law determines it. The English text is authoritative.
+Permission requests: open the appropriate application in the official repository.
+This is a custom source-available license, not an OSI-approved open-source license.

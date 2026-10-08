@@ -10,7 +10,7 @@ public sealed class WindowsNetworkWfpConnectionPolicyBackendTests
 	{
 		if (IntPtr.Size != 8) return;
 
-		Assert.Equal([72, 16, 24, 16, 88, 40],
+		Assert.Equal([72, 16, 24, 16, 88, 40, 72, 20, 200, 152],
 			WindowsNetworkWfpConnectionPolicyBackend.GetNativeLayoutSizes());
 	}
 

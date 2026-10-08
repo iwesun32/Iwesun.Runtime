@@ -8,6 +8,7 @@
     <RootNamespace>Iwesun.Runtime.SampleHost</RootNamespace>
     <AssemblyName>Iwesun.Runtime.SampleHost</AssemblyName>
     <Platforms>AnyCPU;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
     <DefaultItemExcludes>$(DefaultItemExcludes);installed\**;template-validation\**</DefaultItemExcludes>
   </PropertyGroup>
 

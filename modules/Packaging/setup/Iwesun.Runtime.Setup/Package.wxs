@@ -1,6 +1,6 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Package Name="Iwesun Runtime" Manufacturer="Iwesun" Version="$(var.ProductVersion)" ProductCode="$(var.ProductCode)" UpgradeCode="7B2C38BC-6DC7-4C07-8EEF-CABF8A8A0A5F" Scope="perMachine">
+  <Package Name="Iwesun Runtime" Manufacturer="iwesun" Version="$(var.ProductVersion)" ProductCode="$(var.ProductCode)" UpgradeCode="7B2C38BC-6DC7-4C07-8EEF-CABF8A8A0A5F" Scope="perMachine">
     <MajorUpgrade Schedule="afterInstallInitialize"
                   DowngradeErrorMessage="A newer version of Iwesun Runtime is already installed." />
     <MediaTemplate EmbedCab="yes" />

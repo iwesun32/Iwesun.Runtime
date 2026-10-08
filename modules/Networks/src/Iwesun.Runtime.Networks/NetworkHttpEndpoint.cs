@@ -33,6 +33,7 @@ public sealed class NetworkHttpGetEndpoint<TKey>
 	private readonly NetworkRouteAdapterRegistry? _routeAdapters;
 	private readonly IWebProxy? _systemProxy;
 	private readonly NetworkHttpConnectionPool _pool;
+	private int _activeExecutionCount;
 	protected override bool StartAttemptsConcurrently => true;
 
 	public NetworkHttpGetEndpoint(
@@ -58,6 +59,8 @@ public sealed class NetworkHttpGetEndpoint<TKey>
 	}
 
 	public int ConnectionPoolCount => _pool.Count;
+	/// <summary>Active HTTP executions, including cancellation until I/O cleanup completes.</summary>
+	public int ActiveExecutionCount => Volatile.Read(ref _activeExecutionCount);
 
 	protected override Guid GetRequestId(NetworkHttpGetRequest<TKey> request) => request.RequestId;
 	protected override TKey GetRequestKey(NetworkHttpGetRequest<TKey> request) => request.Key;
@@ -66,7 +69,9 @@ public sealed class NetworkHttpGetEndpoint<TKey>
 	protected override NetworkExecutionIdentity GetResponseIdentity(NetworkHttpGetResponse<TKey> response) => response.Identity;
 	protected override int? GetRequestTimeoutOverrideMs(NetworkHttpGetRequest<TKey> request) => request.TimeoutMs;
 	protected override byte? GetResponseRetryCount(NetworkHttpGetResponse<TKey> response) => response.RetryCount;
-	protected override bool CanRetry(NetworkHttpGetRequest<TKey> request, NetworkFailure failure) => request.AllowRetry;
+	protected override bool CanRetry(NetworkHttpGetRequest<TKey> request, NetworkFailure failure) =>
+		request.AllowRetry && !request.CancellationToken.IsCancellationRequested &&
+		failure.Kind is not (NetworkFailureKind.Cancelled or NetworkFailureKind.Stopped);
 
 	protected override TrackedAttemptStartResult OnStartAttempt(
 		NetworkHttpGetRequest<TKey> request, byte retryCount,
@@ -80,6 +85,13 @@ public sealed class NetworkHttpGetEndpoint<TKey>
 		int timeoutMs,
 		CancellationToken cancellationToken)
 	{
+		if (request.CancellationToken.IsCancellationRequested)
+		{
+			Publish(request, retryCount, identity, new NetworkHttpExecutionResult(identity,
+				ProtocolOutcome.Cancelled, AccessCompliance.NotApplicable, default, 0, [], default,
+				"http-cancelled", 0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+			return TrackedAttemptStartResult.Accepted();
+		}
 		if (branchNumber != 1 || !Uri.TryCreate(request.Url, UriKind.Absolute, out var uri) ||
 			!request.AccessPlan.TryValidate(out _) || !request.Protocol.IsValid ||
 			!ProtocolMatchesUri(request.Protocol, uri) ||
@@ -169,10 +181,12 @@ public sealed class NetworkHttpGetEndpoint<TKey>
 		CancellationToken lifetimeToken)
 	{
 		var started = Stopwatch.GetTimestamp();
-		using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetimeToken);
+		using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetimeToken, request.CancellationToken);
 		timeout.CancelAfter(timeoutMs);
+		Interlocked.Increment(ref _activeExecutionCount);
 		try
 		{
+			timeout.Token.ThrowIfCancellationRequested();
 			using var lease = request.Protocol.ReusePolicy == NetworkHttpConnectionReusePolicy.NoReuseRequestPolicy
 				? _pool.RentTransient(() => CreateEntry(request, identity, resolved))
 				: _pool.Rent(
@@ -204,16 +218,18 @@ public sealed class NetworkHttpGetEndpoint<TKey>
 		}
 		catch (Exception ex)
 		{
-			var timedOut = timeout.IsCancellationRequested && !lifetimeToken.IsCancellationRequested;
+			var cancelled = lifetimeToken.IsCancellationRequested || request.CancellationToken.IsCancellationRequested;
+			var timedOut = timeout.IsCancellationRequested && !cancelled;
 			var outcome = timedOut ? ProtocolOutcome.TimedOut :
-				lifetimeToken.IsCancellationRequested ? ProtocolOutcome.Cancelled : ProtocolOutcome.TransportFailed;
+				cancelled ? ProtocolOutcome.Cancelled : ProtocolOutcome.TransportFailed;
 			Publish(request, retryCount, identity, new NetworkHttpExecutionResult(
 				identity, outcome, AccessCompliance.EvidenceIncomplete, default, 0, [],
-				BinaryNetworkError.FromException(ex, lifetimeToken.IsCancellationRequested, timedOut),
-				ClassifyTransportFailure(ex, timedOut, lifetimeToken.IsCancellationRequested),
+				BinaryNetworkError.FromException(ex, cancelled, timedOut),
+				ClassifyTransportFailure(ex, timedOut, cancelled),
 				ClampToUInt(Stopwatch.GetElapsedTime(started).TotalMilliseconds),
 				DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
 		}
+		finally { Interlocked.Decrement(ref _activeExecutionCount); }
 	}
 
 	private static string ClassifyTransportFailure(
@@ -299,7 +315,11 @@ public readonly record struct NetworkHttpGetRequest<TKey>(
 	IReadOnlyList<KeyValuePair<string, string>>? Headers = null,
 	int? TimeoutMs = null,
 	bool AllowRetry = true)
-	where TKey : notnull;
+	where TKey : notnull
+{
+	/// <summary>Request-local cancellation. Never part of the stable connection pool identity.</summary>
+	public CancellationToken CancellationToken { get; init; }
+}
 
 public readonly record struct NetworkHttpGetResponse<TKey>(
 	NetworkExecutionIdentity Identity,

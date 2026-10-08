@@ -74,8 +74,8 @@ public sealed class WebRuntimeTrackedCdpDomTreeSessionTests
 				"Input.dispatchMouseEvent"
 			],
 			clickCalls.Select(static call => call.Method));
-		Assert.Contains("\"nodeId\":4", clickCalls[1].ParametersJson);
-		Assert.Contains("\"nodeId\":4", clickCalls[2].ParametersJson);
+		Assert.Contains("\"backendNodeId\":104", clickCalls[1].ParametersJson);
+		Assert.Contains("\"backendNodeId\":104", clickCalls[2].ParametersJson);
 		Assert.Contains("\"type\":\"mouseMoved\"", clickCalls[5].ParametersJson);
 		Assert.Contains("\"type\":\"mousePressed\"", clickCalls[7].ParametersJson);
 		Assert.Contains("\"type\":\"mouseReleased\"", clickCalls[8].ParametersJson);
@@ -98,7 +98,9 @@ public sealed class WebRuntimeTrackedCdpDomTreeSessionTests
 
 		Assert.Contains(devTools.Calls, static call =>
 			call.Method == "DOM.scrollIntoViewIfNeeded"
-			&& call.ParametersJson.Contains("\"nodeId\":4", StringComparison.Ordinal));
+			&& call.ParametersJson.Contains(
+				"\"backendNodeId\":104",
+				StringComparison.Ordinal));
 		Assert.DoesNotContain(devTools.Calls, static call =>
 			call.Method is "DOM.getContentQuads"
 				or "Page.getLayoutMetrics"
@@ -109,7 +111,7 @@ public sealed class WebRuntimeTrackedCdpDomTreeSessionTests
 	}
 
 	[Fact]
-	public async Task Click_WhenVisiblePointHitsAncestor_DoesNotDispatchMouseInput()
+	public async Task Click_WhenSemanticNodeHasNoHit_UsesNearestVisibleAncestor()
 	{
 		var devTools = new RecordingEventSession
 		{
@@ -119,12 +121,14 @@ public sealed class WebRuntimeTrackedCdpDomTreeSessionTests
 		await using var tree = new WebRuntimeTrackedCdpDomTreeSession(devTools);
 		var access = new WebRuntimeCdpDomAccess(devTools, tree);
 
-		await Assert.ThrowsAsync<InvalidOperationException>(
-			() => access.ClickAsync("/html/body/main").AsTask());
+		var result = await access.ClickAsync("/html/body/main");
 
+		Assert.Equal(4, result.NodeId);
+		Assert.Equal(3, result.HitNodeId);
+		Assert.Equal(103, result.HitBackendNodeId);
 		Assert.Contains(devTools.Calls, static call =>
 			call.Method == "DOM.getNodeForLocation");
-		Assert.DoesNotContain(devTools.Calls, static call =>
+		Assert.Contains(devTools.Calls, static call =>
 			call.Method == "Input.dispatchMouseEvent");
 	}
 
@@ -301,6 +305,67 @@ public sealed class WebRuntimeTrackedCdpDomTreeSessionTests
 	}
 
 	[Fact]
+	public async Task ExplicitRefresh_WhenInvalidatedDuringRead_RetriesUntilPublished()
+	{
+		var devTools = new RecordingEventSession();
+		await using var tree = new WebRuntimeTrackedCdpDomTreeSession(devTools);
+		await tree.InitializeAsync();
+		devTools.DocumentVersion = 2;
+		var block = devTools.BlockNextDocumentRead();
+
+		var refresh = tree.RefreshAsync().AsTask();
+		await block.Started.WaitAsync(TimeSpan.FromSeconds(5));
+		devTools.Raise("DOM.documentUpdated", "{}");
+		block.Release();
+		await refresh;
+
+		Assert.NotNull(tree.Current);
+		Assert.Equal(5, tree.Current!.ResolveNodeId(
+			"document",
+			"/html/body/section"));
+		Assert.True(devTools.Calls.Count(static item =>
+			item.Method == "DOM.getDocument") >= 3);
+	}
+
+	[Fact]
+	public async Task LiveLookup_WhenInvalidatedDuringRecovery_PublishesBeforeUse()
+	{
+		var devTools = new RecordingEventSession();
+		await using var tree = new WebRuntimeTrackedCdpDomTreeSession(devTools);
+		await tree.InitializeAsync();
+		devTools.DocumentVersion = 2;
+		var block = devTools.BlockNextDocumentRead();
+		var access = new WebRuntimeCdpDomAccess(devTools, tree);
+
+		var focus = access.FocusAsync("/html/body/section").AsTask();
+		await block.Started.WaitAsync(TimeSpan.FromSeconds(5));
+		devTools.Raise("DOM.documentUpdated", "{}");
+		block.Release();
+		var result = await focus;
+
+		Assert.Equal(5, result.NodeId);
+		Assert.NotNull(tree.Current);
+		Assert.True(devTools.Calls.Count(static item =>
+			item.Method == "DOM.getDocument") >= 3);
+	}
+
+	[Theory]
+	[InlineData("The CDP DOM tree has no current revision.")]
+	[InlineData("The tracked CDP DOM tree refresh produced no current tree.")]
+	public void InvalidatedCurrentTree_IsClassifiedAsExpiredNodeIdentity(
+		string message)
+	{
+		var method = typeof(WebRuntimeTrackedCdpDomTreeSession).GetMethod(
+			"IsInvalidNodeIdentityException",
+			System.Reflection.BindingFlags.Static
+				| System.Reflection.BindingFlags.NonPublic);
+		Assert.NotNull(method);
+		Assert.True((bool)method.Invoke(
+			null,
+			[new InvalidOperationException(message)])!);
+	}
+
+	[Fact]
 	public async Task LiveLookup_WhenDomEventWasMissed_RefreshesMismatchedTree()
 	{
 		var devTools = new RecordingEventSession();
@@ -315,10 +380,8 @@ public sealed class WebRuntimeTrackedCdpDomTreeSessionTests
 		Assert.Equal(205, result.BackendNodeId);
 		Assert.True(devTools.Calls.Count(static item =>
 			item.Method == "DOM.getDocument") >= 2);
-		Assert.Contains(devTools.Calls, static item =>
+		Assert.DoesNotContain(devTools.Calls, static item =>
 			item.Method == "DOM.performSearch");
-		Assert.Contains(devTools.Calls, static item =>
-			item.Method == "DOM.discardSearchResults");
 	}
 
 	[Fact]
@@ -342,23 +405,17 @@ public sealed class WebRuntimeTrackedCdpDomTreeSessionTests
 	}
 
 	[Fact]
-	public async Task LiveResolution_WhenNodeIdExpires_RefreshesAndRetriesOnce()
+	public async Task LiveResolution_UsesTrackedScopedIdentityWithoutGlobalSearch()
 	{
-		var devTools = new RecordingEventSession
-		{
-			FailOnceMethod = "DOM.describeNode",
-			FailureMessage = "No node with given id found"
-		};
+		var devTools = new RecordingEventSession();
 		await using var tree = new WebRuntimeTrackedCdpDomTreeSession(devTools);
 		var access = new WebRuntimeCdpDomAccess(devTools, tree);
 
 		var attributes = await access.GetAttributesAsync("/html/body/main");
 
 		Assert.Empty(attributes);
-		Assert.Equal(2, devTools.Calls.Count(static item =>
-			item.Method == "DOM.describeNode"));
-		Assert.True(devTools.Calls.Count(static item =>
-			item.Method == "DOM.getDocument") >= 2);
+		Assert.DoesNotContain(devTools.Calls, static item =>
+			item.Method is "DOM.performSearch" or "DOM.describeNode");
 	}
 
 	[Fact]
@@ -380,7 +437,7 @@ public sealed class WebRuntimeTrackedCdpDomTreeSessionTests
 	}
 
 	[Fact]
-	public async Task LiveLookup_WhenXPathIsAbsent_ReleasesSearchResult()
+	public async Task LiveLookup_WhenXPathIsAbsent_DoesNotRunGlobalSearch()
 	{
 		var devTools = new RecordingEventSession
 		{
@@ -392,8 +449,8 @@ public sealed class WebRuntimeTrackedCdpDomTreeSessionTests
 		await Assert.ThrowsAsync<KeyNotFoundException>(
 			() => access.GetAttributesAsync("/html/body/missing").AsTask());
 
-		Assert.Contains(devTools.Calls, static item =>
-			item.Method == "DOM.discardSearchResults");
+		Assert.DoesNotContain(devTools.Calls, static item =>
+			item.Method is "DOM.performSearch" or "DOM.discardSearchResults");
 		Assert.DoesNotContain(devTools.Calls, static item =>
 			item.Method == "DOM.getAttributes");
 	}

@@ -13,11 +13,75 @@ internal static class ShutdownContractScenario
 
 		await VerifyStartOwnershipAsync(provider, checks, failures);
 		await VerifyShutdownOwnershipAsync(checks, failures);
+		await VerifyBoundedShutdownDispatchAsync(checks, failures);
 		VerifyTerminalAdmission(provider, checks, failures);
 
 		return failures.Count == 0
 			? FunctionalScenarioResult.Pass("shutdown-contract", checks.ToArray())
 			: FunctionalScenarioResult.Fail("shutdown-contract", checks, failures);
+	}
+
+	private static async Task VerifyBoundedShutdownDispatchAsync(List<string> checks, List<string> failures)
+	{
+		using var registry = new RuntimeManagedRegistry();
+		var state = new RManagedState("shutdown.contract.dispatch.blocker");
+		registry.Register(state.UnitId, "task", "test", state.Snapshot());
+		var stopCount = 0;
+		var wakeCount = 0;
+		using var handler = registry.RegisterCommandHandler(state.UnitId, command =>
+		{
+			if (command.Kind == RuntimeManagedCommandKind.Stop)
+				Interlocked.Increment(ref stopCount);
+			if (command.Kind == RuntimeManagedCommandKind.Wakeup)
+				Interlocked.Increment(ref wakeCount);
+			registry.UpdateState(state.UnitId, state.Snapshot());
+		});
+		var coordinator = new RuntimeShutdownCoordinator(registry);
+		var result = await coordinator.ShutdownAsync(TimeSpan.FromMilliseconds(500));
+		Check(result.ExitCode == RuntimeShutdownExitCodes.Timeout && result.Status.PendingUnits.Count == 1,
+			"shutdown-timeout-preserves-live-owner", "Timeout removed or accepted the still registered owner.", checks, failures);
+		Check(Volatile.Read(ref stopCount) is > 0 and <= 2 && Volatile.Read(ref wakeCount) is > 0 and <= 2,
+			"shutdown-state-change-does-not-redispatch", "State changes caused repeated successful Stop/Wakeup delivery.", checks, failures);
+		registry.Unregister(state.UnitId);
+
+		using var retryRegistry = new RuntimeManagedRegistry();
+		var retryState = new RManagedState("shutdown.contract.dispatch.retry");
+		retryRegistry.Register(retryState.UnitId, "task", "test", retryState.Snapshot());
+		using var entered = new ManualResetEventSlim();
+		using var release = new ManualResetEventSlim();
+		var receivedStop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+		using var retryHandler = retryRegistry.RegisterCommandHandler(retryState.UnitId, command =>
+		{
+			if (command.Kind == RuntimeManagedCommandKind.Snapshot)
+			{
+				entered.Set();
+				release.Wait(TimeSpan.FromSeconds(5));
+			}
+			if (command.Kind == RuntimeManagedCommandKind.Stop)
+				receivedStop.TrySetResult();
+		});
+		retryRegistry.EnqueueCommand(retryState.UnitId, RuntimeManagedCommandKind.Snapshot);
+		Check(entered.Wait(TimeSpan.FromSeconds(2)), "shutdown-retry-handler-entered", "Retry fixture handler did not start.", checks, failures);
+		for (var index = 0; index < 256; index++)
+		{
+			if (!retryRegistry.TryEnqueueCommand(retryState.UnitId, RuntimeManagedCommandKind.Wait).Sent)
+				break;
+		}
+		var retryShutdown = new RuntimeShutdownCoordinator(retryRegistry).ShutdownAsync(TimeSpan.FromSeconds(3));
+		Check(retryRegistry.DroppedCommandCount > 0, "shutdown-retry-full-inbox", "Retry fixture did not fill the instruction inbox.", checks, failures);
+		release.Set();
+		try
+		{
+			await receivedStop.Task.WaitAsync(TimeSpan.FromSeconds(2));
+			checks.Add("shutdown-retries-rejected-stop");
+		}
+		catch (TimeoutException)
+		{
+			failures.Add("shutdown-retries-rejected-stop: no Stop was delivered after the inbox drained.");
+		}
+		retryRegistry.Unregister(retryState.UnitId);
+		var retryResult = await retryShutdown;
+		Check(retryResult.ExitCode == RuntimeShutdownExitCodes.Success, "shutdown-retry-real-drain", "Retried shutdown did not finish after real unregister.", checks, failures);
 	}
 
 	private static async Task VerifyStartOwnershipAsync(IServiceProvider provider, List<string> checks, List<string> failures)

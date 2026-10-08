@@ -84,7 +84,23 @@ public sealed record WebRuntimeNetworkEvidenceFailure(
     string ContentType,
     string Error);
 
-public sealed class WebRuntimeNetworkEvidenceSession : IAsyncDisposable
+public sealed record WebRuntimeCapturedHttpBody(
+    string Url,
+    string ContentType,
+    ReadOnlyMemory<byte> Content,
+    string BodySha256,
+    string CaptureSource);
+
+public interface IWebRuntimeCapturedHttpBodySource
+{
+    bool TryReadCapturedBody(
+        string url,
+        out WebRuntimeCapturedHttpBody? body);
+}
+
+public sealed class WebRuntimeNetworkEvidenceSession :
+    IAsyncDisposable,
+    IWebRuntimeCapturedHttpBodySource
 {
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -195,6 +211,51 @@ public sealed class WebRuntimeNetworkEvidenceSession : IAsyncDisposable
             Volatile.Read(ref _latestFailure),
             lastActivityAt,
             Math.Max(0, (DateTimeOffset.UtcNow - lastActivityAt).TotalMilliseconds));
+    }
+
+    /// <summary>
+    /// Reads the newest successfully captured response body for an exact HTTP
+    /// resource URL. The returned bytes are the original response evidence;
+    /// this method never performs another network request.
+    /// </summary>
+    public bool TryReadCapturedBody(
+        string url,
+        out WebRuntimeCapturedHttpBody? body)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        var normalizedUrl = NormalizeResourceUrl(url);
+        var response = _responses
+            .Where(item => item.BodyDisposition ==
+                    WebRuntimeNetworkBodyDisposition.Captured
+                && item.BodyFile is not null
+                && item.BodySha256 is not null
+                && NormalizeResourceUrl(item.Url).Equals(
+                    normalizedUrl,
+                    StringComparison.Ordinal))
+            .OrderByDescending(static item => item.Sequence)
+            .FirstOrDefault();
+        if (response is null)
+        {
+            body = null;
+            return false;
+        }
+
+        var bodyPath = Path.Combine(
+            _sessionDirectory,
+            response.BodyFile!.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(bodyPath))
+        {
+            body = null;
+            return false;
+        }
+
+        body = new WebRuntimeCapturedHttpBody(
+            response.Url,
+            response.ContentType,
+            File.ReadAllBytes(bodyPath),
+            response.BodySha256!,
+            response.BodyCaptureSource);
+        return true;
     }
 
     public async Task ExportAsync(

@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Platforms>AnyCPU;x86;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
     <AssemblyName>Iwesun.Runtime.Data.Tests</AssemblyName>
     <RootNamespace>Iwesun.Runtime.Data.Tests</RootNamespace>
     <NoWarn>$(NoWarn);CS0618</NoWarn>

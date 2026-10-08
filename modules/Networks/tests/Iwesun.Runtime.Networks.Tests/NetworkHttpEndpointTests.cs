@@ -10,6 +10,79 @@ namespace Iwesun.Runtime.Networks.Tests;
 public sealed class NetworkHttpEndpointTests
 {
 	[Fact]
+	public async Task PreCancelledRequestDoesNotConnectOrRetry()
+	{
+		using var listener = new TcpListener(IPAddress.Loopback, 0);
+		listener.Start();
+		var url = new Uri($"http://logical.test:{((IPEndPoint)listener.LocalEndpoint).Port}/cancelled");
+		var environment = CreateEnvironment();
+		using var endpoint = new NetworkHttpGetEndpoint<string>(environment.Context);
+		using var cancel = new CancellationTokenSource();
+		cancel.Cancel();
+		Assert.True(NetworkHttpProtocolIdentity.TryCreate(url, null, null, null, 1,
+			NetworkHttpConnectionReusePolicy.Reusable, out var protocol, out _));
+		var failure = new TaskCompletionSource<NetworkFailureKind>(TaskCreationOptions.RunContinuationsAsynchronously);
+		var finalCount = 0;
+		var retryCount = 0;
+		endpoint.RequestFailed += (_, args) => { Interlocked.Increment(ref finalCount); failure.TrySetResult(args.Failure.Failure.Kind); };
+		endpoint.RequestRetrying += (_, _) => Interlocked.Increment(ref retryCount);
+		Assert.True(endpoint.TrySend(new(Guid.NewGuid(), "cancelled", url.AbsoluteUri, protocol,
+			environment.Plan, "manual") { CancellationToken = cancel.Token }));
+		Assert.Equal(NetworkFailureKind.Cancelled, await failure.Task.WaitAsync(TimeSpan.FromSeconds(3)));
+		await WaitUntilAsync(() => endpoint.PendingCount == 0);
+		Assert.Equal(0, endpoint.ActiveExecutionCount);
+		Assert.Equal(1, finalCount);
+		Assert.Equal(0, retryCount);
+		Assert.False(listener.Pending());
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task RequestCancellationClosesIoWithoutCancellingOtherRequest(bool partialBody)
+	{
+		using var listener = new TcpListener(IPAddress.Loopback, 0);
+		listener.Start();
+		var url = new Uri($"http://logical.test:{((IPEndPoint)listener.LocalEndpoint).Port}/held");
+		var environment = CreateEnvironment();
+		using var endpoint = new NetworkHttpGetEndpoint<string>(environment.Context);
+		using var cancel = new CancellationTokenSource();
+		using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+		Assert.True(NetworkHttpProtocolIdentity.TryCreate(url, null, null, null, 1,
+			NetworkHttpConnectionReusePolicy.Reusable, out var protocol, out _));
+		var failure = new TaskCompletionSource<TrackedRequestFailure<NetworkHttpGetRequest<string>, string>>(
+			TaskCreationOptions.RunContinuationsAsynchronously);
+		var retries = 0;
+		endpoint.RequestFailed += (_, args) => failure.TrySetResult(args.Failure);
+		endpoint.RequestRetrying += (_, _) => Interlocked.Increment(ref retries);
+		var cancelledId = Guid.NewGuid();
+		Assert.True(endpoint.TrySend(new(cancelledId, "held", url.AbsoluteUri, protocol,
+			environment.Plan, "manual", TimeoutMs: 30000) { CancellationToken = cancel.Token }));
+		using var held = await listener.AcceptSocketAsync(deadline.Token);
+		await ReadHeaderAsync(held).WaitAsync(deadline.Token);
+		if (partialBody)
+			await held.SendAsync("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nx"u8.ToArray(), deadline.Token);
+		var survivorId = Guid.NewGuid();
+		Assert.True(endpoint.TrySend(new(survivorId, "survivor", url.AbsoluteUri, protocol,
+			environment.Plan, "manual", TimeoutMs: 30000)));
+		using var survivor = await listener.AcceptSocketAsync(deadline.Token);
+		await ReadHeaderAsync(survivor).WaitAsync(deadline.Token);
+		await cancel.CancelAsync();
+		var terminal = await failure.Task.WaitAsync(deadline.Token);
+		Assert.Equal(cancelledId, terminal.RequestId);
+		Assert.Equal(NetworkFailureKind.Cancelled, terminal.Failure.Kind);
+		try { Assert.Equal(0, await held.ReceiveAsync(new byte[1], SocketFlags.None, deadline.Token)); }
+		catch (SocketException error) when (error.SocketErrorCode == SocketError.ConnectionReset) { }
+		await survivor.SendAsync("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"u8.ToArray(), deadline.Token);
+		await WaitUntilAsync(() => endpoint.ReceiveQueueLength == 1 && endpoint.PendingCount == 0 && endpoint.ActiveExecutionCount == 0);
+		Assert.True(endpoint.TryReadReceived(out var completion));
+		Assert.Equal(survivorId, completion.RequestId);
+		Assert.True(completion.Response.Result.IsSuccess);
+		Assert.Equal(0, retries);
+		Assert.False(listener.Pending());
+	}
+
+	[Fact]
 	public async Task ExactNextHopNoReuseOwnsPolicyForTheHttpConnection()
 	{
 		using var listener = new TcpListener(IPAddress.Loopback, 0);

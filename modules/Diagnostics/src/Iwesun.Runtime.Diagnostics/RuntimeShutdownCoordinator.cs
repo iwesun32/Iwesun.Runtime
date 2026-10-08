@@ -92,6 +92,15 @@ public sealed class RuntimeShutdownCoordinator
 		DateTimeOffset deadlineUtc,
 		string? payload)
 	{
+		// Shutdown closes registration admission, so unit IDs cannot be reused here.
+		var stopped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		var woken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		var commandPayload = RuntimeManagedPayloadInterpreter.ToJson(new
+		{
+			requestId,
+			deadlineUtc,
+			payload
+		});
 		while (true)
 		{
 			var status = _registry.EvaluateShutdownStatus();
@@ -114,14 +123,12 @@ public sealed class RuntimeShutdownCoordinator
 
 			foreach (var unit in status.PendingUnits)
 			{
-				var commandPayload = RuntimeManagedPayloadInterpreter.ToJson(new
-				{
-					requestId,
-					deadlineUtc = status.ExitDeadlineUtc,
-					payload
-				});
-				_registry.EnqueueCommand(unit.UnitId, RuntimeManagedCommandKind.Stop, commandPayload);
-				_registry.EnqueueCommand(unit.UnitId, RuntimeManagedCommandKind.Wakeup, commandPayload);
+				if (!stopped.Contains(unit.UnitId)
+					&& _registry.TryEnqueueCommand(unit.UnitId, RuntimeManagedCommandKind.Stop, commandPayload).Sent)
+					stopped.Add(unit.UnitId);
+				if (!woken.Contains(unit.UnitId)
+					&& _registry.TryEnqueueCommand(unit.UnitId, RuntimeManagedCommandKind.Wakeup, commandPayload).Sent)
+					woken.Add(unit.UnitId);
 			}
 
 			await _registry.WaitForChangeAsync(TimeSpan.FromMilliseconds(100), CancellationToken.None).ConfigureAwait(false);

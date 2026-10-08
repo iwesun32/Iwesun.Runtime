@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Platforms>AnyCPU;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\templates\RuntimeHost.Startup.Minimal.Template.cs.txt" Link="Program.cs" />

@@ -1,6 +1,6 @@
 # Iwesun.Runtime.Networks 文档索引
 
-> **状态**: CURRENT | **最后更新**: 2026-07-28
+> **状态**: CURRENT | **最后更新**: 2026-09-22
 > 本文档是 Iwesun.Runtime.Networks 设计文档的唯一入口。所有设计文档以中文撰写，按自上而下的逻辑架构组织。
 
 ## 语言约定
@@ -69,6 +69,7 @@ Iwesun.Runtime.Networks 3.0围绕**一个显式访问计划请求—响应抽象
 | [NETWORKS_3_0_API_MIGRATION_MATRIX.md](03-reference/NETWORKS_3_0_API_MIGRATION_MATRIX.md) | Networks 2.0.1公共面、三方调用点与3.0强制迁移归属 |
 | [NETWORKS_3_0_IP_ADDRESS_VALUE_MIGRATION_GUIDE.md](03-reference/NETWORKS_3_0_IP_ADDRESS_VALUE_MIGRATION_GUIDE.md) | **IpAddressValue迁移手册**：4/16/17字节边界、显式地址族入口、原生结构与验收清单 |
 | [NETWORKS_3_0_BETA4_UPGRADE_MIGRATION_REPORT.md](03-reference/NETWORKS_3_0_BETA4_UPGRADE_MIGRATION_REPORT.md) | **beta.4升级迁移报告**：完整源码审计、破坏性变化、消费者迁移与发布门禁 |
+| [NETWORKS_3_0_BETA5_UPGRADE_MIGRATION_REPORT.md](03-reference/NETWORKS_3_0_BETA5_UPGRADE_MIGRATION_REPORT.md) | **beta.5升级迁移报告**：长期TCP策略生命周期、数据面转发边界与测试版升级方式 |
 | [NETWORKS_3_0_UDP_DATA_PLANE_BETA_TEST_GUIDE.md](03-reference/NETWORKS_3_0_UDP_DATA_PLANE_BETA_TEST_GUIDE.md) | UDP长期池、流水号、端口证据与数据面替换的工程β测试清单 |
 | [IWESUN_NETWORKS_1_1_0_RELEASE_NOTES.md](03-reference/IWESUN_NETWORKS_1_1_0_RELEASE_NOTES.md) | 1.1.0功能、兼容性、验证和交付说明 |
 | [IWESUN_NETWORKS_1_2_0_RELEASE_NOTES.md](03-reference/IWESUN_NETWORKS_1_2_0_RELEASE_NOTES.md) | 1.2.0三级超时、尝试历史和总耗时上报 |

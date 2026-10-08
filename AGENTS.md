@@ -108,13 +108,14 @@ modules/Packaging/     -> Release aggregation and MSI setup
 **Dependency graph**:
 
 ```text
-Iwesun.Runtime.Diagnostics  (no internal deps)
-Iwesun.Runtime.WebView2     (no internal deps)
+Iwesun.Runtime.Data         (no internal deps)
+Iwesun.Runtime.Diagnostics  -> Data
+Iwesun.Runtime.WebView2     -> Diagnostics + Data
 Iwesun.Runtime.SampleHost   -> Diagnostics
 Iwesun.Runtime.Cli          -> Diagnostics + WebView2
 ```
 
-> No unit test project exists in the solution. Validate changes with focused `dotnet build`.
+> Data, Networks, and WebView2 have focused test projects. Diagnostics has executable functional tests. Run the relevant tests as well as focused builds. The supplied CI template covers Debug and Release; hosted CI is not enabled until the owner activates it.
 
 ## Architecture
 
@@ -142,7 +143,7 @@ Key classes:
 
 **Iwesun.Runtime.Cli** is a standalone command-line tool (top-level statements in `Program.cs`). It parses short verbs into JSON commands via regex patterns from `Iwesun.Runtime.Cli.commands.v2.json`, sends them over the named pipe, and returns JSON results. Dispatch order: shell -> configured (regex) -> webview2 -> composite -> diagnostics.
 
-**Iwesun.Runtime.WebView2** provides shared WebRuntime control models and a named pipe client (`AIGateway.WebRuntime` pipe). Only consumed by the CLI; DDNS Snap does not host WebView2 sessions.
+**Iwesun.Runtime.WebView2** provides WebRuntime control models, managed browser sessions, DOM/evidence handling, and shared pipe access. The CLI and WebView2 sample host demonstrate integration; DDNS Snap does not host WebView2 sessions.
 
 ## Main APIs Consumed by Hosts
 

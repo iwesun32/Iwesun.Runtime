@@ -8,6 +8,7 @@
     <RootNamespace>Iwesun.Runtime.WebView2.SampleHost</RootNamespace>
     <AssemblyName>Iwesun.Runtime.WebView2.SampleHost</AssemblyName>
     <Platforms>AnyCPU;x86;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />

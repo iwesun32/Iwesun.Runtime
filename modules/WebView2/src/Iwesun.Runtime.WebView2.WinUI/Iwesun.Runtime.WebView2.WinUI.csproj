@@ -4,7 +4,8 @@
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>Iwesun.Runtime.WebView2</RootNamespace>
     <AssemblyName>Iwesun.Runtime.WebView2.WinUI</AssemblyName>
-    <Platforms>x64</Platforms>
+    <Platforms>AnyCPU;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
     <PlatformTarget>x64</PlatformTarget>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>

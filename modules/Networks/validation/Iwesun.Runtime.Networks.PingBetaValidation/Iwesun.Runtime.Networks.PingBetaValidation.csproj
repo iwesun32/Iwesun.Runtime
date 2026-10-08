@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Platforms>AnyCPU;x86;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
     <AssemblyName>Iwesun.Runtime.Networks.PingBetaValidation</AssemblyName>
     <RootNamespace>Iwesun.Runtime.Networks.PingBetaValidation</RootNamespace>
     <IsPackable>false</IsPackable>

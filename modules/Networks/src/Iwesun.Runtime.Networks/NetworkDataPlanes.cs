@@ -14,6 +14,8 @@ public enum NetworkDataPlaneCapabilities : ushort
 	Nat = 1 << 7,
 	SocketProxy = 1 << 8,
 	HttpProxy = 1 << 9,
+	PacketCapture = 1 << 10,
+	PacketInject = 1 << 11,
 }
 
 public enum NetworkDataPlaneState : byte
@@ -93,9 +95,48 @@ public interface INetworkStreamDataPlane : INetworkDataPlane
 
 public interface INetworkPacketDataPlane : INetworkDataPlane
 {
+	event Func<NetworkPacketCapture, CancellationToken, ValueTask<NetworkPacketDataPlaneResult>>? PacketCaptured;
+
 	ValueTask<NetworkPacketDataPlaneResult> ForwardAsync(
 		NetworkPacketDataPlaneRequest request,
 		CancellationToken cancellationToken = default);
+
+	ValueTask<NetworkPacketDataPlaneResult> InjectAsync(
+		NetworkPacketDataPlaneInjection injection,
+		CancellationToken cancellationToken = default);
+}
+
+/// <summary>Packet direction at a transparent forwarding boundary.</summary>
+public enum NetworkPacketDirection : byte
+{
+	Unspecified = 0,
+	ClientToExternal = 1,
+	ExternalToClient = 2,
+}
+
+/// <summary>Immutable metadata delivered with one captured packet. The packet is opaque to Runtime.</summary>
+public readonly record struct NetworkPacketCapture(
+	NetworkFlowSerial FlowSerial,
+	NetworkExecutionIdentity Identity,
+	NetworkPacketDirection Direction,
+	NetworkInterfaceIdentity Interface,
+	ReadOnlyMemory<byte> Packet,
+	long CapturedAtUnixMs)
+{
+	public bool IsValid => FlowSerial.IsValid && Identity.HasBranch &&
+		Direction != NetworkPacketDirection.Unspecified && Interface.Luid > 0 && !Packet.IsEmpty && CapturedAtUnixMs > 0;
+}
+
+/// <summary>One explicitly directed packet injection. A backend must not silently use system routing.</summary>
+public readonly record struct NetworkPacketDataPlaneInjection(
+	NetworkFlowSerial FlowSerial,
+	NetworkExecutionIdentity Identity,
+	NetworkPacketDirection Direction,
+	NetworkInterfaceIdentity Interface,
+	ReadOnlyMemory<byte> Packet)
+{
+	public bool IsValid => FlowSerial.IsValid && Identity.HasBranch &&
+		Direction != NetworkPacketDirection.Unspecified && Interface.Luid > 0 && !Packet.IsEmpty;
 }
 
 public readonly record struct NetworkPacketDataPlaneRequest(

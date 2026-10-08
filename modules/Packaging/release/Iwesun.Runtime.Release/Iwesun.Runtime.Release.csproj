@@ -21,21 +21,21 @@
     <ReleaseSamplesRoot>$(ReleaseAppRoot)samples\</ReleaseSamplesRoot>
     <ReleaseScriptsRoot>$(ReleaseAppRoot)scripts\</ReleaseScriptsRoot>
     <ReleaseSkillsRoot>$(ReleaseAppRoot)skills\iwesun-runtime-integration\</ReleaseSkillsRoot>
-    <ReleaseNetworksVersion>3.0.0-beta.4</ReleaseNetworksVersion>
-    <ReleaseNetworksVersionProperties>Version=$(ReleaseNetworksVersion);AssemblyVersion=3.0.0.0;FileVersion=3.0.0.0;InformationalVersion=$(ReleaseNetworksVersion)</ReleaseNetworksVersionProperties>
+    <ReleaseNetworksVersion>3.0.0-beta.6</ReleaseNetworksVersion>
+    <ReleaseNetworksVersionProperties>Platform=AnyCPU;Version=$(ReleaseNetworksVersion);AssemblyVersion=3.0.0.0;FileVersion=3.0.0.0;InformationalVersion=$(ReleaseNetworksVersion)</ReleaseNetworksVersionProperties>
     <DiagnosticsVariantRoot>$(ReleaseLibRoot)Iwesun.Runtime.Diagnostics\</DiagnosticsVariantRoot>
     <DataVariantRoot>$(ReleaseLibRoot)Iwesun.Runtime.Data\</DataVariantRoot>
     <NetworksVariantRoot>$(ReleaseLibRoot)Iwesun.Runtime.Networks\</NetworksVariantRoot>
     <WebView2VariantRoot>$(ReleaseLibRoot)Iwesun.Runtime.WebView2\</WebView2VariantRoot>
-    <ReleaseVersionProperties>Version=$(Version);AssemblyVersion=$(AssemblyVersion);FileVersion=$(FileVersion);InformationalVersion=$(InformationalVersion)</ReleaseVersionProperties>
+    <ReleaseVersionProperties>Platform=AnyCPU;Version=$(Version);AssemblyVersion=$(AssemblyVersion);FileVersion=$(FileVersion);InformationalVersion=$(InformationalVersion)</ReleaseVersionProperties>
     <ReleaseBuildConfiguration>$(Configuration)</ReleaseBuildConfiguration>
     <ReleaseBuildConfiguration Condition="'$(Configuration)' == 'Publish'">Release</ReleaseBuildConfiguration>
   </PropertyGroup>
 
   <ItemGroup>
     <ReleaseDocs Include="$(RepositoryRoot)docs\IWESUN_RUNTIME_USER_GUIDE.md" />
-    <ReleaseDocs Include="$(RepositoryRoot)docs\IWESUN_RUNTIME_1.0.43_BETA_RELEASE_GUIDE.md" />
-    <ReleaseDocs Include="$(RepositoryRoot)docs\IWESUN_RUNTIME_1.0.43_BETA_RELEASE_MANIFEST.md" />
+    <ReleaseDocs Include="$(RepositoryRoot)docs\IWESUN_RUNTIME_1.0.47_BETA_RELEASE_GUIDE.md" />
+    <ReleaseDocs Include="$(RepositoryRoot)docs\IWESUN_RUNTIME_1.0.47_BETA_RELEASE_MANIFEST.md" />
     <ReleaseDocs Include="$(RepositoryRoot)docs\RELEASE_NOTES.md" />
     <ReleaseDocs Include="$(RepositoryRoot)docs\IWESUN_RUNTIME_QUICK_START.md" />
     <ReleaseDocs Include="$(RepositoryRoot)docs\IWESUN_RUNTIME_WINDOWS_SERVICE.md" />
@@ -69,6 +69,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ReleaseLegal Include="$(RepositoryRoot)LICENSE;$(RepositoryRoot)NOTICE;$(RepositoryRoot)THIRD_PARTY_NOTICES.md;$(RepositoryRoot)README.md;$(RepositoryRoot)README.en.md;$(RepositoryRoot)GOVERNANCE.md;$(RepositoryRoot)CONTRIBUTING.md;$(RepositoryRoot)CLA.md;$(RepositoryRoot)FORK_POLICY.md;$(RepositoryRoot)CODE_OF_CONDUCT.md;$(RepositoryRoot)SECURITY.md;$(RepositoryRoot)TRADEMARK_POLICY.md" />
+    <ReleaseThirdPartyLicenses Include="$(RepositoryRoot)legal\third-party\**\*" />
     <ProjectReference Include="..\..\..\Cli\src\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.csproj" />
     <ProjectReference Include="..\..\..\Diagnostics\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" />
     <ProjectReference Include="..\..\..\Data\src\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" />
@@ -79,6 +81,7 @@
   </ItemGroup>
 
   <Target Name="PublishRuntimeRelease">
+    <!-- Publish each variant without solution mappings that can force dependency configuration/platform. -->
     <RemoveDir Directories="$(ReleaseRoot)" />
     <MakeDir Directories="$(ReleaseRoot)" />
     <MakeDir Directories="$(ReleaseBinRoot)Iwesun.Runtime.Cli" />
@@ -108,22 +111,22 @@
     <MakeDir Directories="$(ReleaseSamplesRoot)source\Iwesun.Runtime.SampleHost\installed" />
     <MakeDir Directories="$(ReleaseSamplesRoot)source\Iwesun.Runtime.Networks.Examples" />
 
-    <MSBuild Projects="$(RepositoryRoot)modules\RemoteConsole\src\Iwesun.Runtime.RemoteConsole\Iwesun.Runtime.RemoteConsole.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=$(ReleaseBuildConfiguration);RuntimeIdentifier=win-x64;PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.RemoteConsole\;SelfContained=false;UseAppHost=true" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Cli\src\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=$(ReleaseBuildConfiguration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.Cli\;SelfContained=false;UseAppHost=true" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Diagnostics\samples\Iwesun.Runtime.SampleHost\Iwesun.Runtime.SampleHost.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=$(ReleaseBuildConfiguration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.SampleHost\;SelfContained=false;UseAppHost=true" />
-    <MSBuild Projects="$(RepositoryRoot)modules\WebView2\samples\Iwesun.Runtime.WebView2.SampleHost\Iwesun.Runtime.WebView2.SampleHost.csproj" Targets="Restore;Publish" Properties="$(ReleaseVersionProperties);Configuration=$(ReleaseBuildConfiguration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.WebView2.SampleHost\;SelfContained=false;UseAppHost=true" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Diagnostics\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=$(ReleaseBuildConfiguration);PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Diagnostics\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Diagnostics\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Debug;PublishDir=$(DiagnosticsVariantRoot)Debug\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Diagnostics\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Release;PublishDir=$(DiagnosticsVariantRoot)Release\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Data\src\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Release;PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Data\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Data\src\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Debug;PublishDir=$(DataVariantRoot)Debug\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Data\src\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Release;PublishDir=$(DataVariantRoot)Release\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Networks\src\Iwesun.Runtime.Networks\Iwesun.Runtime.Networks.csproj" Targets="Publish" Properties="$(ReleaseNetworksVersionProperties);Configuration=Release;PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Networks\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Networks\src\Iwesun.Runtime.Networks\Iwesun.Runtime.Networks.csproj" Targets="Publish" Properties="$(ReleaseNetworksVersionProperties);Configuration=Debug;PublishDir=$(NetworksVariantRoot)Debug\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\Networks\src\Iwesun.Runtime.Networks\Iwesun.Runtime.Networks.csproj" Targets="Publish" Properties="$(ReleaseNetworksVersionProperties);Configuration=Release;PublishDir=$(NetworksVariantRoot)Release\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\WebView2\src\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Release;PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.WebView2\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\WebView2\src\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Debug;PublishDir=$(WebView2VariantRoot)Debug\;SelfContained=false" />
-    <MSBuild Projects="$(RepositoryRoot)modules\WebView2\src\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Release;PublishDir=$(WebView2VariantRoot)Release\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\RemoteConsole\src\Iwesun.Runtime.RemoteConsole\Iwesun.Runtime.RemoteConsole.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=$(ReleaseBuildConfiguration);RuntimeIdentifier=win-x64;PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.RemoteConsole\;SelfContained=false;UseAppHost=true" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Cli\src\Iwesun.Runtime.Cli\Iwesun.Runtime.Cli.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=$(ReleaseBuildConfiguration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.Cli\;SelfContained=false;UseAppHost=true" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Diagnostics\samples\Iwesun.Runtime.SampleHost\Iwesun.Runtime.SampleHost.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=$(ReleaseBuildConfiguration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.SampleHost\;SelfContained=false;UseAppHost=true" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\WebView2\samples\Iwesun.Runtime.WebView2.SampleHost\Iwesun.Runtime.WebView2.SampleHost.csproj" Targets="Restore;Publish" Properties="$(ReleaseVersionProperties);Configuration=$(ReleaseBuildConfiguration);PublishDir=$(ReleaseBinRoot)Iwesun.Runtime.WebView2.SampleHost\;SelfContained=false;UseAppHost=true" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Diagnostics\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=$(ReleaseBuildConfiguration);PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Diagnostics\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Diagnostics\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Debug;PublishDir=$(DiagnosticsVariantRoot)Debug\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Diagnostics\src\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Release;PublishDir=$(DiagnosticsVariantRoot)Release\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Data\src\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Release;PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Data\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Data\src\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Debug;PublishDir=$(DataVariantRoot)Debug\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Data\src\Iwesun.Runtime.Data\Iwesun.Runtime.Data.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Release;PublishDir=$(DataVariantRoot)Release\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Networks\src\Iwesun.Runtime.Networks\Iwesun.Runtime.Networks.csproj" Targets="Publish" Properties="$(ReleaseNetworksVersionProperties);Configuration=Release;PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.Networks\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Networks\src\Iwesun.Runtime.Networks\Iwesun.Runtime.Networks.csproj" Targets="Publish" Properties="$(ReleaseNetworksVersionProperties);Configuration=Debug;PublishDir=$(NetworksVariantRoot)Debug\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\Networks\src\Iwesun.Runtime.Networks\Iwesun.Runtime.Networks.csproj" Targets="Publish" Properties="$(ReleaseNetworksVersionProperties);Configuration=Release;PublishDir=$(NetworksVariantRoot)Release\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\WebView2\src\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Release;PublishDir=$(ReleaseLibRoot)Iwesun.Runtime.WebView2\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\WebView2\src\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Debug;PublishDir=$(WebView2VariantRoot)Debug\;SelfContained=false" />
+    <MSBuild RemoveProperties="CurrentSolutionConfigurationContents;BuildingSolutionFile" Projects="$(RepositoryRoot)modules\WebView2\src\Iwesun.Runtime.WebView2\Iwesun.Runtime.WebView2.csproj" Targets="Publish" Properties="$(ReleaseVersionProperties);Configuration=Release;PublishDir=$(WebView2VariantRoot)Release\;SelfContained=false" />
 
     <ItemGroup>
       <RedundantRecordStoreCopy Include="$(ReleaseLibRoot)Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Data.dll" />
@@ -139,6 +142,8 @@
     <Delete Files="@(RedundantRecordStoreCopy)" />
     <Delete Files="@(RedundantDiagnosticsCopy)" />
 
+    <Copy SourceFiles="@(ReleaseLegal)" DestinationFolder="$(ReleaseAppRoot)" />
+    <Copy SourceFiles="@(ReleaseThirdPartyLicenses)" DestinationFiles="@(ReleaseThirdPartyLicenses->'$(ReleaseAppRoot)legal\third-party\%(RecursiveDir)%(Filename)%(Extension)')" />
     <Copy SourceFiles="@(ReleaseDocs)" DestinationFiles="@(ReleaseDocs->'$(ReleaseDocsRoot)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ReleaseRuntimeDocs)" DestinationFiles="@(ReleaseRuntimeDocs->'$(ReleaseDocsRoot)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ReleaseInstallIndex)" DestinationFiles="@(ReleaseInstallIndex->'$(ReleaseDocsRoot)README.md')" SkipUnchangedFiles="true" />

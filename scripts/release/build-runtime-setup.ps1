@@ -1,10 +1,29 @@
 [CmdletBinding()]
 param(
-    [string]$ProductVersion = "1.0.43",
-    [string]$NetworksVersion = "3.0.0-beta.4"
+    [string]$ProductVersion = "1.0.47",
+    [string]$NetworksVersion = "3.0.0-beta.6",
+    [string]$PreviousRuntimeRoot = "$env:ProgramFiles\Iwesun\Runtime"
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-Sha256Hash {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [System.BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace("-", "")
+    }
+    finally {
+        $algorithm.Dispose()
+        $stream.Dispose()
+    }
+}
+
 if ($ProductVersion -notmatch '^\d+\.\d+\.\d+$') {
     throw "ProductVersion must use numeric major.minor.patch format."
 }
@@ -23,6 +42,7 @@ finally {
 }
 $productCode = ([Guid]::new([byte[]]$productCodeHash[0..15])).ToString("D").ToUpperInvariant()
 $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$PreviousRuntimeRoot = [System.IO.Path]::GetFullPath($PreviousRuntimeRoot)
 $solutionPath = Join-Path $repositoryRoot "Iwesun.Runtime.slnx"
 $dataTestsProject = Join-Path $repositoryRoot "modules\Data\tests\Iwesun.Runtime.Data.Tests\Iwesun.Runtime.Data.Tests.csproj"
 $networksTestsProject = Join-Path $repositoryRoot "modules\Networks\tests\Iwesun.Runtime.Networks.Tests\Iwesun.Runtime.Networks.Tests.csproj"
@@ -38,15 +58,19 @@ $msiPath = Join-Path $repositoryRoot "artifacts\setup\Iwesun.Runtime.Setup.msi"
 $portablePackagePath = Join-Path $repositoryRoot "artifacts\packages\Iwesun.Runtime.$informationalVersion.zip"
 $networksPackagePath = Join-Path $repositoryRoot "artifacts\packages\Iwesun.Runtime.Networks.$NetworksVersion.nupkg"
 $networksSymbolsPath = Join-Path $repositoryRoot "artifacts\packages\Iwesun.Runtime.Networks.$NetworksVersion.snupkg"
-$releaseGuidePath = Join-Path $repositoryRoot "docs\IWESUN_RUNTIME_1.0.43_BETA_RELEASE_GUIDE.md"
-$releaseManifestPath = Join-Path $repositoryRoot "docs\IWESUN_RUNTIME_1.0.43_BETA_RELEASE_MANIFEST.md"
+$releaseGuidePath = Join-Path $repositoryRoot "docs\IWESUN_RUNTIME_${ProductVersion}_BETA_RELEASE_GUIDE.md"
+$releaseManifestPath = Join-Path $repositoryRoot "docs\IWESUN_RUNTIME_${ProductVersion}_BETA_RELEASE_MANIFEST.md"
 $bundleRoot = Join-Path $repositoryRoot "artifacts\packages\Iwesun.Runtime.$informationalVersion"
+
+if (-not (Test-Path -LiteralPath (Join-Path $PreviousRuntimeRoot "lib\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.dll"))) {
+    throw "PreviousRuntimeRoot does not contain the required Diagnostics baseline: $PreviousRuntimeRoot"
+}
 
 Push-Location $repositoryRoot
 try {
     & dotnet build-server shutdown
     if ($LASTEXITCODE -ne 0) { throw "Build server shutdown failed." }
-    & dotnet build $binaryCompatibilityProject -c Release --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false "/p:BaselineRuntimeRoot=$releaseAppRoot"
+    & dotnet build $binaryCompatibilityProject -c Release --disable-build-servers /m:1 /nr:false /p:BuildInParallel=false /p:UseSharedCompilation=false "/p:BaselineRuntimeRoot=$PreviousRuntimeRoot"
     if ($LASTEXITCODE -ne 0) { throw "Previous-release binary compatibility host build failed." }
     & dotnet clean $solutionPath -c Debug /m:1 /nr:false
     if ($LASTEXITCODE -ne 0) { throw "Debug solution cleanup failed." }
@@ -114,20 +138,20 @@ try {
     }
     $checksumLines = foreach ($bundleFile in $bundleFiles) {
         $item = Get-Item -LiteralPath $bundleFile.Destination
-        $itemHash = Get-FileHash -LiteralPath $bundleFile.Destination -Algorithm SHA256
-        "$($itemHash.Hash)  $($item.Name)"
+        $itemHash = Get-Sha256Hash -Path $bundleFile.Destination
+        "$itemHash  $($item.Name)"
     }
     $checksumPath = Join-Path $bundleRoot "SHA256SUMS.txt"
     [System.IO.File]::WriteAllLines($checksumPath, $checksumLines, [System.Text.UTF8Encoding]::new($false))
     $msi = Get-Item -LiteralPath $msiPath
-    $hash = Get-FileHash -LiteralPath $msiPath -Algorithm SHA256
+    $hash = Get-Sha256Hash -Path $msiPath
     Write-Host "Runtime full package completed."
     Write-Host "Version: $ProductVersion"
     Write-Host "Product: {$productCode}"
     Write-Host "Networks: $NetworksVersion"
     Write-Host "MSI:     $($msi.FullName)"
     Write-Host "Bytes:   $($msi.Length)"
-    Write-Host "SHA256:  $($hash.Hash)"
+    Write-Host "SHA256:  $hash"
     Write-Host "Bundle:  $bundleRoot"
     Write-Host "Checksums: $checksumPath"
 }

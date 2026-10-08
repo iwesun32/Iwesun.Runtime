@@ -1,10 +1,31 @@
 # Iwesun.Runtime.Networks发布状态
 
-> **当前版本**: 3.0.0-beta.4
+## 2026-10-09 当前公开候选：3.0.0-beta.6
+
+本次随 Runtime `1.0.47-beta.1` 完整公开交付，含 HTTP 请求级取消、接口身份和当前验证工具修正。
+总体仍为 β，真实 WFP/下一跳和长期压力不由合同测试替代。当前验收以根版本发布清单为准。
+以下内容为各历史版本的过程记录；其中“当前”“仅独立发布”等措辞只适用于对应日期。
+
+> **当前版本**: 3.0.0-beta.5
 >
 > **状态**: GENERAL_BETA_READY_FORMAL_BLOCKED
 >
-> **最后更新**: 2026-07-28
+> **最后更新**: 2026-09-22
+
+## 2026-09-22 beta.5 网络用户反馈同步发布
+
+- 已确认安装目录、Runtime 便携包和本地NuGet源中原有的`3.0.0-beta.4`均来自较早源码快照；
+  它们不包含本轮TCP长期连接及数据面扩展，不能再作为“当前Networks”向用户交付。
+- `NetworkSocketExecutor.OpenTcpAsync`返回`NetworkTcpConnection`。精确下一跳策略由连接对象
+  持有，贯穿整个读写生命周期；仅在连接释放后清理。连接前取消、打开失败和清理异常各自保留，
+  不伪造成功或提前释放策略。
+- `INetworkPacketDataPlane`新增捕获和注入合同。记录保留内部流水号和四级GUID执行身份；这是一层
+  面向DNS代理、NAT、Socket/HTTP代理和三层转发的公共后端边界，不等同于已提供虚拟网卡或Packet
+  后端实现。
+- Debug与Release合同测试均通过208项。此包是独立Networks普通β交付，不重打当前混有未完成
+  Web/WebView2改动的全量Runtime MSI或便携包。
+- 迁移、交付物和仍需真实网络验证的边界见
+  [beta.5升级迁移报告](03-reference/NETWORKS_3_0_BETA5_UPGRADE_MIGRATION_REPORT.md)。
 
 ## 2026-07-28 beta.4完整架构审计与升级
 
@@ -44,7 +65,7 @@ Iwesun.Runtime.Networks 3.0已完成库内唯一公共请求—响应规范的�
 `Status@28`及`RoundTripTime@32`。Networks Debug/Release各202项通过，Apollo DDNS Debug
 真实`ff02::1`回归已在首个NDP快照得到11条Reachable邻居并重新激活Hades；Selene安装新载荷后的
 同机回归仍为发布前门禁。DDNS已通过隔离DLL根完成真实DHCPv6源地址、接口19和公网目标探测；完整Service恢复链因可能执行
-RS、DHCPv6 renew及网卡重启而未运行。当前源码作为`3.0.0-beta.4`普通β候选准备，
+RS、DHCPv6 renew及网卡重启而未运行。当前源码作为`3.0.0-beta.5`普通β候选准备，
 允许生成Runtime MSI、便携载荷和内部文件源候选；完成统一候选门禁前不安装，
 剩余M11门禁仍阻止正式版本冻结，且不允许上传公共NuGet源。
 
@@ -57,9 +78,9 @@ M12正式版本冻结。此前构建、迁移和局部真实网络通过记录�
 | 项目 | 要求 | 当前状态 |
 | --- | --- | --- |
 | Networks Debug/Release构建 | 0警告、0错误 | PASS |
-| Networks Debug/Release测试 | 全部通过 | 当前源码Debug/Release 202/202；beta.3基线188/188 |
+| Networks Debug/Release测试 | 全部通过 | 当前源码Debug/Release 208/208；beta.4基线202/202 |
 | 版本后缀、可空Route及旧处理器公共面 | 不得进入程序集 | PASS（反射守卫同时禁止V2/V3导出名） |
-| beta.4普通β包 | 内容、版本、符号包及哈希可复核 | PASS（统一候选目录、7项交付物及SHA-256清单已生成） |
+| beta.5普通β包 | 内容、版本、符号包及哈希可复核 | PASS（NuGet/符号包、Debug/Release DLL及SHA-256清单已生成） |
 | Runtime消费者迁移 | 全部改用3.0正式合同 | PASS（Debug/Release构建及暂存载荷验证通过） |
 | DDNS Snap消费者迁移 | 全部改用3.0正式合同 | PASS（x64 Debug/Release构建；Networks范围测试通过） |
 | Aether消费者迁移 | 全部改用3.0正式合同 | INSTALLED BETA PASS（Program Files Debug/Release构建；测试242/242；DNS/DoH精确匹配36/36） |
@@ -73,16 +94,16 @@ M12正式版本冻结。此前构建、迁移和局部真实网络通过记录�
 
 ## 普通β载荷与历史回归输入
 
-UDP长期池与内部流水号基础批次开放普通β验证，测试者必须使用`3.0.0-beta.4`或同一源码构建结果，并按
+UDP长期池、长期TCP和内部流水号基础批次开放普通β验证，测试者必须使用`3.0.0-beta.5`或同一源码构建结果，并按
 [UDP数据面β测试指南](03-reference/NETWORKS_3_0_UDP_DATA_PLANE_BETA_TEST_GUIDE.md)提交结构化结果。
 
 - `Iwesun.Runtime.Networks.dll` Debug/Release普通β程序集；
-- `Iwesun.Runtime.Networks.3.0.0-beta.4.nupkg`和`Iwesun.Runtime.Networks.3.0.0-beta.4.snupkg`；
+- `Iwesun.Runtime.Networks.3.0.0-beta.5.nupkg`和`Iwesun.Runtime.Networks.3.0.0-beta.5.snupkg`；
 - 根README、CHANGELOG、完整3.0接口文档和可运行示例；
 - 不参与NuGet打包的`Iwesun.Runtime.Networks.WfpValidation`管理员验收程序。
 
 `3.0.0-rc.1`、`rc.2`、`rc.3`、`beta.1`、`beta.2`和`beta.3`均只作为历史基线或回归输入。
-`beta.4`包的大小与SHA-256登记在包目录外部校验清单中；包内状态文件不嵌入包自身哈希，避免自引用。
+`beta.5`包的大小与SHA-256登记在包目录外部校验清单中；包内状态文件不嵌入包自身哈希，避免自引用。
 
 ## 发布阻塞项
 
@@ -93,5 +114,5 @@ UDP长期池与内部流水号基础批次开放普通β验证，测试者必须
 4. 处理或正式豁免DDNS Snap既有安装包PowerShell文本断言，完成消费者全仓无排除测试记录；
 5. 完成M12干净环境restore/build/test/install、正式`3.0.0`版本冻结和最终包重建。
 
-当前允许生成`beta.4`普通β候选；统一候选门禁完成后才允许内部分发和安装。在全部正式门禁完成前，
+当前允许生成`beta.5`普通β候选；统一候选门禁完成后才允许内部分发和安装。在全部正式门禁完成前，
 禁止创建正式标签、推送公共包，或把普通β描述为正式发布候选。

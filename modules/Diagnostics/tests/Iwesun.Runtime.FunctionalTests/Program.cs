@@ -2743,9 +2743,9 @@ static class FunctionalChildRunner
                 : FunctionalScenarioResult.Fail("cli", checks, failures);
         }
 
-        if (!data.TryGetProperty("RuntimeVersion", out _)
-            || !data.TryGetProperty("RegisteredTargets", out var registeredTargets)
-            || !data.TryGetProperty("ProcessId", out _))
+        if (!data.TryGetProperty("runtimeVersion", out _)
+            || !data.TryGetProperty("registeredTargets", out var registeredTargets)
+            || !data.TryGetProperty("processId", out _))
         {
             failures.Add($"CLI response did not contain host snapshot fields. stdout={stdout.Trim()} stderr={stderr.Trim()}");
         }

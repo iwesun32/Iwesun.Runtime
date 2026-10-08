@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Platforms>AnyCPU;x86;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
     <AssemblyName>Iwesun.Runtime.Data.ScaleTest</AssemblyName>
     <RootNamespace>Iwesun.Runtime.Data.ScaleTest</RootNamespace>
   </PropertyGroup>

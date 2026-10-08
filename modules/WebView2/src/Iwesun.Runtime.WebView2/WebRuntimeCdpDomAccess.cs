@@ -198,45 +198,22 @@ public sealed class WebRuntimeCdpDomAccess(
 					ct).ConfigureAwait(false);
 				await CallAsync(
 					"DOM.scrollIntoViewIfNeeded",
-					new { nodeId = node.NodeId },
+					new { backendNodeId = node.BackendNodeId },
 					ct).ConfigureAwait(false);
 				var quadsJson = await CallAsync(
 					"DOM.getContentQuads",
-					new { nodeId = node.NodeId },
+					new { backendNodeId = node.BackendNodeId },
 					ct).ConfigureAwait(false);
 				var metricsJson = await CallAsync(
 					"Page.getLayoutMetrics",
 					new { },
 					ct).ConfigureAwait(false);
-				var points = ReadVisibleContentPoints(quadsJson, metricsJson);
-				ClickHit? hit = null;
-				foreach (var point in points)
-				{
-					var beforeMove = await ReadHitAsync(point, ct)
-						.ConfigureAwait(false);
-					if (!IsTargetOrDescendant(node, beforeMove))
-						continue;
-					await CallAsync(
-						"Input.dispatchMouseEvent",
-						new
-						{
-							type = "mouseMoved",
-							x = point.X,
-							y = point.Y,
-							button = "none",
-							buttons = 0,
-							clickCount = 0,
-							pointerType = "mouse"
-						},
-						ct).ConfigureAwait(false);
-					var afterMove = await ReadHitAsync(point, ct)
-						.ConfigureAwait(false);
-					if (IsTargetOrDescendant(node, afterMove))
-					{
-						hit = afterMove;
-						break;
-					}
-				}
+				var hit = await FindVisibleClickHitAsync(
+					node,
+					quadsJson,
+					metricsJson,
+					ct)
+					.ConfigureAwait(false);
 				if (hit is null)
 				{
 					throw new InvalidOperationException(
@@ -279,6 +256,84 @@ public sealed class WebRuntimeCdpDomAccess(
 			},
 			cancellationToken);
 
+	private async Task<ClickHit?> FindVisibleClickHitAsync(
+		LiveNode semanticTarget,
+		string semanticTargetQuadsJson,
+		string metricsJson,
+		CancellationToken cancellationToken)
+	{
+		var hitTarget = semanticTarget;
+		for (var ancestorDepth = 0; ancestorDepth < 8; ancestorDepth++)
+		{
+			var quadsJson = ancestorDepth == 0
+				? semanticTargetQuadsJson
+				: await CallAsync(
+					"DOM.getContentQuads",
+					new { nodeId = hitTarget.NodeId },
+					cancellationToken).ConfigureAwait(false);
+			IReadOnlyList<ClickPoint> points;
+			try
+			{
+				points = ReadVisibleContentPoints(quadsJson, metricsJson);
+			}
+			catch (InvalidDataException)
+			{
+				if (!TryGetTrackedParent(hitTarget, out hitTarget))
+					return null;
+				continue;
+			}
+			foreach (var point in points)
+			{
+				var beforeMove = await ReadHitAsync(point, cancellationToken)
+					.ConfigureAwait(false);
+				if (!IsTargetOrDescendant(hitTarget, beforeMove))
+					continue;
+				await CallAsync(
+					"Input.dispatchMouseEvent",
+					new
+					{
+						type = "mouseMoved",
+						x = point.X,
+						y = point.Y,
+						button = "none",
+						buttons = 0,
+						clickCount = 0,
+						pointerType = "mouse"
+					},
+					cancellationToken).ConfigureAwait(false);
+				var afterMove = await ReadHitAsync(point, cancellationToken)
+					.ConfigureAwait(false);
+				if (IsTargetOrDescendant(hitTarget, afterMove))
+					return afterMove;
+			}
+			if (!TryGetTrackedParent(hitTarget, out hitTarget))
+				return null;
+		}
+		return null;
+	}
+
+	private bool TryGetTrackedParent(
+		LiveNode node,
+		out LiveNode parent)
+	{
+		parent = default;
+		var index = _tree.Current;
+		if (index is null
+			|| !index.TryGetNode(node.NodeId, out var tracked)
+			|| tracked.Parent is not { } trackedParent)
+		{
+			return false;
+		}
+		parent = new(
+			index.Revision,
+			trackedParent.DocumentScope,
+			trackedParent.XPath,
+			trackedParent.NodeId,
+			trackedParent.BackendNodeId);
+		return true;
+	}
+
+
 	private ValueTask<WebRuntimeCdpDomAccessResult> ExecuteAsync(
 		string xpath,
 		string documentScope,
@@ -317,9 +372,12 @@ public sealed class WebRuntimeCdpDomAccess(
 					.ConfigureAwait(false);
 			}
 			catch (Exception exception)
-				when (attempt == 0
-					&& WebRuntimeTrackedCdpDomTreeSession
-						.IsInvalidNodeIdentityException(exception))
+				when ((attempt == 0
+						&& WebRuntimeTrackedCdpDomTreeSession
+							.IsInvalidNodeIdentityException(exception))
+					|| (attempt < 4
+						&& WebRuntimeTrackedCdpDomTreeSession
+							.IsCurrentTreeUnavailableException(exception)))
 			{
 				await _tree.RefreshAsync(cancellationToken)
 					.ConfigureAwait(false);
@@ -332,94 +390,19 @@ public sealed class WebRuntimeCdpDomAccess(
 		string xpath,
 		CancellationToken cancellationToken)
 	{
-		await _tree.InitializeAsync(cancellationToken).ConfigureAwait(false);
-		var searchJson = await CallAsync(
-			"DOM.performSearch",
-			new
-			{
-				query = xpath,
-				includeUserAgentShadowDOM = true
-			},
+		return await _tree.UseNodeAsync(
+			documentScope,
+			xpath,
+			(indexed, _) => Task.FromResult(
+				new LiveNode(
+					_tree.Current?.Revision
+						?? throw new InvalidOperationException(
+							"The tracked DOM tree has no current revision."),
+					documentScope,
+					xpath,
+					indexed.NodeId,
+					indexed.BackendNodeId)),
 			cancellationToken).ConfigureAwait(false);
-		using var searchResponse = JsonDocument.Parse(searchJson);
-		var searchRoot = searchResponse.RootElement;
-		var searchId = searchRoot.GetProperty("searchId").GetString();
-		var resultCount = searchRoot.GetProperty("resultCount").GetInt32();
-		if (string.IsNullOrWhiteSpace(searchId))
-		{
-			throw new InvalidDataException(
-				"DOM.performSearch returned no search identity.");
-		}
-		try
-		{
-			if (resultCount == 0)
-			{
-				throw new KeyNotFoundException(
-					$"XPath '{documentScope}::{xpath}' is absent from the "
-					+ "current browser DOM.");
-			}
-			if (resultCount != 1)
-			{
-				throw new InvalidOperationException(
-					$"XPath '{documentScope}::{xpath}' matched {resultCount} "
-					+ "nodes in the current browser DOM.");
-			}
-			var resultsJson = await CallAsync(
-				"DOM.getSearchResults",
-				new
-				{
-					searchId,
-					fromIndex = 0,
-					toIndex = 1
-				},
-				cancellationToken).ConfigureAwait(false);
-			using var resultsResponse = JsonDocument.Parse(resultsJson);
-			var nodeIds = resultsResponse.RootElement
-				.GetProperty("nodeIds")
-				.EnumerateArray()
-				.Select(static value => value.GetInt32())
-				.ToArray();
-			if (nodeIds.Length != 1 || nodeIds[0] <= 0)
-			{
-				throw new InvalidDataException(
-					"DOM.getSearchResults returned no unique node identity.");
-			}
-			var nodeId = nodeIds[0];
-			var descriptionJson = await CallAsync(
-				"DOM.describeNode",
-				new { nodeId, depth = 0, pierce = true },
-				cancellationToken).ConfigureAwait(false);
-			using var descriptionResponse = JsonDocument.Parse(descriptionJson);
-			var describedNode = descriptionResponse.RootElement
-				.GetProperty("node");
-			var backendNodeId = describedNode
-				.GetProperty("backendNodeId")
-				.GetInt32();
-			if (backendNodeId <= 0)
-			{
-				throw new InvalidDataException(
-					"DOM.describeNode returned no backend node identity.");
-			}
-			var revision = await EnsureTreeMatchesLiveNodeAsync(
-				documentScope,
-				xpath,
-				nodeId,
-				backendNodeId,
-				cancellationToken).ConfigureAwait(false);
-			return new(
-				revision,
-				documentScope,
-				xpath,
-				nodeId,
-				backendNodeId);
-		}
-		finally
-		{
-			await CallAsync(
-				"DOM.discardSearchResults",
-				new { searchId },
-				CancellationToken.None).ConfigureAwait(false);
-		}
 	}
 
 	private async ValueTask<long> EnsureTreeMatchesLiveNodeAsync(

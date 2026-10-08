@@ -68,10 +68,16 @@ revision 失效；失效状态下 `Current` 不再暴露旧树。属性增加、
 插入、删除、文本变化、Shadow DOM 变化、伪元素变化和 `documentUpdated` 会使当前树失效，
 并触发整树刷新；下一个访问也会强制等待刷新完成。
 
-如果事件恰好发生在整树读取期间，失效标志会保留并继续刷新，旧读取结果不能覆盖更新事件。
+如果事件恰好发生在整树读取期间，失效标志会保留，旧读取结果不能覆盖更新事件。
+`RefreshAsync()` 只有在新的完整索引已经原子发布、`Current` 可用且没有刷新错误时才能成功
+返回；读取期间再次失效会在方法内部重试，连续 30 次仍无法发布时明确失败。它不得把“本次
+读取因并发失效而被放弃”冒充刷新成功。
+
 刷新失败保留最后异常并让树保持失效；后续访问会重新尝试，而不是继续使用陈旧 `nodeId`。
 宿主和测试还可以显式调用 `Invalidate()` 与 `RefreshAsync()`；它们是事件缺口和外部导航
-边界的补偿入口，不要求销毁整个会话。
+边界的补偿入口，不要求销毁整个会话。SPA、iframe 重排或一串业务点击完成并稳定后，宿主
+应主动调用 `RefreshAsync()` 建立最终节点索引，再开始 XPath/nodeId 操作；不能只依赖事件
+失效通知。
 
 ## 4. 固定 CDP 操作
 
@@ -95,6 +101,11 @@ document scope、当前 URL 和树 revision；URL 或节点身份不一致时自
 实时查询并只重试一次。第二次仍失败时返回原始终态，不无限重试，也不把其他 CDP、传输或
 取消错误误判为节点失效。
 
+结构事件也可能发生在一次实时操作已经取得节点、但尚未完成 content-quad 命中验证的窗口
+内。此时 `Current` 会按合同立即隐藏，操作会收到 `no current revision/tree`。这两种错误
+同样属于节点身份过期，必须进入同一条“刷新完整树 → 按原 XPath 重新解析 → 单次重试”路径；
+不得把它们作为普通业务失败返回，也不得继续使用失效前的 nodeId。
+
 点击把 content quad 裁剪到 CSS 视口，
 只对 `DOM.getNodeForLocation` 证明命中目标节点或其后代的点派发鼠标输入；不在页面内构造
 MouseEvent，也不调用元素的 JavaScript `click()`。
@@ -104,8 +115,11 @@ MouseEvent，也不调用元素的 JavaScript `click()`。
 1. 使用调用方提供的原始绝对 XPath，在浏览器当前 DOM 中直接解析唯一节点，并与当前树
    revision 核对；
 2. 调用 `Page.bringToFront`，确保输入发送到当前页面 target；
-3. 调用 `DOM.scrollIntoViewIfNeeded`，让滚动容器内的目标进入可命中区域；
-4. 调用 `DOM.getContentQuads` 和 `Page.getLayoutMetrics`，把每个 quad 裁剪到 CSS 视口；
+3. 使用当前 revision 的 `backendNodeId` 调用
+   `DOM.scrollIntoViewIfNeeded`，让滚动容器内的目标进入可命中区域；
+4. 使用同一 `backendNodeId` 调用 `DOM.getContentQuads`，并结合
+   `Page.getLayoutMetrics` 把每个 quad 裁剪到 CSS 视口；不得在滚动后继续依赖可能因
+   DOM 事件刷新而失效的前端 `nodeId`；
 5. 从裁剪多边形中心和内缩采样点中选择候选，以 `DOM.getNodeForLocation` 验证实际命中；
 6. 发送 `mouseMoved` 后再次命中验证，防止 hover 产生的覆盖层改变目标；
 7. 只有两次命中均属于目标节点或其后代时，才发送带正确 `buttons` 状态的
@@ -127,6 +141,10 @@ XPath、`nodeId` 和 `backendNodeId` 的 `WebRuntimeDomNodeReference` 交给宿�
 `HtmlRuntimeWebView2Context.CreateCdp` 默认建立持续跟踪树，并公开 `CdpDomAccess`。
 上下文实现 `IAsyncDisposable`；释放时取消后台刷新并反向解除所有 CDP DOM 事件订阅。
 初始化中任一步失败也会反向清理已经建立的订阅。
+
+完整 DOM 证据读取在同一 CDP 会话中把 `DOM.enable`、`CSS.enable` 视为一次性生命周期
+操作。存在样式请求时必须先启用两个域，再执行大型 `DOMSnapshot.captureSnapshot`；
+后续 matched/computed-style 阶段复用已启用状态，不得在快照之后重复初始化 CSS agent。
 
 ## 6. 迁移
 
@@ -161,3 +179,14 @@ Runtime 自带的 `CoreWebView2DevToolsSession` 使用
 本模型负责元素定位和 DOM 操作。用户显式提交的脚本、页面语义插桩和证据采集是不同能力；
 它们不得被 DOM 访问入口隐式调用。后续若某项正式元素 API 仍依赖脚本，应迁移到本节点树，
 或明确从正式元素访问合同中移除。
+
+## 8. 整树证据读取
+
+- `WebRuntimeCdpDomEvidenceReader` 对调用方提交的元素槽位、文档级 CSS、布局和效果请求只
+  执行一次 `DOMSnapshot.captureSnapshot`。Runtime Web 应一次提交完整请求集合，不能在
+  元素 Fill 后再发起第二次全树样式采集。
+- computed style 由同一 DOMSnapshot 批量返回；authored declaration/link 使用
+  `CSS.getMatchedStylesForNode` 的固定受限入口。后者是 CDP 的逐节点 API，读取器以 16 个
+  节点为一组维持有界并发，仍以固定 tree revision/backendNodeId 校验结果。
+- 并发只减少协议往返等待，不改变顺序、级联证据或节点身份。任一节点失效仍按本文件第 4
+  节规则恢复并硬失败，禁止跳过节点或回填 computed value 冒充 authored declaration。

@@ -64,6 +64,23 @@ function Assert-PathAbsent {
     Write-Host "[OK] $Label is absent"
 }
 
+function Get-Sha256Hash {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [System.BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace("-", "")
+    }
+    finally {
+        $algorithm.Dispose()
+        $stream.Dispose()
+    }
+}
+
 Write-Host "Runtime install verification started."
 Write-Host "InstallRoot: $InstallRoot"
 Write-Host "DataRoot:    $DataRoot"
@@ -116,9 +133,9 @@ if ($networksVersionInfo.FileVersion -ne "3.0.0.0") {
 }
 Write-Host "[OK] Networks release FileVersion => $($networksVersionInfo.FileVersion)"
 $recordStoreHashes = @(
-    (Get-FileHash -LiteralPath $recordStoreDll -Algorithm SHA256).Hash,
-    (Get-FileHash -LiteralPath (Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\Debug\Iwesun.Runtime.Data.dll") -Algorithm SHA256).Hash,
-    (Get-FileHash -LiteralPath (Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\Release\Iwesun.Runtime.Data.dll") -Algorithm SHA256).Hash
+    Get-Sha256Hash -Path $recordStoreDll
+    Get-Sha256Hash -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\Debug\Iwesun.Runtime.Data.dll")
+    Get-Sha256Hash -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\Release\Iwesun.Runtime.Data.dll")
 ) | Select-Object -Unique
 $legacyDataCopies = @(Get-ChildItem -LiteralPath $InstallRoot -Recurse -Filter "Iwesun.Data.dll" -File)
 if ($legacyDataCopies.Count -ne 0) {
@@ -135,9 +152,15 @@ if ($unreleasedWebBinaries.Count -ne 0) {
 Assert-PathAbsent -Path (Join-Path $InstallRoot "lib\Iwesun.Runtime.Web") -Label "unreleased Runtime Web library directory"
 Assert-PathAbsent -Path (Join-Path $InstallRoot "samples\source\Iwesun.Runtime.Web") -Label "unreleased Runtime Web project source"
 Write-Host "[OK] Unreleased Iwesun.Runtime.Web binaries are absent"
+$unreleasedTables = @(Get-ChildItem -LiteralPath $InstallRoot -Recurse -File -Filter 'Iwesun.Runtime.Tables.*')
+if ($unreleasedTables.Count -ne 0) { throw 'Unreleased Tables files must not be included in the payload.' }
+Assert-PathAbsent -Path (Join-Path $InstallRoot 'lib\Iwesun.Runtime.Tables') -Label 'unreleased Tables directory'
+foreach ($legalFile in @('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md')) {
+    Assert-PathExists -Path (Join-Path $InstallRoot $legalFile) -Label "Public distribution $legalFile"
+}
 $recordStoreCopies = @(Get-ChildItem -LiteralPath $InstallRoot -Recurse -Filter "Iwesun.Runtime.Data.dll" -File)
 foreach ($copy in $recordStoreCopies) {
-    $copyHash = (Get-FileHash -LiteralPath $copy.FullName -Algorithm SHA256).Hash
+    $copyHash = Get-Sha256Hash -Path $copy.FullName
     if ($copyHash -notin $recordStoreHashes) {
         throw "RecordStore payload contains a stale or mismatched copy: $($copy.FullName)"
     }
@@ -148,10 +171,13 @@ Assert-FileVersionEquals -ReferencePath $diagnosticsDll -CandidatePath $remoteCo
 
 # Program Files documentation and integration payload
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_USER_GUIDE.md") -Label "User guide"
+foreach ($bilingualDocument in @('README.md', 'README.en.md', 'docs\GETTING_STARTED.md', 'docs\en\README.md', 'docs\en\USER_GUIDE.md', 'docs\en\RELEASE_GUIDE.md')) {
+    Assert-PathExists -Path (Join-Path $InstallRoot $bilingualDocument) -Label "Bilingual public documentation $bilingualDocument"
+}
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_QUICK_START.md") -Label "Quick start guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\RELEASE_NOTES.md") -Label "Release notes"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_1.0.43_BETA_RELEASE_GUIDE.md") -Label "1.0.43 beta release guide"
-Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_1.0.43_BETA_RELEASE_MANIFEST.md") -Label "1.0.43 beta release manifest"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_1.0.47_BETA_RELEASE_GUIDE.md") -Label "1.0.47 beta release guide"
+Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_1.0.47_BETA_RELEASE_MANIFEST.md") -Label "1.0.47 beta release manifest"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_CLI.md") -Label "CLI guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_WINDOWS_SERVICE.md") -Label "Windows Service guide"
 Assert-PathExists -Path (Join-Path $InstallRoot "docs\IWESUN_RUNTIME_REMOTE_ACCESS.md") -Label "Remote access guide"
@@ -274,7 +300,7 @@ try {
             throw "Installed SampleHost $configuration output did not contain Iwesun.Runtime.Diagnostics.dll."
         }
         $installedDll = Join-Path $InstallRoot "lib\Iwesun.Runtime.Diagnostics\$configuration\Iwesun.Runtime.Diagnostics.dll"
-        if ((Get-FileHash -LiteralPath $outputDll.FullName -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $installedDll -Algorithm SHA256).Hash) {
+        if ((Get-Sha256Hash -Path $outputDll.FullName) -ne (Get-Sha256Hash -Path $installedDll)) {
             throw "Installed SampleHost $configuration output DLL hash does not match the installed $configuration Diagnostics DLL."
         }
         Write-Host "[OK] Installed SampleHost $configuration DLL hash"
@@ -284,7 +310,7 @@ try {
 			throw "Installed SampleHost $configuration output did not contain Iwesun.Runtime.Data.dll."
 		}
 		$installedDataDll = Join-Path $InstallRoot "lib\Iwesun.Runtime.Data\$configuration\Iwesun.Runtime.Data.dll"
-		if ((Get-FileHash -LiteralPath $sampleDataDll.FullName -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $installedDataDll -Algorithm SHA256).Hash) {
+		if ((Get-Sha256Hash -Path $sampleDataDll.FullName) -ne (Get-Sha256Hash -Path $installedDataDll)) {
 			throw "Installed SampleHost $configuration output Iwesun.Runtime.Data.dll hash does not match the installed RecordStore library."
 		}
 		Write-Host "[OK] Installed SampleHost $configuration RecordStore DLL hash"

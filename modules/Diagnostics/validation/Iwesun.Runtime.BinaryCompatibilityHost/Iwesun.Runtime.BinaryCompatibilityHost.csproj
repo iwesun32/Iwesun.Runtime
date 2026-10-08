@@ -14,6 +14,6 @@
 
   <Target Name="RequireBaselineRuntime" BeforeTargets="ResolveReferences">
     <Error Condition="!Exists('$(BaselineRuntimeRoot)\lib\Iwesun.Runtime.Diagnostics\Iwesun.Runtime.Diagnostics.dll')"
-           Text="A pre-1.0.43 Runtime baseline is required at $(BaselineRuntimeRoot)." />
+           Text="The Runtime 1.0.46 baseline is required at $(BaselineRuntimeRoot)." />
   </Target>
 </Project>

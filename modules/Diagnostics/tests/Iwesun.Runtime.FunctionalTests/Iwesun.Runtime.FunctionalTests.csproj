@@ -9,6 +9,7 @@
 	<RootNamespace>Iwesun.Runtime.FunctionalTests</RootNamespace>
 	<AssemblyName>Iwesun.Runtime.FunctionalTests</AssemblyName>
 	<Platforms>AnyCPU;x64</Platforms>
+	<Configurations>Debug;Release</Configurations>
   </PropertyGroup>
 
   <ItemGroup>

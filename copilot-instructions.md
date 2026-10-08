@@ -43,7 +43,7 @@ When relevant, consult these repository-local files:
 - `LangVersion=latest`
 - `Nullable=enable`
 - `ImplicitUsings=enable`
-- `Version=1.0.0`
+- Release versions are declared in `Directory.Build.props`; Networks maintains its own package version.
 
 ## Build And Validation
 
@@ -58,7 +58,7 @@ When relevant, consult these repository-local files:
 - `modules/WebView2/` - Shared WebRuntime library, sample host, and domain docs
 - `modules/Cli/`, `modules/RemoteConsole/` - Command-line and remote-control applications
 - `modules/Packaging/` - Release aggregation and MSI setup projects
-- `docs/` - Active Chinese documentation (see `docs/HANDOFF_*` and `docs/REQUIREMENTS_ACTIVE.md` for current injector-standardization work)
+- `docs/` - Active Chinese documentation; begin with `docs/README.md` and `docs/REQUIREMENTS_ACTIVE.md`.
 
 ## Host Template And Injector (standardized flow)
 

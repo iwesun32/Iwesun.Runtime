@@ -30,6 +30,8 @@ public sealed class RThread : IDisposable
 	private int _globalStopHandled;
 	private int _disposed;
 	private int _cleanupCompleted;
+	private readonly object _exitWakeGate = new();
+	private bool _threadExiting;
 
 	public RThread(
 		ThreadStart start,
@@ -333,14 +335,16 @@ public sealed class RThread : IDisposable
 	{
 		await _cleanup.WaitForExitSignalAsync().ConfigureAwait(false);
 		Interlocked.Exchange(ref _exitCode, _cleanup.ExitCode);
-		if (!_inner.IsAlive)
-			return;
-		try
+		lock (_exitWakeGate)
 		{
-			_inner.Interrupt();
-			_managed?.PublishEvent(UnitId, "thread-stop-wakeup", "Cleanup completed or reached the controller deadline; the managed wait was interrupted.", State.Snapshot());
+			if (_threadExiting || !_inner.IsAlive) return;
+			try
+			{
+				_inner.Interrupt();
+				_managed?.PublishEvent(UnitId, "thread-stop-wakeup", "Cleanup completed or reached the controller deadline; the managed wait was interrupted.", State.Snapshot());
+			}
+			catch { }
 		}
-		catch { }
 	}
 
 	private void Execute(ThreadStart start)
@@ -372,8 +376,9 @@ public sealed class RThread : IDisposable
 		}
 		finally
 		{
-			RestoreCleanupTerminalState();
+			BeginThreadExit();
 			ConsumePendingInterrupt();
+			RestoreCleanupTerminalState();
 			if (Interlocked.Exchange(ref _exitCode, ExitCode) == ExitCode)
 			{
 				// Preserve current exit code; just ensuring the field is observed before final completion.
@@ -417,8 +422,9 @@ public sealed class RThread : IDisposable
 		}
 		finally
 		{
-			RestoreCleanupTerminalState();
+			BeginThreadExit();
 			ConsumePendingInterrupt();
+			RestoreCleanupTerminalState();
 			if (Volatile.Read(ref _exitCompletedRaised) == 0)
 			{
 				RaiseExitCompletedOnce(new RThreadExitResultEventArgs(Volatile.Read(ref _exitCode), false, "Thread stopped."));
@@ -443,6 +449,17 @@ public sealed class RThread : IDisposable
 		if (!_cleanup.HasStarted)
 			return;
 		State.TransitionTo(Volatile.Read(ref _exitCode) == RuntimeShutdownExitCodes.Timeout ? "Timeout" : "Completed");
+	}
+
+	private void BeginThreadExit()
+	{
+		// A cleanup wakeup must never land inside registry unregistration. Drain
+		// a previously queued interrupt even when acquiring this lifecycle gate.
+		while (true)
+		{
+			try { lock (_exitWakeGate) { _threadExiting = true; } return; }
+			catch (ThreadInterruptedException) { }
+		}
 	}
 
 	private static void ConsumePendingInterrupt()

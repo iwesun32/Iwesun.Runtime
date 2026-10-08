@@ -19,12 +19,12 @@ internal static class BinaryCompatibilityScenario
 			var assembly = Assembly.LoadFrom(Path.GetFullPath(assemblyPath));
 			var diagnosticsReference = assembly.GetReferencedAssemblies()
 				.SingleOrDefault(reference => reference.Name == "Iwesun.Runtime.Diagnostics");
-			if (diagnosticsReference?.Version != new Version(1, 0, 42, 0))
+            if (diagnosticsReference?.Version != new Version(1, 0, 46, 0))
 			{
 				return Task.FromResult(FunctionalScenarioResult.Fail(
 					scenario,
 					Array.Empty<string>(),
-					new[] { $"Compatibility host must reference Iwesun.Runtime.Diagnostics 1.0.42.0, actual={diagnosticsReference?.Version}." }));
+                    new[] { $"Compatibility host must reference Iwesun.Runtime.Diagnostics 1.0.46.0, actual={diagnosticsReference?.Version}." }));
 			}
 			var consumer = assembly.GetType("Iwesun.Runtime.BinaryCompatibilityHost.LegacyConstructorConsumer", throwOnError: true)!;
 			var result = consumer.GetMethod("CreateTargets", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, null) as string;

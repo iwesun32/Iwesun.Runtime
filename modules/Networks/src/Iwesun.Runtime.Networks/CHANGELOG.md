@@ -2,6 +2,19 @@
 
 本文件记录Iwesun.Runtime.Networks面向消费者的版本变化。
 
+## 3.0.0-beta.5 - 2026-09-22
+
+- 新增`NetworkSocketExecutor.OpenTcpAsync`和`NetworkTcpConnection`：调用方可取得长期双向
+  TCP流；精确下一跳策略的所有权随连接存续，在连接释放前不会过早撤销。
+- 连接建立失败、取消和策略清理失败均保留在`NetworkTcpConnectionOpenResult`中；成功连接同时
+  支持`IDisposable`和`IAsyncDisposable`，释放后才结束策略生命周期。
+- `INetworkPacketDataPlane`补齐捕获回调与注入入口，捕获记录携带内部`NetworkFlowSerial`、
+  四级GUID执行身份、方向、接口和时间戳，为DNS代理、NAT、三层转发及后续独立数据面后端
+  保留统一边界；默认Socket数据面不虚假声明Packet能力。
+- WFP验收程序新增本地流与HTTPS探针支撑；Networks Debug/Release合同测试均为208项通过。
+- 本包替代`3.0.0-beta.4`作为当前普通β。程序集版本继续保持`3.0.0.0`以维持3.0预发布阶段
+  的二进制装载身份；消费者以NuGet包版本和产品信息版本识别本批次。
+
 ## 3.0.0-beta.4 - 2026-07-28
 
 - `NetworkPingEndpoint<TKey>`启用请求级并发启动；批量登记后不再由唯一发送线程逐项完成昂贵解析，

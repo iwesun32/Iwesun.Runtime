@@ -3,13 +3,13 @@
     <AcceptEula>wix7</AcceptEula>
     <OutputType>Package</OutputType>
     <Configurations>Debug;Release</Configurations>
-    <Platforms>x64</Platforms>
+    <Platforms>x86;x64</Platforms>
     <Platform>x64</Platform>
     <OutputName>Iwesun.Runtime.Setup</OutputName>
     <RepositoryRoot>$(MSBuildThisFileDirectory)..\..\..\..\</RepositoryRoot>
     <OutputPath>$(RepositoryRoot)artifacts\setup\</OutputPath>
-    <ProductVersion Condition="'$(ProductVersion)' == ''">1.0.42</ProductVersion>
-    <ProductCode Condition="'$(ProductCode)' == ''">AB6C65E5-9D38-0053-A566-B56D264A6AD4</ProductCode>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">1.0.47</ProductVersion>
+    <ProductCode Condition="'$(ProductCode)' == ''">FB1DB6E6-7292-2548-AA8D-33F74240788D</ProductCode>
     <DefineConstants>ReleaseAppRoot=$(RepositoryRoot)artifacts\release\Iwesun.Runtime\app;ReleaseDataRoot=$(RepositoryRoot)artifacts\release\Iwesun.Runtime\data;ProductVersion=$(ProductVersion);ProductCode=$(ProductCode)</DefineConstants>
   </PropertyGroup>
   <ItemGroup>

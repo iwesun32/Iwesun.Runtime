@@ -1,0 +1,29 @@
+name: 工作组申请 / Working group
+description: 申请参与 iwesun Runtime 维护
+title: "[Join] "
+labels: ["application:membership"]
+body:
+  - type: markdown
+    attributes:
+      value: "申请将在公开 Issue 中处理，请勿填写密码、证件或其他私密信息。入组不自动授予仓库写权限。"
+  - type: input
+    id: area
+    attributes:
+      label: 希望参与的模块或工作
+    validations:
+      required: true
+  - type: textarea
+    id: experience
+    attributes:
+      label: 经验、代表贡献与参与计划
+    validations:
+      required: true
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: 协作声明
+      options:
+        - label: 我已阅读并接受 LICENSE、GOVERNANCE.md 和 CODE_OF_CONDUCT.md。
+          required: true
+        - label: 我理解代码贡献另需明确接受 CLA，入组不授权商业使用或独立版本发行。
+          required: true

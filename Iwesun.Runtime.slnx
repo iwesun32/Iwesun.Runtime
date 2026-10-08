@@ -4,69 +4,81 @@
     <BuildType Name="Release" />
     <BuildType Name="Publish" />
     <Platform Name="Any CPU" />
+    <Platform Name="x86" />
     <Platform Name="x64" />
   </Configurations>
-  <Project Path="modules/Data/src/Iwesun.Runtime.Data/Iwesun.Runtime.Data.csproj">
-    <BuildType Solution="Publish|*" Project="Release" />
-    <Platform Solution="Publish|*" Project="x64" />
-    <Platform Solution="*|Any CPU" Project="AnyCPU" />
-    <Platform Solution="*|x64" Project="x64" />
-  </Project>
-  <Project Path="modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/Iwesun.Runtime.Diagnostics.csproj">
-    <BuildType Solution="Publish|*" Project="Release" />
-    <Platform Solution="Publish|*" Project="x64" />
-    <Platform Solution="*|Any CPU" Project="AnyCPU" />
-    <Platform Solution="*|x64" Project="x64" />
-  </Project>
-  <Project Path="modules/Networks/src/Iwesun.Runtime.Networks/Iwesun.Runtime.Networks.csproj">
-    <BuildType Solution="Publish|*" Project="Release" />
-    <Platform Solution="Publish|*" Project="x64" />
-    <Platform Solution="*|Any CPU" Project="AnyCPU" />
-    <Platform Solution="*|x64" Project="x64" />
-  </Project>
-  <Project Path="modules/WebView2/src/Iwesun.Runtime.WebView2/Iwesun.Runtime.WebView2.csproj">
-    <BuildType Solution="Publish|*" Project="Release" />
-    <Platform Solution="Publish|*" Project="x64" />
-    <Platform Solution="*|Any CPU" Project="AnyCPU" />
-    <Platform Solution="*|x64" Project="x64" />
-  </Project>
-  <Project Path="modules/RemoteConsole/protocol/Iwesun.Runtime.RemoteConsole.Protocol/Iwesun.Runtime.RemoteConsole.Protocol.csproj">
-    <BuildType Solution="Publish|*" Project="Release" />
-    <Platform Solution="Publish|*" Project="x64" />
-    <Platform Solution="*|Any CPU" Project="AnyCPU" />
-    <Platform Solution="*|x64" Project="x64" />
-  </Project>
   <Project Path="modules/Cli/src/Iwesun.Runtime.Cli/Iwesun.Runtime.Cli.csproj">
     <BuildType Solution="Publish|*" Project="Release" />
-    <Platform Solution="Publish|*" Project="x64" />
-    <Platform Solution="*|Any CPU" Project="AnyCPU" />
     <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|x86" Project="x86" />
+    <Platform Solution="Publish|Any CPU" Project="x64" />
+    <Platform Solution="Publish|x86" Project="x64" />
+    <Platform Solution="Release|x86" Project="x86" />
   </Project>
-  <Project Path="modules/RemoteConsole/src/Iwesun.Runtime.RemoteConsole/Iwesun.Runtime.RemoteConsole.csproj">
+  <Project Path="modules/Data/src/Iwesun.Runtime.Data/Iwesun.Runtime.Data.csproj">
     <BuildType Solution="Publish|*" Project="Release" />
-    <Platform Solution="Publish|*" Project="x64" />
-    <Platform Solution="*|Any CPU" Project="x64" />
     <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|x86" Project="x86" />
+    <Platform Solution="Publish|Any CPU" Project="x64" />
+    <Platform Solution="Publish|x86" Project="x64" />
+    <Platform Solution="Release|x86" Project="x86" />
   </Project>
   <Project Path="modules/Diagnostics/samples/Iwesun.Runtime.SampleHost/Iwesun.Runtime.SampleHost.csproj">
     <BuildType Solution="Publish|*" Project="Release" />
-    <Platform Solution="Publish|*" Project="x64" />
-    <Platform Solution="*|Any CPU" Project="AnyCPU" />
     <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Publish|Any CPU" Project="x64" />
+    <Platform Solution="Publish|x86" Project="x64" />
   </Project>
-  <Project Path="modules/WebView2/samples/Iwesun.Runtime.WebView2.SampleHost/Iwesun.Runtime.WebView2.SampleHost.csproj">
+  <Project Path="modules/Diagnostics/src/Iwesun.Runtime.Diagnostics/Iwesun.Runtime.Diagnostics.csproj">
     <BuildType Solution="Publish|*" Project="Release" />
-    <Platform Solution="Publish|*" Project="x64" />
-    <Platform Solution="*|Any CPU" Project="AnyCPU" />
     <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|x86" Project="x86" />
+    <Platform Solution="Publish|Any CPU" Project="x64" />
+    <Platform Solution="Publish|x86" Project="x64" />
+    <Platform Solution="Release|x86" Project="x86" />
+  </Project>
+  <Project Path="modules/Networks/src/Iwesun.Runtime.Networks/Iwesun.Runtime.Networks.csproj">
+    <BuildType Solution="Publish|*" Project="Release" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|x86" Project="x86" />
+    <Platform Solution="Publish|Any CPU" Project="x64" />
+    <Platform Solution="Publish|x86" Project="x64" />
+    <Platform Solution="Release|x86" Project="x86" />
   </Project>
   <Project Path="modules/Packaging/release/Iwesun.Runtime.Release/Iwesun.Runtime.Release.csproj">
-    <Platform Solution="*|Any CPU" Project="x64" />
     <Platform Solution="*|x64" Project="x64" />
   </Project>
   <Project Path="modules/Packaging/setup/Iwesun.Runtime.Setup/Iwesun.Runtime.Setup.wixproj" Type="b7dd6f7e-def8-4e67-b5b7-07ef123db6f0">
     <Platform Solution="Debug|Any CPU" Project="x86" />
-    <Build Solution="*|Any CPU" Project="false" />
-    <Build Solution="*|x64" Project="false" />
+    <Platform Solution="Release|Any CPU" Project="x86" />
+    <Build Project="false" />
+  </Project>
+  <Project Path="modules/RemoteConsole/protocol/Iwesun.Runtime.RemoteConsole.Protocol/Iwesun.Runtime.RemoteConsole.Protocol.csproj">
+    <BuildType Solution="Publish|*" Project="Release" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Publish|Any CPU" Project="x64" />
+    <Platform Solution="Publish|x86" Project="x64" />
+  </Project>
+  <Project Path="modules/RemoteConsole/src/Iwesun.Runtime.RemoteConsole/Iwesun.Runtime.RemoteConsole.csproj">
+    <BuildType Solution="Publish|*" Project="Release" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Publish|Any CPU" Project="x64" />
+    <Platform Solution="Publish|x86" Project="x64" />
+  </Project>
+  <Project Path="modules/WebView2/samples/Iwesun.Runtime.WebView2.SampleHost/Iwesun.Runtime.WebView2.SampleHost.csproj">
+    <BuildType Solution="Publish|*" Project="Release" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|x86" Project="x86" />
+    <Platform Solution="Publish|Any CPU" Project="x64" />
+    <Platform Solution="Publish|x86" Project="x64" />
+    <Platform Solution="Release|x86" Project="x86" />
+  </Project>
+  <Project Path="modules/WebView2/src/Iwesun.Runtime.WebView2/Iwesun.Runtime.WebView2.csproj">
+    <BuildType Solution="Publish|*" Project="Release" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|x86" Project="x86" />
+    <Platform Solution="Publish|Any CPU" Project="x64" />
+    <Platform Solution="Publish|x86" Project="x64" />
+    <Platform Solution="Release|x86" Project="x86" />
   </Project>
 </Solution>

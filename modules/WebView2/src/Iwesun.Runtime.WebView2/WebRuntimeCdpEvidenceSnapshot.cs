@@ -34,6 +34,13 @@ public sealed class WebRuntimeCdpEvidenceSnapshot
 
 	public int NodeCount => _nodes.Count;
 
+	public IReadOnlyList<double> ReadLayoutBounds(int backendNodeId)
+	{
+		if (!_nodes.TryGetValue(backendNodeId, out var evidence))
+			return [];
+		return evidence.Bounds.ToArray();
+	}
+
 	internal bool TryGetNode(
 		int backendNodeId,
 		out WebRuntimeCdpNodeEvidence evidence) =>
@@ -42,7 +49,8 @@ public sealed class WebRuntimeCdpEvidenceSnapshot
 	internal static WebRuntimeCdpEvidenceSnapshot Parse(
 		Uri pageUri,
 		string responseJson,
-		IReadOnlyList<string> computedStyleNames)
+		IReadOnlyList<string> computedStyleNames,
+		double geometryScale)
 	{
 		using var response = JsonDocument.Parse(
 			responseJson,
@@ -59,6 +67,7 @@ public sealed class WebRuntimeCdpEvidenceSnapshot
 				document,
 				strings,
 				computedStyleNames,
+				geometryScale,
 				nodes);
 		}
 		return new(pageUri, DateTimeOffset.UtcNow, nodes);
@@ -68,6 +77,7 @@ public sealed class WebRuntimeCdpEvidenceSnapshot
 		JsonElement document,
 		IReadOnlyList<string> strings,
 		IReadOnlyList<string> computedStyleNames,
+		double geometryScale,
 		List<WebRuntimeCdpNodeEvidence> output)
 	{
 		var nodeTable = document.GetProperty("nodes");
@@ -100,8 +110,24 @@ public sealed class WebRuntimeCdpEvidenceSnapshot
 				currentSourceUrls.GetValueOrDefault(index) ?? string.Empty,
 				layout?.ComputedStyles
 					?? FrozenDictionary<string, string>.Empty,
-				layout?.Bounds ?? []));
+				ScaleRectangle(layout?.Bounds ?? [], geometryScale),
+				ScaleRectangle(layout?.ClientRect ?? [], geometryScale),
+				ScaleRectangle(layout?.ScrollRect ?? [], geometryScale)));
 		}
+	}
+
+	private static IReadOnlyList<double> ScaleRectangle(
+		IReadOnlyList<double> rectangle,
+		double scale)
+	{
+		if (rectangle.Count < 4 || Math.Abs(scale - 1) <= 0.000001)
+			return rectangle;
+		var scaled = rectangle.ToArray();
+		scaled[0] *= scale;
+		scaled[1] *= scale;
+		scaled[2] *= scale;
+		scaled[3] *= scale;
+		return scaled;
 	}
 
 	private static Dictionary<int, WebRuntimeCdpLayoutEvidence> ReadLayout(
@@ -115,6 +141,20 @@ public sealed class WebRuntimeCdpEvidenceSnapshot
 		var nodeIndexes = ReadInt32Array(layout, "nodeIndex");
 		var bounds = layout.TryGetProperty("bounds", out var boundsElement)
 			? boundsElement.EnumerateArray()
+				.Select(static row => row.EnumerateArray()
+					.Select(static value => value.GetDouble())
+					.ToArray())
+				.ToArray()
+			: [];
+		var clientRects = layout.TryGetProperty("clientRects", out var clientRectsElement)
+			? clientRectsElement.EnumerateArray()
+				.Select(static row => row.EnumerateArray()
+					.Select(static value => value.GetDouble())
+					.ToArray())
+				.ToArray()
+			: [];
+		var scrollRects = layout.TryGetProperty("scrollRects", out var scrollRectsElement)
+			? scrollRectsElement.EnumerateArray()
 				.Select(static row => row.EnumerateArray()
 					.Select(static value => value.GetDouble())
 					.ToArray())
@@ -146,6 +186,12 @@ public sealed class WebRuntimeCdpEvidenceSnapshot
 				values.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
 				index < bounds.Length
 					? bounds[index]
+					: [],
+				index < clientRects.Length
+					? clientRects[index]
+					: [],
+				index < scrollRects.Length
+					? scrollRects[index]
 					: []);
 		}
 		return result;
@@ -237,7 +283,9 @@ internal sealed record WebRuntimeCdpNodeEvidence(
 	bool OptionSelected,
 	string CurrentSourceUrl,
 	IReadOnlyDictionary<string, string> ComputedStyles,
-	IReadOnlyList<double> Bounds)
+	IReadOnlyList<double> Bounds,
+	IReadOnlyList<double> ClientRect,
+	IReadOnlyList<double> ScrollRect)
 {
 	public string ReadRectangleMember(string member) =>
 		member.ToLowerInvariant() switch
@@ -266,4 +314,6 @@ internal sealed record WebRuntimeCdpNodeEvidence(
 
 internal sealed record WebRuntimeCdpLayoutEvidence(
 	IReadOnlyDictionary<string, string> ComputedStyles,
-	IReadOnlyList<double> Bounds);
+	IReadOnlyList<double> Bounds,
+	IReadOnlyList<double> ClientRect,
+	IReadOnlyList<double> ScrollRect);

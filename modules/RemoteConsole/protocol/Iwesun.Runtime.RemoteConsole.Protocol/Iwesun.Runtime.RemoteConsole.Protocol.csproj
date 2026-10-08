@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Platforms>AnyCPU;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
     <RootNamespace>Iwesun.Runtime.RemoteConsole.Protocol</RootNamespace>
     <AssemblyName>Iwesun.Runtime.RemoteConsole.Protocol</AssemblyName>
   </PropertyGroup>

@@ -1,0 +1,49 @@
+name: Validate public Runtime
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Check excluded project
+        shell: pwsh
+        run: |
+          if (Test-Path modules/Tables) { throw 'Tables is excluded from public delivery.' }
+          if (Select-String -Path Iwesun.Runtime.slnx -Pattern 'modules/Tables') { throw 'Tables solution reference is excluded.' }
+      - name: Build public solution
+        run: dotnet build Iwesun.Runtime.slnx -c ${{ matrix.configuration }} --verbosity minimal
+      - name: Data tests
+        run: dotnet test modules/Data/tests/Iwesun.Runtime.Data.Tests/Iwesun.Runtime.Data.Tests.csproj -c ${{ matrix.configuration }} --verbosity minimal
+      - name: Networks tests
+        run: dotnet test modules/Networks/tests/Iwesun.Runtime.Networks.Tests/Iwesun.Runtime.Networks.Tests.csproj -c ${{ matrix.configuration }} --verbosity minimal
+      - name: WebView2 contract tests
+        run: dotnet test modules/WebView2/tests/Iwesun.Runtime.WebView2.Tests/Iwesun.Runtime.WebView2.Tests.csproj -c ${{ matrix.configuration }} --verbosity minimal
+      - name: Diagnostics functional scenarios
+        shell: pwsh
+        run: |
+          dotnet build modules/Diagnostics/tests/Iwesun.Runtime.FunctionalTests/Iwesun.Runtime.FunctionalTests.csproj -c ${{ matrix.configuration }} --verbosity minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Functional test build failed.' }
+          $resultText = & dotnet run --project modules/Diagnostics/tests/Iwesun.Runtime.FunctionalTests/Iwesun.Runtime.FunctionalTests.csproj -c ${{ matrix.configuration }} --no-build
+          if ($LASTEXITCODE -ne 0) { throw 'Functional scenarios failed.' }
+          $result = ($resultText -join "`n") | ConvertFrom-Json
+          if (-not $result.success) { throw 'Functional scenario report was unsuccessful.' }
+          Write-Host "Functional scenarios passed: $($result.results.Count)"

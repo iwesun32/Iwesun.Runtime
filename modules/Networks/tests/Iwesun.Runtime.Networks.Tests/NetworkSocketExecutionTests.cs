@@ -6,7 +6,7 @@ using Xunit;
 
 namespace Iwesun.Runtime.Networks.Tests;
 
-public sealed class NetworkSocketExecutionTests
+public sealed partial class NetworkSocketExecutionTests
 {
 	[Fact]
 	public async Task AutomaticTcpIpv4ReturnsObservedEndpoints()

@@ -5,29 +5,35 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Platforms>AnyCPU;x86;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
     <RootNamespace>Iwesun.Runtime.Networks</RootNamespace>
     <AssemblyName>Iwesun.Runtime.Networks</AssemblyName>
     <Title>Iwesun.Runtime.Networks</Title>
     <PackageId>Iwesun.Runtime.Networks</PackageId>
-    <Version>3.0.0-beta.4</Version>
+    <Version>3.0.0-beta.6</Version>
     <AssemblyVersion>3.0.0.0</AssemblyVersion>
     <FileVersion>3.0.0.0</FileVersion>
-    <InformationalVersion>3.0.0-beta.4</InformationalVersion>
-    <Authors>iwesun32</Authors>
+    <InformationalVersion>3.0.0-beta.6</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Authors>iwesun</Authors>
     <Description>Value-oriented FIFO network endpoints with four-level GUID tracking, explicit access plans, branch evidence, and bounded attempts for .NET 10.</Description>
     <PackageTags>network;fifo;doh;dns;ping;icmp;precision-routing;dotnet</PackageTags>
     <PackageProjectUrl>https://github.com/iwesun32/Iwesun.Runtime</PackageProjectUrl>
     <RepositoryUrl>https://github.com/iwesun32/Iwesun.Runtime.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>Networks 3.0 beta.4: explicit IPv4/IPv6 byte factories, corrected ICMPv6 ABI parsing, request-level concurrent starts with immutable route snapshots, bounded HTTP/DoH connection pools, and UTF-8 span parsing/formatting.</PackageReleaseNotes>
-    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageReleaseNotes>Public source-available beta.6: parallel tracked endpoints, request-scoped HTTP cancellation, and Windows interface identity corrections. See the release guide for validation limits.</PackageReleaseNotes>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\..\..\artifacts\packages</PackageOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="..\..\..\..\LICENSE" Pack="true" PackagePath="\" Link="LICENSE" />
+    <None Include="..\..\..\..\NOTICE" Pack="true" PackagePath="\" Link="NOTICE" />
+    <None Include="..\..\..\..\THIRD_PARTY_NOTICES.md" Pack="true" PackagePath="\" Link="THIRD_PARTY_NOTICES.md" />
     <None Include="..\..\docs\README.md" Pack="true" PackagePath="\" Link="README.md" />
     <None Include="CHANGELOG.md" Pack="true" PackagePath="\" Link="CHANGELOG.md" />
     <None Include="..\..\docs\RELEASE_STATUS.md" Pack="true" PackagePath="docs\RELEASE_STATUS.md" Link="docs\RELEASE_STATUS.md" />

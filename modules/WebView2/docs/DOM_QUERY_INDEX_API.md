@@ -103,11 +103,46 @@ existing index is unsupported.
   only those incomplete nodes fall back to `CSS.getComputedStyleForNode`. The
   formal whole-tree path must not repeat that call for nodes whose snapshot
   evidence is complete.
+- The snapshot parser preserves `layout.bounds`, `layout.clientRects`, and
+  `layout.scrollRects`. Together with computed `overflow-y`, those rectangles
+  select only nodes that can currently own a vertical scrollbar. The actual
+  inline occupation is then derived from the structured `DOM.getBoxModel`
+  border/content widths, borders, and padding. Snapshot client rectangles are
+  not treated as `clientWidth`; doing so incorrectly shrinks ordinary elements.
 - Authored declarations and rule identities use
   `CSS.getMatchedStylesForNode` once per distinct requested node. Runtime event
   listeners use `DOM.resolveNode` plus `DOMDebugger.getEventListeners` once per
   distinct requested backend node. These enrichments are node-scoped, never
   reflection-slot-scoped.
+- Authored declarations preserve Chromium's effective author cascade. The
+  inline style and matched rules are consumed in descending normal priority;
+  a later `!important` declaration replaces an earlier normal declaration,
+  while the first already-selected `!important` declaration keeps priority.
+  Single-property diagnostics and whole-tree batches use this same indexer and
+  must return the same value and rule identity.
+- Element-slot Fill, the following document-global CSS relationship pass, and
+  CSS custom-property closure can submit separate strongly typed batches. While
+  they reference the same frozen DOM revision, the reader retains each node's
+  raw `CSS.getMatchedStylesForNode` evidence in memory and re-indexes it for the
+  later batch's requested property set. A later phase must not repeat the CDP
+  call. Navigation, page-URI change, or tree-revision change atomically clears
+  this cache before any new evidence is published.
+- `CSS.getPlatformFontsForNode` keeps both the dominant scalar font used by the
+  existing runtime slot and the complete ordered font-use list. Complete lists
+  accumulate for the whole frozen tree revision instead of being overwritten by
+  a later small batch; revision or page changes clear them. Runtime Web can read
+  the typed list directly from `HtmlRuntimeDocumentRoot`, without JSON or a
+  string-encoded font-run contract.
+- CSS custom properties are requested as `style.--name` and retain their exact
+  authored spelling. Custom-property names are case-sensitive; the camelCase
+  to kebab-case conversion used for standard DOM style names is never applied
+  to a name beginning with `--`. Chromium rejects custom-property names in the
+  `DOMSnapshot.captureSnapshot.computedStyles` parameter, so the immutable DOM
+  snapshot contains standard properties only. Runtime custom-property values
+  are read by one `CSS.getComputedStyleForNode` call per affected node (never
+  per slot); Initialization and Link still come from that node's structured
+  matched-style evidence. All results are merged into the same in-memory index
+  before Fill continues.
 - Lookups use an immutable frozen dictionary.
 - No JSON serialization or deserialization occurs in the query session.
 - No per-element browser call occurs after the index is prepared.

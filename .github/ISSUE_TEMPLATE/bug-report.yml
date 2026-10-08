@@ -1,0 +1,22 @@
+name: 问题报告 / Bug report
+description: 提交可复现的 Runtime 问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Runtime/模块版本、Debug/Release、系统版本
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 最小复现、预期与实际行为
+      description: 删除密码、令牌、Cookie 和业务隐私；安全漏洞请使用私密报告。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 已去敏的诊断与验证范围

@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <Platforms>AnyCPU;x86;x64</Platforms>
+    <Configurations>Debug;Release</Configurations>
     <AssemblyName>Iwesun.Runtime.Networks.Tests</AssemblyName>
     <RootNamespace>Iwesun.Runtime.Networks.Tests</RootNamespace>
   </PropertyGroup>

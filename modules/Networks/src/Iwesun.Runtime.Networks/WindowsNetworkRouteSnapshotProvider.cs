@@ -62,8 +62,14 @@ public sealed class WindowsNetworkRouteSnapshotProvider(
 			: 0;
 		var destination = SockaddrInet.FromBinary(requested.Destination.ExactValue, interfaceIndex);
 		var sourcePointer = IntPtr.Zero;
+		var interfaceLuidPointer = IntPtr.Zero;
 		try
 		{
+			if (requested.Interface.Kind == NetworkSelectorKind.Exact && requested.Interface.ExactValue.Luid != 0)
+			{
+				interfaceLuidPointer = Marshal.AllocHGlobal(sizeof(ulong));
+				Marshal.WriteInt64(interfaceLuidPointer, unchecked((long)requested.Interface.ExactValue.Luid));
+			}
 			if (requested.Source.Kind == NetworkSelectorKind.Exact)
 			{
 				var source = SockaddrInet.FromBinary(requested.Source.ExactValue, interfaceIndex);
@@ -72,7 +78,7 @@ public sealed class WindowsNetworkRouteSnapshotProvider(
 			}
 
 			var nativeResult = GetBestRoute2(
-				IntPtr.Zero,
+				interfaceLuidPointer,
 				interfaceIndex,
 				sourcePointer,
 				ref destination,
@@ -122,6 +128,7 @@ public sealed class WindowsNetworkRouteSnapshotProvider(
 		finally
 		{
 			if (sourcePointer != IntPtr.Zero) Marshal.FreeHGlobal(sourcePointer);
+			if (interfaceLuidPointer != IntPtr.Zero) Marshal.FreeHGlobal(interfaceLuidPointer);
 		}
 	}
 
@@ -136,7 +143,10 @@ public sealed class WindowsNetworkRouteSnapshotProvider(
 				foreach (var networkInterface in NetworkInterface.GetAllNetworkInterfaces())
 				{
 					if (!TryGetInterfaceIndex(networkInterface, out var index)) continue;
-					var identity = CreateIdentity(networkInterface, index, 0);
+					// Every interface must have its own stable identity, even when the
+					// system's best route uses a different interface from an exact plan.
+					var nativeResult = ConvertInterfaceIndexToLuid(index, out var luid);
+					var identity = CreateIdentity(networkInterface, index, nativeResult == 0 ? luid : 0);
 					snapshots.Add(new NetworkInterfaceSnapshot(
 						identity,
 						CaptureUnicastAddresses(networkInterface),
@@ -247,6 +257,9 @@ public sealed class WindowsNetworkRouteSnapshotProvider(
 			return false;
 		}
 	}
+
+	[DllImport("iphlpapi.dll", ExactSpelling = true)]
+	private static extern uint ConvertInterfaceIndexToLuid(uint interfaceIndex, out ulong interfaceLuid);
 
 	[DllImport("iphlpapi.dll", ExactSpelling = true)]
 	private static extern uint GetBestRoute2(
