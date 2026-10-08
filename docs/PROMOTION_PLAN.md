@@ -14,13 +14,15 @@
 1. **发布落地页**：中英文 README、可点击关键词、GitHub Topics、当前 Release、许可边界、简单运行步骤、测试范围与问题入口。GitHub Topics 能把项目关联到相应主题页面，但不保证搜索排名。[GitHub 官方说明](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics)
 2. **一篇可复现演示**：用 SampleHost 展示启动、查询受管任务、白名单状态观察、定位一个明确问题、验证并协调退出。可以准备 60–90 秒短演示和对应命令清单；演示尚未录制，不用概念图冒充运行证据。
 3. **中文首发**：建议在 [V2EX「分享创造」](https://www.v2ex.com/go/create) 发一篇真实开发经历与可运行样例介绍；该节点面向作者展示自己的作品。先确认账号与最新社区规则，不重复跨节点刷屏。
-4. **英文首发**：英文文档与样例顺畅后考虑 [Show HN](https://news.ycombinator.com/showhn.html)。官方要求作者实际参与、作品可供尝试并愿意在场讨论；不要只投介绍页，不求赞或组织投票。由作者确认并参与答疑。
+4. **英文首发**：英文文档与样例顺畅后，可由作者本人考虑 [Show HN](https://news.ycombinator.com/showhn.html)。除实际参与、作品可试用、在场讨论等条件外，[HN 总规则](https://news.ycombinator.com/newsguidelines.html)明确禁止生成文本和自动发帖。因此必须由作者本人独立写作并手动提交，不能直接使用本项目准备的 AI 英文草稿，也不能由 AI 代发；不求赞或组织投票。
 5. **后续内容**：根据真实问题分别写服务退出、RecordStore 使用、WebView2 DOM 变化、网络请求关联的技术文章。每篇都给可复现案例、版本与限制，只在允许自荐的相关社区分享。
 
 不建议第一阶段购买广告、群发私信、批量申请榜单或刷 Star。先确认陌生用户能完成首次运行，并根据实际问题改进入门文档。
 AI 可继续准备教程、审查问题和处理申请；外部账号发布、代言、付费推广和合作承诺另需明确授权。
 
 ## 首发文案：中文
+
+以下为 AI 协助整理的通用文案，仅用于允许此类内容的渠道；不适用于 HN，发布前仍须核对目标社区规则。
 
 标题：**iwesun Runtime：让 AI 通过 CLI 调试 .NET 服务，首个公开 β 版**
 
